@@ -270,7 +270,9 @@ pub async fn handle_tool(
 fn parse_int_or_string(val: &serde_json::Value) -> Option<IntOrString> {
     if let Some(i) = val.as_i64() {
         Some(IntOrString::Int(i as i32))
-    } else { val.as_str().map(|s| IntOrString::String(s.to_string())) }
+    } else {
+        val.as_str().map(|s| IntOrString::String(s.to_string()))
+    }
 }
 
 // ---------------------------------------------------------------------------

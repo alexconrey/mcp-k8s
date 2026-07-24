@@ -76,8 +76,7 @@ async fn list_volumeattributesclasses(client: &K8sClient) -> Result<String, Stri
         .await
         .map_err(|e| e.to_string())?;
 
-    let summaries: Vec<VolumeAttributesClassSummary> =
-        list.iter().map(extract_summary).collect();
+    let summaries: Vec<VolumeAttributesClassSummary> = list.iter().map(extract_summary).collect();
 
     serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
 }

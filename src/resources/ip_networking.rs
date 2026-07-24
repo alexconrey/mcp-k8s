@@ -149,10 +149,7 @@ async fn list_ipaddresses(client: &K8sClient) -> Result<String, String> {
         .await
         .map_err(|e| e.to_string())?;
 
-    let summaries: Vec<IPAddressSummary> = list
-        .iter()
-        .map(extract_ipaddress_summary)
-        .collect();
+    let summaries: Vec<IPAddressSummary> = list.iter().map(extract_ipaddress_summary).collect();
 
     serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
 }
@@ -190,10 +187,7 @@ async fn list_servicecidrs(client: &K8sClient) -> Result<String, String> {
         .await
         .map_err(|e| e.to_string())?;
 
-    let summaries: Vec<ServiceCIDRSummary> = list
-        .iter()
-        .map(extract_servicecidr_summary)
-        .collect();
+    let summaries: Vec<ServiceCIDRSummary> = list.iter().map(extract_servicecidr_summary).collect();
 
     serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
 }
