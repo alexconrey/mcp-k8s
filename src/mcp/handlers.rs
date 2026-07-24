@@ -34,7 +34,7 @@ pub async fn handle_tool(
     }
 
     let result = match name {
-        "get_namespaces" => get_namespaces(client).await,
+        "list_namespaces" => list_namespaces(client).await,
         "list_deployments" => list_deployments(client, args).await,
         "get_deployment" => get_deployment(client, args).await,
         "get_pod_logs" => get_pod_logs(client, args).await,
@@ -51,7 +51,7 @@ pub async fn handle_tool(
     Some(result)
 }
 
-async fn get_namespaces(client: &K8sClient) -> Result<String, String> {
+async fn list_namespaces(client: &K8sClient) -> Result<String, String> {
     let ns_api = client.namespaces_api();
     let list = ns_api
         .list(&ListParams::default())

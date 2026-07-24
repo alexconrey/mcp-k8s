@@ -51,11 +51,11 @@ fn json_response<T: serde::Serialize>(val: &T) -> Response<Body> {
 }
 
 // ---------------------------------------------------------------------------
-// 1. test_get_namespaces
+// 1. test_list_namespaces
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn test_get_namespaces() {
+async fn test_list_namespaces() {
     let (client, handle) = mock_client();
 
     let mock_task = tokio::spawn(async move {
@@ -91,7 +91,7 @@ async fn test_get_namespaces() {
     });
 
     let args = serde_json::json!({});
-    let result = mcp_k8s::mcp::handle_tool(&client, "get_namespaces", &args).await;
+    let result = mcp_k8s::mcp::handle_tool(&client, "list_namespaces", &args).await;
 
     let text = result
         .expect("tool should be recognized")
