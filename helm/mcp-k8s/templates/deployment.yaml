@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "mcp-k8s.fullname" . }}
+  labels:
+    {{- include "mcp-k8s.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "mcp-k8s.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "mcp-k8s.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "mcp-k8s.serviceAccountName" . }}
+      containers:
+        - name: mcp-k8s
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - /mcp-k8s
+            - --http
+          env:
+            {{- if .Values.namespaces }}
+            - name: MCP_K8S_NAMESPACES
+              value: {{ join "," .Values.namespaces | quote }}
+            {{- end }}
+            {{- if .Values.permissions.disableCreate }}
+            - name: DISABLE_CREATE
+              value: "true"
+            {{- end }}
+            {{- if .Values.permissions.disableUpdate }}
+            - name: DISABLE_UPDATE
+              value: "true"
+            {{- end }}
+            {{- if .Values.permissions.disableDelete }}
+            - name: DISABLE_DELETE
+              value: "true"
+            {{- end }}
+            {{- if .Values.permissions.disableActions }}
+            - name: MCP_K8S_DISABLE
+              value: {{ join "," .Values.permissions.disableActions | quote }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}

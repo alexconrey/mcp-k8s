@@ -1,0 +1,43 @@
+image:
+  repository: ghcr.io/alexconrey/mcp-k8s
+  tag: latest
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+service:
+  type: ClusterIP
+  port: 8080
+
+# List of namespaces to restrict to. Empty means all namespaces are allowed.
+namespaces: []
+
+permissions:
+  disableCreate: false
+  disableUpdate: false
+  disableDelete: false
+  # List of "resource-action" strings to disable (e.g. ["pods-delete", "secrets-create"])
+  disableActions: []
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi
+
+rbac:
+  create: true
+  # If true, creates ClusterRole/ClusterRoleBinding. If false, creates namespaced Role/RoleBinding.
+  clusterWide: true
+
+serviceAccount:
+  create: true
+  # If empty, the name is auto-generated using the fullname template.
+  name: ""
+
+ingress:
+  enabled: false
+  className: ""
+  host: ""

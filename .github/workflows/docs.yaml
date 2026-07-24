@@ -1,0 +1,121 @@
+name: Docs
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+    paths:
+      - 'docs/**'
+      - '.github/workflows/docs.yaml'
+
+# Allow this workflow to also run when triggered by the release workflow
+  workflow_dispatch:
+
+permissions:
+  contents: write  # needed for gh-pages push
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install mdBook
+        run: |
+          mkdir -p "$HOME/.cargo/bin"
+          curl -sSL https://github.com/rust-lang/mdBook/releases/latest/download/mdbook-v0.4.44-x86_64-unknown-linux-gnu.tar.gz | tar -xz -C "$HOME/.cargo/bin"
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Build docs
+        run: mdbook build docs/
+
+      - name: Determine version
+        id: version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/}"
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "is_tag=true" >> $GITHUB_OUTPUT
+          else
+            echo "version=latest" >> $GITHUB_OUTPUT
+            echo "is_tag=false" >> $GITHUB_OUTPUT
+          fi
+
+      # Deploy to versioned directory
+      - name: Deploy docs (${{ steps.version.outputs.version }})
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs/book
+          destination_dir: ${{ steps.version.outputs.version }}
+          keep_files: true
+
+      # For tags, also deploy to /latest/
+      - name: Deploy docs (latest)
+        if: steps.version.outputs.is_tag == 'true'
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs/book
+          destination_dir: latest
+          keep_files: true
+
+      # Update versions.json
+      - name: Update versions.json
+        run: |
+          git fetch origin gh-pages:gh-pages 2>/dev/null || true
+
+          # Get existing versions.json or start fresh
+          if git show gh-pages:versions.json > /tmp/versions.json 2>/dev/null; then
+            VERSIONS=$(cat /tmp/versions.json)
+          else
+            VERSIONS='[]'
+          fi
+
+          VERSION="${{ steps.version.outputs.version }}"
+
+          # Add version if not already present
+          if ! echo "$VERSIONS" | jq -e ".[] | select(.version == \"$VERSION\")" > /dev/null 2>&1; then
+            VERSIONS=$(echo "$VERSIONS" | jq ". + [{\"version\": \"$VERSION\", \"url\": \"/$VERSION/\"}]")
+          fi
+
+          # Sort: latest first, then semver descending
+          VERSIONS=$(echo "$VERSIONS" | jq '[
+            (.[] | select(.version == "latest")),
+            ([.[] | select(.version != "latest")] | sort_by(.version) | reverse)[]
+          ]')
+
+          echo "$VERSIONS" > /tmp/versions.json
+
+      - name: Deploy versions.json
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: /tmp
+          keep_files: true
+          exclude_assets: ''
+
+      # Create root index.html redirect
+      - name: Create root redirect
+        run: |
+          mkdir -p /tmp/root
+          cat > /tmp/root/index.html << 'REDIRECT'
+          <!DOCTYPE html>
+          <html>
+          <head><meta http-equiv="refresh" content="0; url=latest/"></head>
+          <body><a href="latest/">Redirecting to latest docs...</a></body>
+          </html>
+          REDIRECT
+
+      - name: Deploy root redirect
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: /tmp/root
+          keep_files: true
