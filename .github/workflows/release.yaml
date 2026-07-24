@@ -22,3 +22,29 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository }}:${{ github.ref_name }}
             ghcr.io/${{ github.repository }}:latest
+
+  helm:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Package chart
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          sed -i "s/^version:.*/version: ${VERSION}/" helm/mcp-k8s/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: ${VERSION}/" helm/mcp-k8s/Chart.yaml
+          helm package helm/mcp-k8s
+
+      - name: Push chart to GHCR
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          helm push mcp-k8s-${VERSION}.tgz oci://ghcr.io/${{ github.repository_owner }}/charts

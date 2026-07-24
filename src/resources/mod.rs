@@ -1,10 +1,12 @@
 pub mod admission;
 pub mod admission_alpha;
 pub mod auth;
+pub mod cluster_mgmt;
 pub mod cluster_trust_bundle;
 pub mod clusterrole;
 pub mod clusterrolebinding;
 pub mod configmap;
+pub mod crd;
 pub mod cronjob;
 pub mod csr;
 pub mod daemonset;
@@ -44,11 +46,13 @@ pub mod storage_migration;
 pub mod storage_version;
 pub mod storageclass;
 pub mod volume_attributes;
+pub mod watch;
 
 use crate::client::K8sClient;
 
 pub fn all_tool_definitions() -> Vec<serde_json::Value> {
     let mut tools = Vec::new();
+    tools.extend(cluster_mgmt::tool_definitions());
     tools.extend(admission::tool_definitions());
     tools.extend(admission_alpha::tool_definitions());
     tools.extend(auth::tool_definitions());
@@ -56,6 +60,7 @@ pub fn all_tool_definitions() -> Vec<serde_json::Value> {
     tools.extend(clusterrole::tool_definitions());
     tools.extend(clusterrolebinding::tool_definitions());
     tools.extend(configmap::tool_definitions());
+    tools.extend(crd::tool_definitions());
     tools.extend(cronjob::tool_definitions());
     tools.extend(csr::tool_definitions());
     tools.extend(daemonset::tool_definitions());
@@ -95,6 +100,7 @@ pub fn all_tool_definitions() -> Vec<serde_json::Value> {
     tools.extend(storage_version::tool_definitions());
     tools.extend(storageclass::tool_definitions());
     tools.extend(volume_attributes::tool_definitions());
+    tools.extend(watch::tool_definitions());
     tools
 }
 
@@ -122,6 +128,9 @@ pub async fn handle_tool(
         return result;
     }
     if let result @ Some(_) = configmap::handle_tool(client, name, args).await {
+        return result;
+    }
+    if let result @ Some(_) = crd::handle_tool(client, name, args).await {
         return result;
     }
     if let result @ Some(_) = cronjob::handle_tool(client, name, args).await {
@@ -239,6 +248,9 @@ pub async fn handle_tool(
         return result;
     }
     if let result @ Some(_) = volume_attributes::handle_tool(client, name, args).await {
+        return result;
+    }
+    if let result @ Some(_) = watch::handle_tool(client, name, args).await {
         return result;
     }
     None

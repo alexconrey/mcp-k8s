@@ -31,6 +31,9 @@ pub struct ActionPermissions {
     /// Per-resource overrides. Key is `"<resource>-<action>"` (e.g. `"deployment-delete"`),
     /// value is `false` to disable.
     resource_overrides: HashMap<String, bool>,
+    /// When `false`, the `decode: true` parameter in `get_secret` is ignored
+    /// and secret values are never returned.
+    pub secret_decode_enabled: bool,
 }
 
 impl ActionPermissions {
@@ -43,6 +46,7 @@ impl ActionPermissions {
         disable_update: bool,
         disable_delete: bool,
         disable_actions: Vec<String>,
+        secret_decode_enabled: bool,
     ) -> Self {
         let mut resource_overrides = HashMap::new();
         for entry in &disable_actions {
@@ -58,6 +62,7 @@ impl ActionPermissions {
             global_update_enabled: !disable_update,
             global_delete_enabled: !disable_delete,
             resource_overrides,
+            secret_decode_enabled,
         }
     }
 
@@ -172,13 +177,14 @@ impl ActionPermissions {
 }
 
 impl Default for ActionPermissions {
-    /// All actions enabled, no overrides.
+    /// All actions enabled, no overrides, secret decode enabled.
     fn default() -> Self {
         Self {
             global_create_enabled: true,
             global_update_enabled: true,
             global_delete_enabled: true,
             resource_overrides: HashMap::new(),
+            secret_decode_enabled: true,
         }
     }
 }
@@ -206,7 +212,7 @@ mod tests {
 
     #[test]
     fn read_always_allowed_even_when_all_globals_disabled() {
-        let perms = ActionPermissions::new(true, true, true, vec![]);
+        let perms = ActionPermissions::new(true, true, true, vec![], true);
         assert!(perms.is_action_allowed("deployment", &Action::Read));
         assert!(perms.is_action_allowed("pod", &Action::Read));
     }
@@ -217,7 +223,7 @@ mod tests {
 
     #[test]
     fn global_disable_create() {
-        let perms = ActionPermissions::new(true, false, false, vec![]);
+        let perms = ActionPermissions::new(true, false, false, vec![], true);
         assert!(!perms.is_action_allowed("deployment", &Action::Create));
         assert!(!perms.is_action_allowed("pod", &Action::Create));
         assert!(perms.is_action_allowed("deployment", &Action::Update));
@@ -226,7 +232,7 @@ mod tests {
 
     #[test]
     fn global_disable_update() {
-        let perms = ActionPermissions::new(false, true, false, vec![]);
+        let perms = ActionPermissions::new(false, true, false, vec![], true);
         assert!(!perms.is_action_allowed("deployment", &Action::Update));
         assert!(perms.is_action_allowed("deployment", &Action::Create));
         assert!(perms.is_action_allowed("deployment", &Action::Delete));
@@ -234,7 +240,7 @@ mod tests {
 
     #[test]
     fn global_disable_delete() {
-        let perms = ActionPermissions::new(false, false, true, vec![]);
+        let perms = ActionPermissions::new(false, false, true, vec![], true);
         assert!(!perms.is_action_allowed("pod", &Action::Delete));
         assert!(perms.is_action_allowed("pod", &Action::Create));
         assert!(perms.is_action_allowed("pod", &Action::Update));
@@ -242,7 +248,7 @@ mod tests {
 
     #[test]
     fn global_disable_all_mutating() {
-        let perms = ActionPermissions::new(true, true, true, vec![]);
+        let perms = ActionPermissions::new(true, true, true, vec![], true);
         assert!(!perms.is_action_allowed("service", &Action::Create));
         assert!(!perms.is_action_allowed("service", &Action::Update));
         assert!(!perms.is_action_allowed("service", &Action::Delete));
@@ -260,6 +266,7 @@ mod tests {
             false,
             false,
             vec!["deployment-delete".to_string(), "pod-create".to_string()],
+            true,
         );
         // Specific overrides block the action
         assert!(!perms.is_action_allowed("deployment", &Action::Delete));
@@ -272,16 +279,26 @@ mod tests {
 
     #[test]
     fn per_resource_override_is_case_insensitive() {
-        let perms =
-            ActionPermissions::new(false, false, false, vec!["Deployment-Delete".to_string()]);
+        let perms = ActionPermissions::new(
+            false,
+            false,
+            false,
+            vec!["Deployment-Delete".to_string()],
+            true,
+        );
         assert!(!perms.is_action_allowed("deployment", &Action::Delete));
         assert!(!perms.is_action_allowed("DEPLOYMENT", &Action::Delete));
     }
 
     #[test]
     fn empty_disable_actions_entries_ignored() {
-        let perms =
-            ActionPermissions::new(false, false, false, vec!["".to_string(), "  ".to_string()]);
+        let perms = ActionPermissions::new(
+            false,
+            false,
+            false,
+            vec!["".to_string(), "  ".to_string()],
+            true,
+        );
         assert!(perms.is_action_allowed("deployment", &Action::Create));
         assert!(perms.is_action_allowed("deployment", &Action::Update));
         assert!(perms.is_action_allowed("deployment", &Action::Delete));
@@ -447,7 +464,7 @@ mod tests {
 
     #[test]
     fn tool_disallowed_when_global_create_off() {
-        let perms = ActionPermissions::new(true, false, false, vec![]);
+        let perms = ActionPermissions::new(true, false, false, vec![], true);
         assert!(!perms.is_tool_allowed("create_deployment"));
         assert!(!perms.is_tool_allowed("create_pod"));
         assert!(!perms.is_tool_allowed("apply_manifest"));
@@ -459,7 +476,7 @@ mod tests {
 
     #[test]
     fn tool_disallowed_when_global_delete_off() {
-        let perms = ActionPermissions::new(false, false, true, vec![]);
+        let perms = ActionPermissions::new(false, false, true, vec![], true);
         assert!(!perms.is_tool_allowed("delete_deployment"));
         assert!(!perms.is_tool_allowed("delete_pod"));
         assert!(!perms.is_tool_allowed("evict_pod"));
@@ -468,8 +485,13 @@ mod tests {
 
     #[test]
     fn tool_disallowed_by_per_resource_override() {
-        let perms =
-            ActionPermissions::new(false, false, false, vec!["deployment-delete".to_string()]);
+        let perms = ActionPermissions::new(
+            false,
+            false,
+            false,
+            vec!["deployment-delete".to_string()],
+            true,
+        );
         assert!(!perms.is_tool_allowed("delete_deployment"));
         // Other delete tools still allowed
         assert!(perms.is_tool_allowed("delete_pod"));
@@ -480,7 +502,7 @@ mod tests {
 
     #[test]
     fn read_tools_always_allowed_regardless_of_config() {
-        let perms = ActionPermissions::new(true, true, true, vec![]);
+        let perms = ActionPermissions::new(true, true, true, vec![], true);
         assert!(perms.is_tool_allowed("list_deployments"));
         assert!(perms.is_tool_allowed("get_pod_logs"));
         assert!(perms.is_tool_allowed("can_i"));

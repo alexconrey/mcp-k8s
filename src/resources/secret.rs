@@ -182,7 +182,11 @@ async fn list_secrets(client: &K8sClient, args: &serde_json::Value) -> Result<St
 async fn get_secret(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
-    let decode = args["decode"].as_bool().unwrap_or(false);
+    let decode_requested = args["decode"].as_bool().unwrap_or(false);
+
+    // Honour the --disable-secret-decode flag: if decode is disabled server-wide,
+    // ignore the caller's decode=true request.
+    let decode = decode_requested && client.permissions().secret_decode_enabled;
 
     let secrets_api = api(client, ns)?;
     let secret = secrets_api.get(name).await.map_err(|e| e.to_string())?;
@@ -201,6 +205,12 @@ async fn get_secret(client: &K8sClient, args: &serde_json::Value) -> Result<Stri
     });
 
     if decode {
+        tracing::info!(
+            namespace = ns,
+            secret = name,
+            "secret values decoded — decode=true was requested"
+        );
+
         let decoded: BTreeMap<String, String> = secret
             .data
             .as_ref()
