@@ -78,7 +78,7 @@ async fn list_priorityclasses(client: &K8sClient) -> Result<String, String> {
         .await
         .map_err(|e| e.to_string())?;
 
-    let summaries: Vec<PriorityClassSummary> = list.iter().map(|pc| extract_summary(pc)).collect();
+    let summaries: Vec<PriorityClassSummary> = list.iter().map(extract_summary).collect();
 
     serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
 }

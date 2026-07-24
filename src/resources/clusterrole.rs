@@ -217,7 +217,7 @@ async fn list_clusterroles(client: &K8sClient) -> Result<String, String> {
         .await
         .map_err(|e| e.to_string())?;
 
-    let summaries: Vec<ClusterRoleSummary> = list.iter().map(|cr| extract_summary(cr)).collect();
+    let summaries: Vec<ClusterRoleSummary> = list.iter().map(extract_summary).collect();
 
     serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
 }

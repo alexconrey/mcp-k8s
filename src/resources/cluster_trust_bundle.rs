@@ -72,7 +72,7 @@ async fn list_clustertrustbundles(client: &K8sClient) -> Result<String, String> 
         .map_err(|e| e.to_string())?;
 
     let summaries: Vec<ClusterTrustBundleSummary> =
-        list.iter().map(|ctb| extract_summary(ctb)).collect();
+        list.iter().map(extract_summary).collect();
 
     serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
 }

@@ -179,7 +179,7 @@ async fn list_flowschemas(client: &K8sClient) -> Result<String, String> {
 
     let summaries: Vec<FlowSchemaSummary> = list
         .iter()
-        .map(|fs| extract_flowschema_summary(fs))
+        .map(extract_flowschema_summary)
         .collect();
 
     serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
@@ -246,7 +246,7 @@ async fn list_prioritylevelconfigs(client: &K8sClient) -> Result<String, String>
 
     let summaries: Vec<PriorityLevelSummary> = list
         .iter()
-        .map(|plc| extract_prioritylevel_summary(plc))
+        .map(extract_prioritylevel_summary)
         .collect();
 
     serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())

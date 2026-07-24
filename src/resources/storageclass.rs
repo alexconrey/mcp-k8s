@@ -126,7 +126,7 @@ async fn list_storageclasses(client: &K8sClient) -> Result<String, String> {
         .await
         .map_err(|e| e.to_string())?;
 
-    let summaries: Vec<StorageClassSummary> = list.iter().map(|sc| extract_summary(sc)).collect();
+    let summaries: Vec<StorageClassSummary> = list.iter().map(extract_summary).collect();
 
     serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
 }

@@ -241,7 +241,7 @@ mod tests {
         let schema = &whoami_def["inputSchema"];
         assert!(
             schema.get("required").is_none()
-                || schema["required"].as_array().map_or(true, |a| a.is_empty()),
+                || schema["required"].as_array().is_none_or(|a| a.is_empty()),
             "whoami should have no required parameters"
         );
     }

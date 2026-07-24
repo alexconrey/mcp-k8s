@@ -83,9 +83,9 @@ fn extract_summary(pdb: &Pdb) -> PdbSummary {
         max_unavailable: spec
             .and_then(|s| s.max_unavailable.as_ref())
             .map(int_or_string_to_string),
-        current_healthy: status.and_then(|s| Some(s.current_healthy)),
-        disruptions_allowed: status.and_then(|s| Some(s.disruptions_allowed)),
-        expected_pods: status.and_then(|s| Some(s.expected_pods)),
+        current_healthy: status.map(|s| s.current_healthy),
+        disruptions_allowed: status.map(|s| s.disruptions_allowed),
+        expected_pods: status.map(|s| s.expected_pods),
         created_at: meta.creation_timestamp.as_ref().map(|t| t.0.to_string()),
     }
 }
@@ -124,9 +124,9 @@ fn extract_detail(pdb: &Pdb) -> PdbDetail {
         max_unavailable: spec
             .and_then(|s| s.max_unavailable.as_ref())
             .map(int_or_string_to_string),
-        current_healthy: status.and_then(|s| Some(s.current_healthy)),
-        disruptions_allowed: status.and_then(|s| Some(s.disruptions_allowed)),
-        expected_pods: status.and_then(|s| Some(s.expected_pods)),
+        current_healthy: status.map(|s| s.current_healthy),
+        disruptions_allowed: status.map(|s| s.disruptions_allowed),
+        expected_pods: status.map(|s| s.expected_pods),
         created_at: meta.creation_timestamp.as_ref().map(|t| t.0.to_string()),
         selector,
         conditions,
@@ -270,11 +270,7 @@ pub async fn handle_tool(
 fn parse_int_or_string(val: &serde_json::Value) -> Option<IntOrString> {
     if let Some(i) = val.as_i64() {
         Some(IntOrString::Int(i as i32))
-    } else if let Some(s) = val.as_str() {
-        Some(IntOrString::String(s.to_string()))
-    } else {
-        None
-    }
+    } else { val.as_str().map(|s| IntOrString::String(s.to_string())) }
 }
 
 // ---------------------------------------------------------------------------

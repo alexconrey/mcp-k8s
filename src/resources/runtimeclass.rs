@@ -76,7 +76,7 @@ async fn list_runtimeclasses(client: &K8sClient) -> Result<String, String> {
         .await
         .map_err(|e| e.to_string())?;
 
-    let summaries: Vec<RuntimeClassSummary> = list.iter().map(|rc| extract_summary(rc)).collect();
+    let summaries: Vec<RuntimeClassSummary> = list.iter().map(extract_summary).collect();
 
     serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
 }

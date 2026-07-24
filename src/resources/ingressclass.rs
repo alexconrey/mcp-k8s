@@ -107,7 +107,7 @@ async fn list_ingressclasses(client: &K8sClient) -> Result<String, String> {
         .await
         .map_err(|e| e.to_string())?;
 
-    let summaries: Vec<IngressClassSummary> = list.iter().map(|ic| extract_summary(ic)).collect();
+    let summaries: Vec<IngressClassSummary> = list.iter().map(extract_summary).collect();
 
     serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
 }

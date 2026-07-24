@@ -70,7 +70,7 @@ async fn list_storageversions(client: &K8sClient) -> Result<String, String> {
         .await
         .map_err(|e| e.to_string())?;
 
-    let summaries: Vec<StorageVersionSummary> = list.iter().map(|sv| extract_summary(sv)).collect();
+    let summaries: Vec<StorageVersionSummary> = list.iter().map(extract_summary).collect();
 
     serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
 }
