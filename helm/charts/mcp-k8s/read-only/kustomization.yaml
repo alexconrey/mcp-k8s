@@ -1,0 +1,27 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../
+
+patches:
+  - target:
+      kind: Deployment
+      name: mcp-k8s
+    patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: mcp-k8s
+      spec:
+        template:
+          spec:
+            containers:
+              - name: mcp-k8s
+                env:
+                  - name: DISABLE_CREATE
+                    value: "true"
+                  - name: DISABLE_UPDATE
+                    value: "true"
+                  - name: DISABLE_DELETE
+                    value: "true"

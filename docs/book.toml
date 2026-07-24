@@ -1,0 +1,14 @@
+[book]
+title = "mcp-k8s Documentation"
+authors = ["Alex Conrey"]
+language = "en"
+src = "src"
+
+[build]
+build-dir = "book"
+
+[output.html]
+additional-js = ["theme/version-select.js"]
+additional-css = ["theme/version-select.css"]
+git-repository-url = "https://github.com/alexconrey/mcp-k8s"
+edit-url-template = "https://github.com/alexconrey/mcp-k8s/edit/main/docs/{path}"

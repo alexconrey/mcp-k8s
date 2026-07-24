@@ -1,0 +1,141 @@
+{{- if .Values.rbac.create -}}
+{{- if .Values.rbac.clusterWide }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+{{- else }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+{{- end }}
+metadata:
+  name: {{ include "mcp-k8s.fullname" . }}
+  labels:
+    {{- include "mcp-k8s.labels" . | nindent 4 }}
+rules:
+  # Core API resources
+  - apiGroups: [""]
+    resources:
+      - pods
+      - services
+      - configmaps
+      - secrets
+      - namespaces
+      - events
+      - endpoints
+      - persistentvolumes
+      - persistentvolumeclaims
+      - serviceaccounts
+      - resourcequotas
+      - limitranges
+      - nodes
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Pod logs subresource
+  - apiGroups: [""]
+    resources:
+      - pods/log
+    verbs: ["get", "list", "watch"]
+  # Apps API
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - statefulsets
+      - daemonsets
+      - replicasets
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Batch API
+  - apiGroups: ["batch"]
+    resources:
+      - jobs
+      - cronjobs
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Networking API
+  - apiGroups: ["networking.k8s.io"]
+    resources:
+      - ingresses
+      - ingressclasses
+      - networkpolicies
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # RBAC API
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources:
+      - roles
+      - rolebindings
+      - clusterroles
+      - clusterrolebindings
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Autoscaling API
+  - apiGroups: ["autoscaling"]
+    resources:
+      - horizontalpodautoscalers
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Policy API
+  - apiGroups: ["policy"]
+    resources:
+      - poddisruptionbudgets
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Storage API
+  - apiGroups: ["storage.k8s.io"]
+    resources:
+      - storageclasses
+      - csidrivers
+      - csinodes
+      - csistoragecapacities
+      - volumeattachments
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Coordination API
+  - apiGroups: ["coordination.k8s.io"]
+    resources:
+      - leases
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Discovery API
+  - apiGroups: ["discovery.k8s.io"]
+    resources:
+      - endpointslices
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Certificates API
+  - apiGroups: ["certificates.k8s.io"]
+    resources:
+      - certificatesigningrequests
+      - certificatesigningrequests/approval
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Admission Registration API
+  - apiGroups: ["admissionregistration.k8s.io"]
+    resources:
+      - mutatingwebhookconfigurations
+      - validatingwebhookconfigurations
+      - validatingadmissionpolicies
+      - validatingadmissionpolicybindings
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Scheduling API
+  - apiGroups: ["scheduling.k8s.io"]
+    resources:
+      - priorityclasses
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Node API
+  - apiGroups: ["node.k8s.io"]
+    resources:
+      - runtimeclasses
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Flow Control API
+  - apiGroups: ["flowcontrol.apiserver.k8s.io"]
+    resources:
+      - flowschemas
+      - prioritylevelconfigurations
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Authentication API
+  - apiGroups: ["authentication.k8s.io"]
+    resources:
+      - selfsubjectreviews
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Authorization API
+  - apiGroups: ["authorization.k8s.io"]
+    resources:
+      - selfsubjectaccessreviews
+      - selfsubjectrulesreviews
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Metrics API
+  - apiGroups: ["metrics.k8s.io"]
+    resources:
+      - pods
+      - nodes
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+{{- end }}
