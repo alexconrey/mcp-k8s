@@ -41,3 +41,22 @@ ingress:
   enabled: false
   className: ""
   host: ""
+
+pdb:
+  enabled: false
+  # minAvailable: 1
+  # maxUnavailable: 1
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80
+  # targetMemoryUtilizationPercentage: 80
+
+networkPolicy:
+  enabled: false
+  # Restrict ingress to specific CIDRs
+  allowedCIDRs: []
+  # Restrict ingress to pods in specific namespaces
+  allowedNamespaces: []

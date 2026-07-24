@@ -26,3 +26,8 @@
 - [Helm Chart](./deployment/helm.md)
 - [Kubernetes Manifests](./deployment/manifests.md)
 - [RBAC Setup](./deployment/rbac.md)
+
+# Development
+
+- [Extending mcp-k8s](./extending.md)
+- [Troubleshooting](./troubleshooting.md)
