@@ -126,16 +126,12 @@ async fn list_storageclasses(client: &K8sClient) -> Result<String, String> {
         .await
         .map_err(|e| e.to_string())?;
 
-    let summaries: Vec<StorageClassSummary> =
-        list.iter().map(|sc| extract_summary(sc)).collect();
+    let summaries: Vec<StorageClassSummary> = list.iter().map(|sc| extract_summary(sc)).collect();
 
     serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
 }
 
-async fn get_storageclass(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn get_storageclass(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let name = args["name"].as_str().ok_or("name is required")?;
     let sc_api = api(client);
     let sc = sc_api.get(name).await.map_err(|e| e.to_string())?;
@@ -241,10 +237,7 @@ mod tests {
         let defs = tool_definitions();
         assert_eq!(defs.len(), 4);
 
-        let names: Vec<&str> = defs
-            .iter()
-            .map(|d| d["name"].as_str().unwrap())
-            .collect();
+        let names: Vec<&str> = defs.iter().map(|d| d["name"].as_str().unwrap()).collect();
 
         let mut unique = names.clone();
         unique.sort();
@@ -319,10 +312,7 @@ mod tests {
     #[test]
     fn extract_summary_from_storageclass() {
         let mut annotations = BTreeMap::new();
-        annotations.insert(
-            DEFAULT_SC_ANNOTATION.to_string(),
-            "true".to_string(),
-        );
+        annotations.insert(DEFAULT_SC_ANNOTATION.to_string(), "true".to_string());
 
         let sc = StorageClass {
             metadata: ObjectMeta {
@@ -383,10 +373,7 @@ mod tests {
     #[test]
     fn extract_summary_default_annotation_false() {
         let mut annotations = BTreeMap::new();
-        annotations.insert(
-            DEFAULT_SC_ANNOTATION.to_string(),
-            "false".to_string(),
-        );
+        annotations.insert(DEFAULT_SC_ANNOTATION.to_string(), "false".to_string());
 
         let sc = StorageClass {
             metadata: ObjectMeta {

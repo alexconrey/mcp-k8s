@@ -136,10 +136,7 @@ pub async fn handle_tool(
     Some(result)
 }
 
-async fn list_configmaps(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn list_configmaps(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let cm_api = api(client, ns)?;
     let label_selector = args["label_selector"].as_str();
@@ -151,10 +148,7 @@ async fn list_configmaps(
     if let Some(sel) = field_selector {
         lp = lp.fields(sel);
     }
-    let list = cm_api
-        .list(&lp)
-        .await
-        .map_err(|e| e.to_string())?;
+    let list = cm_api.list(&lp).await.map_err(|e| e.to_string())?;
 
     let summaries: Vec<serde_json::Value> = list
         .iter()
@@ -172,10 +166,7 @@ async fn list_configmaps(
     serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
 }
 
-async fn get_configmap(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn get_configmap(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
     let cm_api = api(client, ns)?;
@@ -193,18 +184,12 @@ async fn get_configmap(
     serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
 }
 
-async fn create_configmap(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn create_configmap(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
-    let data: BTreeMap<String, String> = serde_json::from_value(
-        args.get("data")
-            .ok_or("data is required")?
-            .clone(),
-    )
-    .map_err(|e| e.to_string())?;
+    let data: BTreeMap<String, String> =
+        serde_json::from_value(args.get("data").ok_or("data is required")?.clone())
+            .map_err(|e| e.to_string())?;
 
     let mut labels = BTreeMap::new();
     labels.insert(
@@ -233,18 +218,12 @@ async fn create_configmap(
     serde_json::to_string_pretty(&summary).map_err(|e| e.to_string())
 }
 
-async fn update_configmap(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn update_configmap(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
-    let data: BTreeMap<String, String> = serde_json::from_value(
-        args.get("data")
-            .ok_or("data is required")?
-            .clone(),
-    )
-    .map_err(|e| e.to_string())?;
+    let data: BTreeMap<String, String> =
+        serde_json::from_value(args.get("data").ok_or("data is required")?.clone())
+            .map_err(|e| e.to_string())?;
 
     let patch = serde_json::json!({
         "data": data,
@@ -252,11 +231,7 @@ async fn update_configmap(
 
     let cm_api = api(client, ns)?;
     let patched = cm_api
-        .patch(
-            name,
-            &PatchParams::apply("mcp-k8s"),
-            &Patch::Merge(&patch),
-        )
+        .patch(name, &PatchParams::apply("mcp-k8s"), &Patch::Merge(&patch))
         .await
         .map_err(|e| e.to_string())?;
 
@@ -264,10 +239,7 @@ async fn update_configmap(
     serde_json::to_string_pretty(&summary).map_err(|e| e.to_string())
 }
 
-async fn delete_configmap(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn delete_configmap(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
 
@@ -293,10 +265,7 @@ mod tests {
         let defs = tool_definitions();
         assert_eq!(defs.len(), 5);
 
-        let names: Vec<&str> = defs
-            .iter()
-            .map(|d| d["name"].as_str().unwrap())
-            .collect();
+        let names: Vec<&str> = defs.iter().map(|d| d["name"].as_str().unwrap()).collect();
 
         let mut unique = names.clone();
         unique.sort();
@@ -333,9 +302,7 @@ mod tests {
             namespace: "default".to_string(),
             data_keys: vec!["key1".to_string(), "key2".to_string()],
             created_at: Some("2024-01-01T00:00:00Z".to_string()),
-            labels: BTreeMap::from([
-                ("app".to_string(), "test".to_string()),
-            ]),
+            labels: BTreeMap::from([("app".to_string(), "test".to_string())]),
         };
 
         let json = serde_json::to_value(&summary).unwrap();
@@ -369,9 +336,10 @@ mod tests {
             metadata: ObjectMeta {
                 name: Some("test-cm".to_string()),
                 namespace: Some("prod".to_string()),
-                labels: Some(BTreeMap::from([
-                    ("env".to_string(), "production".to_string()),
-                ])),
+                labels: Some(BTreeMap::from([(
+                    "env".to_string(),
+                    "production".to_string(),
+                )])),
                 ..Default::default()
             },
             data: Some(BTreeMap::from([

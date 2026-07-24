@@ -103,51 +103,143 @@ pub async fn handle_tool(
     name: &str,
     args: &serde_json::Value,
 ) -> Option<Result<String, String>> {
-    if let result @ Some(_) = admission::handle_tool(client, name, args).await { return result; }
-    if let result @ Some(_) = admission_alpha::handle_tool(client, name, args).await { return result; }
-    if let result @ Some(_) = auth::handle_tool(client, name, args).await { return result; }
-    if let result @ Some(_) = cluster_trust_bundle::handle_tool(client, name, args).await { return result; }
-    if let result @ Some(_) = clusterrole::handle_tool(client, name, args).await { return result; }
-    if let result @ Some(_) = clusterrolebinding::handle_tool(client, name, args).await { return result; }
-    if let result @ Some(_) = configmap::handle_tool(client, name, args).await { return result; }
-    if let result @ Some(_) = cronjob::handle_tool(client, name, args).await { return result; }
-    if let result @ Some(_) = csr::handle_tool(client, name, args).await { return result; }
-    if let result @ Some(_) = daemonset::handle_tool(client, name, args).await { return result; }
-    if let result @ Some(_) = deployment::handle_tool(client, name, args).await { return result; }
-    if let result @ Some(_) = device_resources::handle_tool(client, name, args).await { return result; }
-    if let result @ Some(_) = endpoints::handle_tool(client, name, args).await { return result; }
-    if let result @ Some(_) = endpointslice::handle_tool(client, name, args).await { return result; }
-    if let result @ Some(_) = flowcontrol::handle_tool(client, name, args).await { return result; }
-    if let result @ Some(_) = generic::handle_tool(client, name, args).await { return result; }
-    if let result @ Some(_) = hpa::handle_tool(client, name, args).await { return result; }
-    if let result @ Some(_) = ingress::handle_tool(client, name, args).await { return result; }
-    if let result @ Some(_) = ingressclass::handle_tool(client, name, args).await { return result; }
-    if let result @ Some(_) = ip_networking::handle_tool(client, name, args).await { return result; }
-    if let result @ Some(_) = job::handle_tool(client, name, args).await { return result; }
-    if let result @ Some(_) = lease::handle_tool(client, name, args).await { return result; }
-    if let result @ Some(_) = lease_candidate::handle_tool(client, name, args).await { return result; }
-    if let result @ Some(_) = limitrange::handle_tool(client, name, args).await { return result; }
-    if let result @ Some(_) = namespace::handle_tool(client, name, args).await { return result; }
-    if let result @ Some(_) = networkpolicy::handle_tool(client, name, args).await { return result; }
-    if let result @ Some(_) = node::handle_tool(client, name, args).await { return result; }
-    if let result @ Some(_) = pdb::handle_tool(client, name, args).await { return result; }
-    if let result @ Some(_) = pod::handle_tool(client, name, args).await { return result; }
-    if let result @ Some(_) = priorityclass::handle_tool(client, name, args).await { return result; }
-    if let result @ Some(_) = pv::handle_tool(client, name, args).await { return result; }
-    if let result @ Some(_) = pvc::handle_tool(client, name, args).await { return result; }
-    if let result @ Some(_) = replicaset::handle_tool(client, name, args).await { return result; }
-    if let result @ Some(_) = resourcequota::handle_tool(client, name, args).await { return result; }
-    if let result @ Some(_) = role::handle_tool(client, name, args).await { return result; }
-    if let result @ Some(_) = rolebinding::handle_tool(client, name, args).await { return result; }
-    if let result @ Some(_) = runtimeclass::handle_tool(client, name, args).await { return result; }
-    if let result @ Some(_) = secret::handle_tool(client, name, args).await { return result; }
-    if let result @ Some(_) = service::handle_tool(client, name, args).await { return result; }
-    if let result @ Some(_) = serviceaccount::handle_tool(client, name, args).await { return result; }
-    if let result @ Some(_) = statefulset::handle_tool(client, name, args).await { return result; }
-    if let result @ Some(_) = storage_internals::handle_tool(client, name, args).await { return result; }
-    if let result @ Some(_) = storage_migration::handle_tool(client, name, args).await { return result; }
-    if let result @ Some(_) = storage_version::handle_tool(client, name, args).await { return result; }
-    if let result @ Some(_) = storageclass::handle_tool(client, name, args).await { return result; }
-    if let result @ Some(_) = volume_attributes::handle_tool(client, name, args).await { return result; }
+    if let result @ Some(_) = admission::handle_tool(client, name, args).await {
+        return result;
+    }
+    if let result @ Some(_) = admission_alpha::handle_tool(client, name, args).await {
+        return result;
+    }
+    if let result @ Some(_) = auth::handle_tool(client, name, args).await {
+        return result;
+    }
+    if let result @ Some(_) = cluster_trust_bundle::handle_tool(client, name, args).await {
+        return result;
+    }
+    if let result @ Some(_) = clusterrole::handle_tool(client, name, args).await {
+        return result;
+    }
+    if let result @ Some(_) = clusterrolebinding::handle_tool(client, name, args).await {
+        return result;
+    }
+    if let result @ Some(_) = configmap::handle_tool(client, name, args).await {
+        return result;
+    }
+    if let result @ Some(_) = cronjob::handle_tool(client, name, args).await {
+        return result;
+    }
+    if let result @ Some(_) = csr::handle_tool(client, name, args).await {
+        return result;
+    }
+    if let result @ Some(_) = daemonset::handle_tool(client, name, args).await {
+        return result;
+    }
+    if let result @ Some(_) = deployment::handle_tool(client, name, args).await {
+        return result;
+    }
+    if let result @ Some(_) = device_resources::handle_tool(client, name, args).await {
+        return result;
+    }
+    if let result @ Some(_) = endpoints::handle_tool(client, name, args).await {
+        return result;
+    }
+    if let result @ Some(_) = endpointslice::handle_tool(client, name, args).await {
+        return result;
+    }
+    if let result @ Some(_) = flowcontrol::handle_tool(client, name, args).await {
+        return result;
+    }
+    if let result @ Some(_) = generic::handle_tool(client, name, args).await {
+        return result;
+    }
+    if let result @ Some(_) = hpa::handle_tool(client, name, args).await {
+        return result;
+    }
+    if let result @ Some(_) = ingress::handle_tool(client, name, args).await {
+        return result;
+    }
+    if let result @ Some(_) = ingressclass::handle_tool(client, name, args).await {
+        return result;
+    }
+    if let result @ Some(_) = ip_networking::handle_tool(client, name, args).await {
+        return result;
+    }
+    if let result @ Some(_) = job::handle_tool(client, name, args).await {
+        return result;
+    }
+    if let result @ Some(_) = lease::handle_tool(client, name, args).await {
+        return result;
+    }
+    if let result @ Some(_) = lease_candidate::handle_tool(client, name, args).await {
+        return result;
+    }
+    if let result @ Some(_) = limitrange::handle_tool(client, name, args).await {
+        return result;
+    }
+    if let result @ Some(_) = namespace::handle_tool(client, name, args).await {
+        return result;
+    }
+    if let result @ Some(_) = networkpolicy::handle_tool(client, name, args).await {
+        return result;
+    }
+    if let result @ Some(_) = node::handle_tool(client, name, args).await {
+        return result;
+    }
+    if let result @ Some(_) = pdb::handle_tool(client, name, args).await {
+        return result;
+    }
+    if let result @ Some(_) = pod::handle_tool(client, name, args).await {
+        return result;
+    }
+    if let result @ Some(_) = priorityclass::handle_tool(client, name, args).await {
+        return result;
+    }
+    if let result @ Some(_) = pv::handle_tool(client, name, args).await {
+        return result;
+    }
+    if let result @ Some(_) = pvc::handle_tool(client, name, args).await {
+        return result;
+    }
+    if let result @ Some(_) = replicaset::handle_tool(client, name, args).await {
+        return result;
+    }
+    if let result @ Some(_) = resourcequota::handle_tool(client, name, args).await {
+        return result;
+    }
+    if let result @ Some(_) = role::handle_tool(client, name, args).await {
+        return result;
+    }
+    if let result @ Some(_) = rolebinding::handle_tool(client, name, args).await {
+        return result;
+    }
+    if let result @ Some(_) = runtimeclass::handle_tool(client, name, args).await {
+        return result;
+    }
+    if let result @ Some(_) = secret::handle_tool(client, name, args).await {
+        return result;
+    }
+    if let result @ Some(_) = service::handle_tool(client, name, args).await {
+        return result;
+    }
+    if let result @ Some(_) = serviceaccount::handle_tool(client, name, args).await {
+        return result;
+    }
+    if let result @ Some(_) = statefulset::handle_tool(client, name, args).await {
+        return result;
+    }
+    if let result @ Some(_) = storage_internals::handle_tool(client, name, args).await {
+        return result;
+    }
+    if let result @ Some(_) = storage_migration::handle_tool(client, name, args).await {
+        return result;
+    }
+    if let result @ Some(_) = storage_version::handle_tool(client, name, args).await {
+        return result;
+    }
+    if let result @ Some(_) = storageclass::handle_tool(client, name, args).await {
+        return result;
+    }
+    if let result @ Some(_) = volume_attributes::handle_tool(client, name, args).await {
+        return result;
+    }
     None
 }

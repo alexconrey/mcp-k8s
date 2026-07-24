@@ -76,16 +76,12 @@ async fn list_runtimeclasses(client: &K8sClient) -> Result<String, String> {
         .await
         .map_err(|e| e.to_string())?;
 
-    let summaries: Vec<RuntimeClassSummary> =
-        list.iter().map(|rc| extract_summary(rc)).collect();
+    let summaries: Vec<RuntimeClassSummary> = list.iter().map(|rc| extract_summary(rc)).collect();
 
     serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
 }
 
-async fn get_runtimeclass(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn get_runtimeclass(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let name = args["name"].as_str().ok_or("name is required")?;
 
     let rc_api = api(client);
@@ -113,11 +109,7 @@ async fn get_runtimeclass(
         let pod_fixed: BTreeMap<String, String> = o
             .pod_fixed
             .as_ref()
-            .map(|pf| {
-                pf.iter()
-                    .map(|(k, v)| (k.clone(), v.0.clone()))
-                    .collect()
-            })
+            .map(|pf| pf.iter().map(|(k, v)| (k.clone(), v.0.clone())).collect())
             .unwrap_or_default();
         serde_json::json!({ "pod_fixed": pod_fixed })
     });
@@ -149,10 +141,7 @@ mod tests {
         let defs = tool_definitions();
         assert_eq!(defs.len(), 2);
 
-        let names: Vec<&str> = defs
-            .iter()
-            .map(|d| d["name"].as_str().unwrap())
-            .collect();
+        let names: Vec<&str> = defs.iter().map(|d| d["name"].as_str().unwrap()).collect();
 
         let mut unique = names.clone();
         unique.sort();

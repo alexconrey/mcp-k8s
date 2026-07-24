@@ -33,25 +33,15 @@ pub struct LimitItemSummary {
     pub default_request: BTreeMap<String, String>,
 }
 
-fn quantity_map_to_strings(
-    m: &Option<BTreeMap<String, Quantity>>,
-) -> BTreeMap<String, String> {
+fn quantity_map_to_strings(m: &Option<BTreeMap<String, Quantity>>) -> BTreeMap<String, String> {
     m.as_ref()
-        .map(|map| {
-            map.iter()
-                .map(|(k, v)| (k.clone(), v.0.clone()))
-                .collect()
-        })
+        .map(|map| map.iter().map(|(k, v)| (k.clone(), v.0.clone())).collect())
         .unwrap_or_default()
 }
 
 fn extract_summary(lr: &LimitRange) -> LimitRangeSummary {
     let meta = &lr.metadata;
-    let limits_count = lr
-        .spec
-        .as_ref()
-        .map(|s| s.limits.len())
-        .unwrap_or(0);
+    let limits_count = lr.spec.as_ref().map(|s| s.limits.len()).unwrap_or(0);
 
     LimitRangeSummary {
         name: meta.name.clone().unwrap_or_default(),
@@ -175,10 +165,7 @@ pub async fn handle_tool(
     Some(result)
 }
 
-async fn list_limitranges(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn list_limitranges(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let lr_api = api(client, ns)?;
     let label_selector = args["label_selector"].as_str();
@@ -186,10 +173,7 @@ async fn list_limitranges(
     if let Some(sel) = label_selector {
         lp = lp.labels(sel);
     }
-    let list = lr_api
-        .list(&lp)
-        .await
-        .map_err(|e| e.to_string())?;
+    let list = lr_api.list(&lp).await.map_err(|e| e.to_string())?;
 
     let summaries: Vec<serde_json::Value> = list
         .iter()
@@ -207,10 +191,7 @@ async fn list_limitranges(
     serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
 }
 
-async fn get_limitrange(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn get_limitrange(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
     let lr_api = api(client, ns)?;
@@ -234,9 +215,7 @@ async fn get_limitrange(
     serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
 }
 
-fn parse_quantity_map(
-    val: Option<&serde_json::Value>,
-) -> Option<BTreeMap<String, Quantity>> {
+fn parse_quantity_map(val: Option<&serde_json::Value>) -> Option<BTreeMap<String, Quantity>> {
     val.and_then(|v| {
         if v.is_null() {
             return None;
@@ -245,26 +224,15 @@ fn parse_quantity_map(
         if map.is_empty() {
             return None;
         }
-        Some(
-            map.into_iter()
-                .map(|(k, v)| (k, Quantity(v)))
-                .collect(),
-        )
+        Some(map.into_iter().map(|(k, v)| (k, Quantity(v))).collect())
     })
 }
 
-async fn create_limitrange(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn create_limitrange(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
-    let limits_val = args
-        .get("limits")
-        .ok_or("limits is required")?;
-    let limits_arr = limits_val
-        .as_array()
-        .ok_or("limits must be an array")?;
+    let limits_val = args.get("limits").ok_or("limits is required")?;
+    let limits_arr = limits_val.as_array().ok_or("limits must be an array")?;
 
     let mut items = Vec::new();
     for item in limits_arr {
@@ -309,10 +277,7 @@ async fn create_limitrange(
     serde_json::to_string_pretty(&summary).map_err(|e| e.to_string())
 }
 
-async fn delete_limitrange(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn delete_limitrange(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
 
@@ -338,10 +303,7 @@ mod tests {
         let defs = tool_definitions();
         assert_eq!(defs.len(), 4);
 
-        let names: Vec<&str> = defs
-            .iter()
-            .map(|d| d["name"].as_str().unwrap())
-            .collect();
+        let names: Vec<&str> = defs.iter().map(|d| d["name"].as_str().unwrap()).collect();
 
         let mut unique = names.clone();
         unique.sort();
@@ -458,34 +420,40 @@ mod tests {
             metadata: ObjectMeta {
                 name: Some("test-lr".to_string()),
                 namespace: Some("prod".to_string()),
-                labels: Some(BTreeMap::from([
-                    ("env".to_string(), "production".to_string()),
-                ])),
+                labels: Some(BTreeMap::from([(
+                    "env".to_string(),
+                    "production".to_string(),
+                )])),
                 ..Default::default()
             },
             spec: Some(LimitRangeSpec {
                 limits: vec![
                     LimitRangeItem {
                         type_: "Container".to_string(),
-                        max: Some(BTreeMap::from([
-                            ("cpu".to_string(), Quantity("2".to_string())),
-                        ])),
-                        min: Some(BTreeMap::from([
-                            ("cpu".to_string(), Quantity("100m".to_string())),
-                        ])),
-                        default: Some(BTreeMap::from([
-                            ("cpu".to_string(), Quantity("500m".to_string())),
-                        ])),
-                        default_request: Some(BTreeMap::from([
-                            ("cpu".to_string(), Quantity("200m".to_string())),
-                        ])),
+                        max: Some(BTreeMap::from([(
+                            "cpu".to_string(),
+                            Quantity("2".to_string()),
+                        )])),
+                        min: Some(BTreeMap::from([(
+                            "cpu".to_string(),
+                            Quantity("100m".to_string()),
+                        )])),
+                        default: Some(BTreeMap::from([(
+                            "cpu".to_string(),
+                            Quantity("500m".to_string()),
+                        )])),
+                        default_request: Some(BTreeMap::from([(
+                            "cpu".to_string(),
+                            Quantity("200m".to_string()),
+                        )])),
                         ..Default::default()
                     },
                     LimitRangeItem {
                         type_: "Pod".to_string(),
-                        max: Some(BTreeMap::from([
-                            ("memory".to_string(), Quantity("4Gi".to_string())),
-                        ])),
+                        max: Some(BTreeMap::from([(
+                            "memory".to_string(),
+                            Quantity("4Gi".to_string()),
+                        )])),
                         ..Default::default()
                     },
                 ],
@@ -525,15 +493,18 @@ mod tests {
                 ("cpu".to_string(), Quantity("4".to_string())),
                 ("memory".to_string(), Quantity("2Gi".to_string())),
             ])),
-            min: Some(BTreeMap::from([
-                ("cpu".to_string(), Quantity("50m".to_string())),
-            ])),
-            default: Some(BTreeMap::from([
-                ("cpu".to_string(), Quantity("1".to_string())),
-            ])),
-            default_request: Some(BTreeMap::from([
-                ("memory".to_string(), Quantity("256Mi".to_string())),
-            ])),
+            min: Some(BTreeMap::from([(
+                "cpu".to_string(),
+                Quantity("50m".to_string()),
+            )])),
+            default: Some(BTreeMap::from([(
+                "cpu".to_string(),
+                Quantity("1".to_string()),
+            )])),
+            default_request: Some(BTreeMap::from([(
+                "memory".to_string(),
+                Quantity("256Mi".to_string()),
+            )])),
             ..Default::default()
         };
 

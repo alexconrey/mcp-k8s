@@ -34,9 +34,7 @@ pub struct ServiceSummary {
     pub labels: BTreeMap<String, String>,
 }
 
-fn extract_port_summary(
-    port: &k8s_openapi::api::core::v1::ServicePort,
-) -> ServicePortSummary {
+fn extract_port_summary(port: &k8s_openapi::api::core::v1::ServicePort) -> ServicePortSummary {
     let target_port = port.target_port.as_ref().map(|tp| match tp {
         IntOrString::Int(i) => i.to_string(),
         IntOrString::String(s) => s.clone(),
@@ -206,10 +204,7 @@ pub async fn handle_tool(
     Some(result)
 }
 
-async fn list_services(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn list_services(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let svc_api = api(client, ns)?;
     let label_selector = args["label_selector"].as_str();
@@ -221,10 +216,7 @@ async fn list_services(
     if let Some(sel) = field_selector {
         lp = lp.fields(sel);
     }
-    let list = svc_api
-        .list(&lp)
-        .await
-        .map_err(|e| e.to_string())?;
+    let list = svc_api.list(&lp).await.map_err(|e| e.to_string())?;
 
     let summaries: Vec<serde_json::Value> = list
         .iter()
@@ -237,10 +229,7 @@ async fn list_services(
     serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
 }
 
-async fn get_service(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn get_service(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
 
@@ -251,9 +240,7 @@ async fn get_service(
     let spec = svc.spec.as_ref();
     let meta = &svc.metadata;
 
-    let selector = spec
-        .and_then(|s| s.selector.clone())
-        .unwrap_or_default();
+    let selector = spec.and_then(|s| s.selector.clone()).unwrap_or_default();
 
     let session_affinity = spec
         .and_then(|s| s.session_affinity.clone())
@@ -276,10 +263,7 @@ async fn get_service(
     serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
 }
 
-async fn update_service(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn update_service(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
 
@@ -291,7 +275,10 @@ async fn update_service(
                 .iter()
                 .map(|p| {
                     let port = p["port"].as_i64().unwrap_or(80);
-                    let target_port = p.get("target_port").and_then(|v| v.as_i64()).unwrap_or(port);
+                    let target_port = p
+                        .get("target_port")
+                        .and_then(|v| v.as_i64())
+                        .unwrap_or(port);
                     let protocol = p["protocol"].as_str().unwrap_or("TCP");
                     serde_json::json!({
                         "port": port,
@@ -300,10 +287,7 @@ async fn update_service(
                     })
                 })
                 .collect();
-            spec_patch.insert(
-                "ports".to_string(),
-                serde_json::Value::Array(ports),
-            );
+            spec_patch.insert("ports".to_string(), serde_json::Value::Array(ports));
         }
     }
 
@@ -328,11 +312,7 @@ async fn update_service(
 
     let svc_api = api(client, ns)?;
     let patched = svc_api
-        .patch(
-            name,
-            &PatchParams::apply("mcp-k8s"),
-            &Patch::Merge(&patch),
-        )
+        .patch(name, &PatchParams::apply("mcp-k8s"), &Patch::Merge(&patch))
         .await
         .map_err(|e| e.to_string())?;
 
@@ -340,10 +320,7 @@ async fn update_service(
     serde_json::to_string_pretty(&summary).map_err(|e| e.to_string())
 }
 
-async fn delete_service(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn delete_service(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
 
@@ -364,9 +341,9 @@ async fn delete_service(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use k8s_openapi::api::core::v1::{ServicePort, ServiceSpec, ServiceStatus};
-    use k8s_openapi::api::core::v1::LoadBalancerStatus;
     use k8s_openapi::api::core::v1::LoadBalancerIngress;
+    use k8s_openapi::api::core::v1::LoadBalancerStatus;
+    use k8s_openapi::api::core::v1::{ServicePort, ServiceSpec, ServiceStatus};
     use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 
     #[test]
@@ -374,10 +351,7 @@ mod tests {
         let defs = tool_definitions();
         assert_eq!(defs.len(), 4);
 
-        let names: Vec<&str> = defs
-            .iter()
-            .map(|d| d["name"].as_str().unwrap())
-            .collect();
+        let names: Vec<&str> = defs.iter().map(|d| d["name"].as_str().unwrap()).collect();
 
         let mut unique = names.clone();
         unique.sort();

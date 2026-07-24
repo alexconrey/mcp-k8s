@@ -77,16 +77,8 @@ fn job_status(job: &Job) -> String {
 }
 
 fn job_completions_string(job: &Job) -> String {
-    let total = job
-        .spec
-        .as_ref()
-        .and_then(|s| s.completions)
-        .unwrap_or(1);
-    let succeeded = job
-        .status
-        .as_ref()
-        .and_then(|s| s.succeeded)
-        .unwrap_or(0);
+    let total = job.spec.as_ref().and_then(|s| s.completions).unwrap_or(1);
+    let succeeded = job.status.as_ref().and_then(|s| s.succeeded).unwrap_or(0);
     format!("{}/{}", succeeded, total)
 }
 
@@ -104,7 +96,12 @@ fn job_duration(job: &Job) -> Option<String> {
     } else if secs < 3600 {
         Some(format!("{}m{}s", secs / 60, secs % 60))
     } else {
-        Some(format!("{}h{}m{}s", secs / 3600, (secs % 3600) / 60, secs % 60))
+        Some(format!(
+            "{}h{}m{}s",
+            secs / 3600,
+            (secs % 3600) / 60,
+            secs % 60
+        ))
     }
 }
 
@@ -165,10 +162,7 @@ fn extract_detail(job: &Job) -> JobDetail {
                     status: c.status.clone(),
                     reason: c.reason.clone(),
                     message: c.message.clone(),
-                    last_transition: c
-                        .last_transition_time
-                        .as_ref()
-                        .map(|t| t.0.to_string()),
+                    last_transition: c.last_transition_time.as_ref().map(|t| t.0.to_string()),
                 })
                 .collect()
         })
@@ -289,10 +283,7 @@ pub async fn handle_tool(
     Some(result)
 }
 
-async fn list_jobs(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn list_jobs(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let job_api = api(client, ns)?;
     let label_selector = args["label_selector"].as_str();
@@ -304,20 +295,14 @@ async fn list_jobs(
     if let Some(sel) = field_selector {
         lp = lp.fields(sel);
     }
-    let list = job_api
-        .list(&lp)
-        .await
-        .map_err(|e| e.to_string())?;
+    let list = job_api.list(&lp).await.map_err(|e| e.to_string())?;
 
     let summaries: Vec<JobSummary> = list.iter().map(extract_summary).collect();
 
     serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
 }
 
-async fn get_job(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn get_job(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
     let job_api = api(client, ns)?;
@@ -327,10 +312,7 @@ async fn get_job(
     serde_json::to_string_pretty(&detail).map_err(|e| e.to_string())
 }
 
-async fn create_job(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn create_job(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
     let image = args["image"].as_str().ok_or("image is required")?;
@@ -390,10 +372,7 @@ async fn create_job(
     serde_json::to_string_pretty(&summary).map_err(|e| e.to_string())
 }
 
-async fn delete_job(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn delete_job(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
 
@@ -402,10 +381,7 @@ async fn delete_job(
         propagation_policy: Some(PropagationPolicy::Foreground),
         ..Default::default()
     };
-    job_api
-        .delete(name, &dp)
-        .await
-        .map_err(|e| e.to_string())?;
+    job_api.delete(name, &dp).await.map_err(|e| e.to_string())?;
 
     let result = serde_json::json!({
         "deleted": name,
@@ -417,8 +393,8 @@ async fn delete_job(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use k8s_openapi::api::batch::v1::JobStatus;
     use k8s_openapi::api::batch::v1::JobCondition;
+    use k8s_openapi::api::batch::v1::JobStatus;
     use k8s_openapi::apimachinery::pkg::apis::meta::v1::Time;
     use k8s_openapi::jiff;
 
@@ -427,10 +403,7 @@ mod tests {
         let defs = tool_definitions();
         assert_eq!(defs.len(), 4);
 
-        let names: Vec<&str> = defs
-            .iter()
-            .map(|d| d["name"].as_str().unwrap())
-            .collect();
+        let names: Vec<&str> = defs.iter().map(|d| d["name"].as_str().unwrap()).collect();
 
         let mut unique = names.clone();
         unique.sort();
@@ -514,9 +487,7 @@ mod tests {
             metadata: ObjectMeta {
                 name: Some("build-123".to_string()),
                 namespace: Some("ci".to_string()),
-                labels: Some(BTreeMap::from([
-                    ("app".to_string(), "builder".to_string()),
-                ])),
+                labels: Some(BTreeMap::from([("app".to_string(), "builder".to_string())])),
                 ..Default::default()
             },
             spec: Some(JobSpec {
@@ -538,9 +509,7 @@ mod tests {
             status: Some(JobStatus {
                 succeeded: Some(1),
                 start_time: Some(Time(jiff::Timestamp::from_second(1704067200).unwrap())),
-                completion_time: Some(Time(
-                    jiff::Timestamp::from_second(1704067530).unwrap(),
-                )),
+                completion_time: Some(Time(jiff::Timestamp::from_second(1704067530).unwrap())),
                 conditions: Some(vec![JobCondition {
                     type_: "Complete".to_string(),
                     status: "True".to_string(),
@@ -633,12 +602,11 @@ mod tests {
             metadata: ObjectMeta {
                 name: Some("detail-job".to_string()),
                 namespace: Some("prod".to_string()),
-                labels: Some(BTreeMap::from([
-                    ("app".to_string(), "worker".to_string()),
-                ])),
-                annotations: Some(BTreeMap::from([
-                    ("note".to_string(), "important".to_string()),
-                ])),
+                labels: Some(BTreeMap::from([("app".to_string(), "worker".to_string())])),
+                annotations: Some(BTreeMap::from([(
+                    "note".to_string(),
+                    "important".to_string(),
+                )])),
                 ..Default::default()
             },
             spec: Some(JobSpec {
@@ -650,7 +618,11 @@ mod tests {
                         containers: vec![Container {
                             name: "worker".to_string(),
                             image: Some("myapp:v1".to_string()),
-                            command: Some(vec!["/bin/sh".to_string(), "-c".to_string(), "echo hi".to_string()]),
+                            command: Some(vec![
+                                "/bin/sh".to_string(),
+                                "-c".to_string(),
+                                "echo hi".to_string(),
+                            ]),
                             ..Default::default()
                         }],
                         ..Default::default()

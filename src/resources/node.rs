@@ -199,10 +199,7 @@ async fn list_nodes(client: &K8sClient, args: &serde_json::Value) -> Result<Stri
     if let Some(sel) = args["field_selector"].as_str() {
         lp = lp.fields(sel);
     }
-    let list = node_api
-        .list(&lp)
-        .await
-        .map_err(|e| e.to_string())?;
+    let list = node_api.list(&lp).await.map_err(|e| e.to_string())?;
 
     let summaries: Vec<serde_json::Value> = list
         .iter()
@@ -293,11 +290,7 @@ async fn cordon_node(client: &K8sClient, args: &serde_json::Value) -> Result<Str
         }
     });
     let patched = node_api
-        .patch(
-            name,
-            &PatchParams::apply("mcp-k8s"),
-            &Patch::Merge(&patch),
-        )
+        .patch(name, &PatchParams::apply("mcp-k8s"), &Patch::Merge(&patch))
         .await
         .map_err(|e| e.to_string())?;
 
@@ -325,11 +318,7 @@ async fn uncordon_node(client: &K8sClient, args: &serde_json::Value) -> Result<S
         }
     });
     let patched = node_api
-        .patch(
-            name,
-            &PatchParams::apply("mcp-k8s"),
-            &Patch::Merge(&patch),
-        )
+        .patch(name, &PatchParams::apply("mcp-k8s"), &Patch::Merge(&patch))
         .await
         .map_err(|e| e.to_string())?;
 
@@ -394,8 +383,7 @@ async fn drain_node(client: &K8sClient, args: &serde_json::Value) -> Result<Stri
         let pod_name = pod.metadata.name.as_deref().unwrap_or("");
         let pod_ns = pod.metadata.namespace.as_deref().unwrap_or("default");
 
-        let ns_pod_api: kube::Api<Pod> =
-            kube::Api::namespaced(client.inner().clone(), pod_ns);
+        let ns_pod_api: kube::Api<Pod> = kube::Api::namespaced(client.inner().clone(), pod_ns);
         ns_pod_api
             .delete(pod_name, &dp)
             .await
@@ -542,10 +530,7 @@ mod tests {
         labels.insert("kubernetes.io/os".to_string(), "linux".to_string());
 
         let mut annotations = BTreeMap::new();
-        annotations.insert(
-            "node.alpha.kubernetes.io/ttl".to_string(),
-            "0".to_string(),
-        );
+        annotations.insert("node.alpha.kubernetes.io/ttl".to_string(), "0".to_string());
 
         let mut capacity = BTreeMap::new();
         capacity.insert("cpu".to_string(), Quantity("4".to_string()));

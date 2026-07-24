@@ -178,10 +178,7 @@ async fn list_networkpolicies(
     if let Some(sel) = label_selector {
         lp = lp.labels(sel);
     }
-    let list = np_api
-        .list(&lp)
-        .await
-        .map_err(|e| e.to_string())?;
+    let list = np_api.list(&lp).await.map_err(|e| e.to_string())?;
 
     let summaries: Vec<serde_json::Value> = list
         .iter()
@@ -194,10 +191,7 @@ async fn list_networkpolicies(
     serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
 }
 
-async fn get_networkpolicy(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn get_networkpolicy(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
 
@@ -335,11 +329,7 @@ async fn update_networkpolicy(
 
     let np_api = api(client, ns)?;
     let patched = np_api
-        .patch(
-            name,
-            &PatchParams::apply("mcp-k8s"),
-            &Patch::Merge(&patch),
-        )
+        .patch(name, &PatchParams::apply("mcp-k8s"), &Patch::Merge(&patch))
         .await
         .map_err(|e| e.to_string())?;
 
@@ -377,10 +367,7 @@ mod tests {
         let defs = tool_definitions();
         assert_eq!(defs.len(), 5);
 
-        let names: Vec<&str> = defs
-            .iter()
-            .map(|d| d["name"].as_str().unwrap())
-            .collect();
+        let names: Vec<&str> = defs.iter().map(|d| d["name"].as_str().unwrap()).collect();
 
         let mut unique = names.clone();
         unique.sort();
@@ -477,38 +464,31 @@ mod tests {
                     )])),
                     ..Default::default()
                 }),
-                policy_types: Some(vec![
-                    "Ingress".to_string(),
-                    "Egress".to_string(),
-                ]),
+                policy_types: Some(vec!["Ingress".to_string(), "Egress".to_string()]),
                 ingress: Some(vec![NetworkPolicyIngressRule {
-                    from: Some(vec![
-                        k8s_openapi::api::networking::v1::NetworkPolicyPeer {
-                            pod_selector: Some(LabelSelector {
-                                match_labels: Some(BTreeMap::from([(
-                                    "app".to_string(),
-                                    "frontend".to_string(),
-                                )])),
-                                ..Default::default()
-                            }),
+                    from: Some(vec![k8s_openapi::api::networking::v1::NetworkPolicyPeer {
+                        pod_selector: Some(LabelSelector {
+                            match_labels: Some(BTreeMap::from([(
+                                "app".to_string(),
+                                "frontend".to_string(),
+                            )])),
                             ..Default::default()
-                        },
-                    ]),
+                        }),
+                        ..Default::default()
+                    }]),
                     ..Default::default()
                 }]),
                 egress: Some(vec![NetworkPolicyEgressRule {
-                    to: Some(vec![
-                        k8s_openapi::api::networking::v1::NetworkPolicyPeer {
-                            pod_selector: Some(LabelSelector {
-                                match_labels: Some(BTreeMap::from([(
-                                    "app".to_string(),
-                                    "database".to_string(),
-                                )])),
-                                ..Default::default()
-                            }),
+                    to: Some(vec![k8s_openapi::api::networking::v1::NetworkPolicyPeer {
+                        pod_selector: Some(LabelSelector {
+                            match_labels: Some(BTreeMap::from([(
+                                "app".to_string(),
+                                "database".to_string(),
+                            )])),
                             ..Default::default()
-                        },
-                    ]),
+                        }),
+                        ..Default::default()
+                    }]),
                     ..Default::default()
                 }]),
             }),
@@ -559,10 +539,7 @@ mod tests {
             },
             spec: Some(NetworkPolicySpec {
                 pod_selector: Some(LabelSelector {
-                    match_labels: Some(BTreeMap::from([(
-                        "role".to_string(),
-                        "api".to_string(),
-                    )])),
+                    match_labels: Some(BTreeMap::from([("role".to_string(), "api".to_string())])),
                     ..Default::default()
                 }),
                 policy_types: Some(vec!["Ingress".to_string()]),

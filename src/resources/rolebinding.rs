@@ -8,10 +8,7 @@ use serde::Serialize;
 
 use crate::client::K8sClient;
 
-fn api(
-    client: &K8sClient,
-    ns: &str,
-) -> Result<kube::Api<RoleBinding>, String> {
+fn api(client: &K8sClient, ns: &str) -> Result<kube::Api<RoleBinding>, String> {
     if !client.is_namespace_allowed(ns) {
         return Err(format!("Namespace '{ns}' is not in the allowed list"));
     }
@@ -162,10 +159,7 @@ pub async fn handle_tool(
     Some(result)
 }
 
-async fn list_rolebindings(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn list_rolebindings(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let rb_api = api(client, ns)?;
     let label_selector = args["label_selector"].as_str();
@@ -173,10 +167,7 @@ async fn list_rolebindings(
     if let Some(sel) = label_selector {
         lp = lp.labels(sel);
     }
-    let list = rb_api
-        .list(&lp)
-        .await
-        .map_err(|e| e.to_string())?;
+    let list = rb_api.list(&lp).await.map_err(|e| e.to_string())?;
 
     let summaries: Vec<serde_json::Value> = list
         .iter()
@@ -196,10 +187,7 @@ async fn list_rolebindings(
     serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
 }
 
-async fn get_rolebinding(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn get_rolebinding(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
     let rb_api = api(client, ns)?;
@@ -331,10 +319,7 @@ mod tests {
         let defs = tool_definitions();
         assert_eq!(defs.len(), 4);
 
-        let names: Vec<&str> = defs
-            .iter()
-            .map(|d| d["name"].as_str().unwrap())
-            .collect();
+        let names: Vec<&str> = defs.iter().map(|d| d["name"].as_str().unwrap()).collect();
 
         let mut unique = names.clone();
         unique.sort();
@@ -433,10 +418,7 @@ mod tests {
             metadata: ObjectMeta {
                 name: Some("test-rb".to_string()),
                 namespace: Some("prod".to_string()),
-                labels: Some(BTreeMap::from([(
-                    "app".to_string(),
-                    "myapp".to_string(),
-                )])),
+                labels: Some(BTreeMap::from([("app".to_string(), "myapp".to_string())])),
                 ..Default::default()
             },
             role_ref: RoleRef {

@@ -56,10 +56,7 @@ pub async fn handle_tool(
     Some(result)
 }
 
-async fn get_ingress(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn get_ingress(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
 
@@ -70,10 +67,7 @@ async fn get_ingress(
     serde_json::to_string_pretty(&detail).map_err(|e| e.to_string())
 }
 
-async fn delete_ingress(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn delete_ingress(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
 
@@ -94,22 +88,19 @@ async fn delete_ingress(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::BTreeMap;
     use k8s_openapi::api::networking::v1::{
-        HTTPIngressPath, HTTPIngressRuleValue, IngressBackend, IngressRule,
-        IngressServiceBackend, IngressSpec, IngressTLS, ServiceBackendPort,
+        HTTPIngressPath, HTTPIngressRuleValue, IngressBackend, IngressRule, IngressServiceBackend,
+        IngressSpec, IngressTLS, ServiceBackendPort,
     };
     use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
+    use std::collections::BTreeMap;
 
     #[test]
     fn tool_definitions_returns_two_unique_tools() {
         let defs = tool_definitions();
         assert_eq!(defs.len(), 2);
 
-        let names: Vec<&str> = defs
-            .iter()
-            .map(|d| d["name"].as_str().unwrap())
-            .collect();
+        let names: Vec<&str> = defs.iter().map(|d| d["name"].as_str().unwrap()).collect();
 
         let mut unique = names.clone();
         unique.sort();
@@ -192,7 +183,10 @@ mod tests {
         assert_eq!(detail.hosts, vec!["example.com".to_string()]);
         assert_eq!(detail.labels.get("app").unwrap(), "web");
         assert_eq!(
-            detail.annotations.get("nginx.ingress.kubernetes.io/rewrite-target").unwrap(),
+            detail
+                .annotations
+                .get("nginx.ingress.kubernetes.io/rewrite-target")
+                .unwrap(),
             "/"
         );
 

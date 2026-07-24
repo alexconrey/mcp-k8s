@@ -8,10 +8,7 @@ use crate::client::K8sClient;
 
 // --- Namespaced API helpers ---
 
-fn claim_api(
-    client: &K8sClient,
-    ns: &str,
-) -> Result<kube::Api<ResourceClaim>, String> {
+fn claim_api(client: &K8sClient, ns: &str) -> Result<kube::Api<ResourceClaim>, String> {
     if !client.is_namespace_allowed(ns) {
         return Err(format!("Namespace '{ns}' is not in the allowed list"));
     }
@@ -83,9 +80,7 @@ pub struct ResourceClaimTemplateSummary {
     pub created_at: Option<String>,
 }
 
-fn extract_claim_template_summary(
-    tpl: &ResourceClaimTemplate,
-) -> ResourceClaimTemplateSummary {
+fn extract_claim_template_summary(tpl: &ResourceClaimTemplate) -> ResourceClaimTemplateSummary {
     let meta = &tpl.metadata;
     ResourceClaimTemplateSummary {
         name: meta.name.clone().unwrap_or_default(),
@@ -236,16 +231,12 @@ async fn list_resourceclaims(
         .await
         .map_err(|e| e.to_string())?;
 
-    let summaries: Vec<ResourceClaimSummary> =
-        list.iter().map(extract_claim_summary).collect();
+    let summaries: Vec<ResourceClaimSummary> = list.iter().map(extract_claim_summary).collect();
 
     serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
 }
 
-async fn get_resourceclaim(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn get_resourceclaim(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
     let api = claim_api(client, ns)?;
@@ -299,8 +290,7 @@ async fn list_resourceslices(client: &K8sClient) -> Result<String, String> {
         .await
         .map_err(|e| e.to_string())?;
 
-    let summaries: Vec<ResourceSliceSummary> =
-        list.iter().map(extract_slice_summary).collect();
+    let summaries: Vec<ResourceSliceSummary> = list.iter().map(extract_slice_summary).collect();
 
     serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
 }
@@ -318,10 +308,7 @@ async fn list_deviceclasses(client: &K8sClient) -> Result<String, String> {
     serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
 }
 
-async fn get_deviceclass(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn get_deviceclass(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let name = args["name"].as_str().ok_or("name is required")?;
     let api = device_class_api(client);
     let dc = api.get(name).await.map_err(|e| e.to_string())?;
@@ -349,10 +336,7 @@ mod tests {
         let defs = tool_definitions();
         assert_eq!(defs.len(), 6);
 
-        let names: Vec<&str> = defs
-            .iter()
-            .map(|d| d["name"].as_str().unwrap())
-            .collect();
+        let names: Vec<&str> = defs.iter().map(|d| d["name"].as_str().unwrap()).collect();
 
         let mut unique = names.clone();
         unique.sort();
@@ -479,8 +463,7 @@ mod tests {
     #[test]
     fn extract_claim_summary_from_resource_claim() {
         use k8s_openapi::api::resource::v1beta1::{
-            DeviceClaim, DeviceRequest, ResourceClaimSpec, ResourceClaimStatus,
-            AllocationResult,
+            AllocationResult, DeviceClaim, DeviceRequest, ResourceClaimSpec, ResourceClaimStatus,
         };
         use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 
@@ -511,10 +494,7 @@ mod tests {
         let summary = extract_claim_summary(&claim);
         assert_eq!(summary.name, "test-claim");
         assert_eq!(summary.namespace, "prod");
-        assert_eq!(
-            summary.device_class_name.as_deref(),
-            Some("gpu.nvidia.com")
-        );
+        assert_eq!(summary.device_class_name.as_deref(), Some("gpu.nvidia.com"));
         assert!(summary.allocated);
     }
 
@@ -529,9 +509,7 @@ mod tests {
                 namespace: Some("default".to_string()),
                 ..Default::default()
             },
-            spec: ResourceClaimSpec {
-                devices: None,
-            },
+            spec: ResourceClaimSpec { devices: None },
             status: None,
         };
 
@@ -592,9 +570,7 @@ mod tests {
 
     #[test]
     fn extract_claim_template_summary_from_template() {
-        use k8s_openapi::api::resource::v1beta1::{
-            ResourceClaimSpec, ResourceClaimTemplateSpec,
-        };
+        use k8s_openapi::api::resource::v1beta1::{ResourceClaimSpec, ResourceClaimTemplateSpec};
         use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 
         let tpl = ResourceClaimTemplate {
@@ -605,9 +581,7 @@ mod tests {
             },
             spec: ResourceClaimTemplateSpec {
                 metadata: None,
-                spec: ResourceClaimSpec {
-                    devices: None,
-                },
+                spec: ResourceClaimSpec { devices: None },
             },
         };
 

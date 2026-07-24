@@ -6,10 +6,7 @@ use serde::Serialize;
 
 use crate::client::K8sClient;
 
-fn api(
-    client: &K8sClient,
-    ns: &str,
-) -> Result<kube::Api<ReplicaSet>, String> {
+fn api(client: &K8sClient, ns: &str) -> Result<kube::Api<ReplicaSet>, String> {
     if !client.is_namespace_allowed(ns) {
         return Err(format!("Namespace '{ns}' is not in the allowed list"));
     }
@@ -75,14 +72,11 @@ fn primary_image(rs: &ReplicaSet) -> String {
 }
 
 fn owner_deployment(rs: &ReplicaSet) -> Option<String> {
-    rs.metadata
-        .owner_references
-        .as_ref()
-        .and_then(|refs| {
-            refs.iter()
-                .find(|r| r.kind == "Deployment")
-                .map(|r| r.name.clone())
-        })
+    rs.metadata.owner_references.as_ref().and_then(|refs| {
+        refs.iter()
+            .find(|r| r.kind == "Deployment")
+            .map(|r| r.name.clone())
+    })
 }
 
 fn replica_counts(rs: &ReplicaSet) -> ReplicaSetReplicaCounts {
@@ -127,10 +121,7 @@ fn extract_detail(rs: &ReplicaSet) -> ReplicaSetDetail {
                     status: c.status.clone(),
                     reason: c.reason.clone(),
                     message: c.message.clone(),
-                    last_transition: c
-                        .last_transition_time
-                        .as_ref()
-                        .map(|t| t.0.to_string()),
+                    last_transition: c.last_transition_time.as_ref().map(|t| t.0.to_string()),
                 })
                 .collect()
         })
@@ -206,13 +197,8 @@ pub async fn handle_tool(
 // Tool implementations
 // ---------------------------------------------------------------------------
 
-async fn list_replicasets(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
-    let ns = args["namespace"]
-        .as_str()
-        .ok_or("namespace is required")?;
+async fn list_replicasets(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
+    let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let rs_api = api(client, ns)?;
 
     let mut lp = ListParams::default();
@@ -220,10 +206,7 @@ async fn list_replicasets(
         lp = lp.labels(sel);
     }
 
-    let list = rs_api
-        .list(&lp)
-        .await
-        .map_err(|e| e.to_string())?;
+    let list = rs_api.list(&lp).await.map_err(|e| e.to_string())?;
 
     let summaries: Vec<serde_json::Value> = list
         .iter()
@@ -233,23 +216,16 @@ async fn list_replicasets(
     serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
 }
 
-async fn get_replicaset(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
-    let ns = args["namespace"]
-        .as_str()
-        .ok_or("namespace is required")?;
+async fn get_replicaset(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
+    let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
 
     let rs_api = api(client, ns)?;
     let rs = rs_api.get(name).await.map_err(|e| e.to_string())?;
     let detail = extract_detail(&rs);
 
-    serde_json::to_string_pretty(
-        &serde_json::to_value(detail).unwrap_or_default(),
-    )
-    .map_err(|e| e.to_string())
+    serde_json::to_string_pretty(&serde_json::to_value(detail).unwrap_or_default())
+        .map_err(|e| e.to_string())
 }
 
 // ---------------------------------------------------------------------------
@@ -261,7 +237,9 @@ mod tests {
     use super::*;
     use k8s_openapi::api::apps::v1::{ReplicaSet, ReplicaSetSpec, ReplicaSetStatus};
     use k8s_openapi::api::core::v1::{Container, PodSpec, PodTemplateSpec};
-    use k8s_openapi::apimachinery::pkg::apis::meta::v1::{LabelSelector, ObjectMeta, OwnerReference};
+    use k8s_openapi::apimachinery::pkg::apis::meta::v1::{
+        LabelSelector, ObjectMeta, OwnerReference,
+    };
     use std::collections::BTreeMap;
 
     /// Build a minimal ReplicaSet for testing extraction.
@@ -327,10 +305,7 @@ mod tests {
         let defs = tool_definitions();
         assert_eq!(defs.len(), 2);
 
-        let names: Vec<&str> = defs
-            .iter()
-            .filter_map(|d| d["name"].as_str())
-            .collect();
+        let names: Vec<&str> = defs.iter().filter_map(|d| d["name"].as_str()).collect();
         assert_eq!(names.len(), 2);
 
         let mut unique = names.clone();
@@ -402,7 +377,9 @@ mod tests {
             detail.labels.get("app").map(|s| s.as_str()),
             Some("test-rs")
         );
-        assert!(detail.annotations.contains_key("deployment.kubernetes.io/revision"));
+        assert!(detail
+            .annotations
+            .contains_key("deployment.kubernetes.io/revision"));
     }
 
     #[test]

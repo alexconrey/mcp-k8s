@@ -289,10 +289,7 @@ async fn list_pdbs(client: &K8sClient, args: &serde_json::Value) -> Result<Strin
     if let Some(sel) = label_selector {
         lp = lp.labels(sel);
     }
-    let list = pdb_api
-        .list(&lp)
-        .await
-        .map_err(|e| e.to_string())?;
+    let list = pdb_api.list(&lp).await.map_err(|e| e.to_string())?;
 
     let summaries: Vec<serde_json::Value> = list
         .iter()
@@ -404,11 +401,7 @@ async fn update_pdb(client: &K8sClient, args: &serde_json::Value) -> Result<Stri
 
     let pdb_api = api(client, ns)?;
     let patched = pdb_api
-        .patch(
-            name,
-            &PatchParams::apply("mcp-k8s"),
-            &Patch::Merge(&patch),
-        )
+        .patch(name, &PatchParams::apply("mcp-k8s"), &Patch::Merge(&patch))
         .await
         .map_err(|e| e.to_string())?;
 
@@ -446,10 +439,7 @@ mod tests {
         let defs = tool_definitions();
         assert_eq!(defs.len(), 5);
 
-        let names: Vec<&str> = defs
-            .iter()
-            .filter_map(|d| d["name"].as_str())
-            .collect();
+        let names: Vec<&str> = defs.iter().filter_map(|d| d["name"].as_str()).collect();
         assert!(names.contains(&"list_pdbs"));
         assert!(names.contains(&"get_pdb"));
         assert!(names.contains(&"create_pdb"));
@@ -526,13 +516,11 @@ mod tests {
             metadata: ObjectMeta {
                 name: Some("web-pdb".to_string()),
                 namespace: Some("production".to_string()),
-                creation_timestamp: Some(
-                    k8s_openapi::apimachinery::pkg::apis::meta::v1::Time(
-                        "2024-06-15T12:00:00Z"
-                            .parse::<k8s_openapi::jiff::Timestamp>()
-                            .unwrap(),
-                    ),
-                ),
+                creation_timestamp: Some(k8s_openapi::apimachinery::pkg::apis::meta::v1::Time(
+                    "2024-06-15T12:00:00Z"
+                        .parse::<k8s_openapi::jiff::Timestamp>()
+                        .unwrap(),
+                )),
                 ..Default::default()
             },
             spec: Some(PodDisruptionBudgetSpec {
@@ -548,15 +536,13 @@ mod tests {
                 }),
                 ..Default::default()
             }),
-            status: Some(
-                k8s_openapi::api::policy::v1::PodDisruptionBudgetStatus {
-                    current_healthy: 5,
-                    disruptions_allowed: 3,
-                    expected_pods: 5,
-                    desired_healthy: 2,
-                    ..Default::default()
-                },
-            ),
+            status: Some(k8s_openapi::api::policy::v1::PodDisruptionBudgetStatus {
+                current_healthy: 5,
+                disruptions_allowed: 3,
+                expected_pods: 5,
+                desired_healthy: 2,
+                ..Default::default()
+            }),
         };
 
         let summary = extract_summary(&pdb);
@@ -621,29 +607,27 @@ mod tests {
                 }),
                 ..Default::default()
             }),
-            status: Some(
-                k8s_openapi::api::policy::v1::PodDisruptionBudgetStatus {
-                    current_healthy: 4,
-                    disruptions_allowed: 1,
-                    expected_pods: 4,
-                    desired_healthy: 3,
-                    conditions: Some(vec![
-                        k8s_openapi::apimachinery::pkg::apis::meta::v1::Condition {
-                            type_: "DisruptionAllowed".to_string(),
-                            status: "True".to_string(),
-                            reason: "SufficientPods".to_string(),
-                            message: "The disruption budget allows disruption".to_string(),
-                            last_transition_time: k8s_openapi::apimachinery::pkg::apis::meta::v1::Time(
-                                "2024-06-15T12:00:00Z"
-                                    .parse::<k8s_openapi::jiff::Timestamp>()
-                                    .unwrap(),
-                            ),
-                            observed_generation: None,
-                        },
-                    ]),
-                    ..Default::default()
-                },
-            ),
+            status: Some(k8s_openapi::api::policy::v1::PodDisruptionBudgetStatus {
+                current_healthy: 4,
+                disruptions_allowed: 1,
+                expected_pods: 4,
+                desired_healthy: 3,
+                conditions: Some(vec![
+                    k8s_openapi::apimachinery::pkg::apis::meta::v1::Condition {
+                        type_: "DisruptionAllowed".to_string(),
+                        status: "True".to_string(),
+                        reason: "SufficientPods".to_string(),
+                        message: "The disruption budget allows disruption".to_string(),
+                        last_transition_time: k8s_openapi::apimachinery::pkg::apis::meta::v1::Time(
+                            "2024-06-15T12:00:00Z"
+                                .parse::<k8s_openapi::jiff::Timestamp>()
+                                .unwrap(),
+                        ),
+                        observed_generation: None,
+                    },
+                ]),
+                ..Default::default()
+            }),
         };
 
         let detail = extract_detail(&pdb);
@@ -661,7 +645,11 @@ mod tests {
             Some("testing")
         );
         assert_eq!(
-            detail.selector.as_ref().and_then(|s| s.get("app")).map(|s| s.as_str()),
+            detail
+                .selector
+                .as_ref()
+                .and_then(|s| s.get("app"))
+                .map(|s| s.as_str()),
             Some("api")
         );
         assert_eq!(detail.conditions.len(), 1);

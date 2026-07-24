@@ -348,10 +348,7 @@ pub fn ingress_summary(ing: &Ingress) -> IngressSummary {
         name: meta.name.clone().unwrap_or_default(),
         namespace: meta.namespace.clone().unwrap_or_default(),
         hosts: ingress_hosts(ing),
-        ingress_class: ing
-            .spec
-            .as_ref()
-            .and_then(|s| s.ingress_class_name.clone()),
+        ingress_class: ing.spec.as_ref().and_then(|s| s.ingress_class_name.clone()),
         created_at: meta.creation_timestamp.as_ref().map(|t| t.0.to_string()),
         labels: meta.labels.clone().unwrap_or_default(),
         addresses: ingress_addresses(ing),
@@ -364,10 +361,7 @@ pub fn ingress_detail(ing: &Ingress) -> IngressDetail {
         name: meta.name.clone().unwrap_or_default(),
         namespace: meta.namespace.clone().unwrap_or_default(),
         hosts: ingress_hosts(ing),
-        ingress_class: ing
-            .spec
-            .as_ref()
-            .and_then(|s| s.ingress_class_name.clone()),
+        ingress_class: ing.spec.as_ref().and_then(|s| s.ingress_class_name.clone()),
         created_at: meta.creation_timestamp.as_ref().map(|t| t.0.to_string()),
         labels: meta.labels.clone().unwrap_or_default(),
         addresses: ingress_addresses(ing),
@@ -510,15 +504,9 @@ pub fn node_summary(node: &Node) -> NodeSummary {
         name: meta.name.clone().unwrap_or_default(),
         status: node_ready_status(node),
         roles: node_roles(node),
-        cpu_capacity: capacity
-            .and_then(|c| c.get("cpu"))
-            .map(|q| q.0.clone()),
-        memory_capacity: capacity
-            .and_then(|c| c.get("memory"))
-            .map(|q| q.0.clone()),
-        cpu_allocatable: allocatable
-            .and_then(|a| a.get("cpu"))
-            .map(|q| q.0.clone()),
+        cpu_capacity: capacity.and_then(|c| c.get("cpu")).map(|q| q.0.clone()),
+        memory_capacity: capacity.and_then(|c| c.get("memory")).map(|q| q.0.clone()),
+        cpu_allocatable: allocatable.and_then(|a| a.get("cpu")).map(|q| q.0.clone()),
         memory_allocatable: allocatable
             .and_then(|a| a.get("memory"))
             .map(|q| q.0.clone()),

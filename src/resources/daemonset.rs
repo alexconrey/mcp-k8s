@@ -8,10 +8,7 @@ use serde::Serialize;
 
 use crate::client::K8sClient;
 
-fn api(
-    client: &K8sClient,
-    ns: &str,
-) -> Result<kube::Api<DaemonSet>, String> {
+fn api(client: &K8sClient, ns: &str) -> Result<kube::Api<DaemonSet>, String> {
     if !client.is_namespace_allowed(ns) {
         return Err(format!("Namespace '{ns}' is not in the allowed list"));
     }
@@ -84,12 +81,8 @@ fn extract_summary(ds: &DaemonSet) -> DaemonSetSummary {
         name: meta.name.clone().unwrap_or_default(),
         namespace: meta.namespace.clone().unwrap_or_default(),
         image: primary_image(ds),
-        desired_number_scheduled: status
-            .map(|s| s.desired_number_scheduled)
-            .unwrap_or(0),
-        current_number_scheduled: status
-            .map(|s| s.current_number_scheduled)
-            .unwrap_or(0),
+        desired_number_scheduled: status.map(|s| s.desired_number_scheduled).unwrap_or(0),
+        current_number_scheduled: status.map(|s| s.current_number_scheduled).unwrap_or(0),
         number_ready: status.map(|s| s.number_ready).unwrap_or(0),
         number_available: status.and_then(|s| s.number_available).unwrap_or(0),
         created_at: meta.creation_timestamp.as_ref().map(|t| t.0.to_string()),
@@ -112,10 +105,7 @@ fn extract_detail(ds: &DaemonSet) -> DaemonSetDetail {
                     status: c.status.clone(),
                     reason: c.reason.clone(),
                     message: c.message.clone(),
-                    last_transition: c
-                        .last_transition_time
-                        .as_ref()
-                        .map(|t| t.0.to_string()),
+                    last_transition: c.last_transition_time.as_ref().map(|t| t.0.to_string()),
                 })
                 .collect()
         })
@@ -150,12 +140,8 @@ fn extract_detail(ds: &DaemonSet) -> DaemonSetDetail {
         name: meta.name.clone().unwrap_or_default(),
         namespace: meta.namespace.clone().unwrap_or_default(),
         image: primary_image(ds),
-        desired_number_scheduled: status
-            .map(|s| s.desired_number_scheduled)
-            .unwrap_or(0),
-        current_number_scheduled: status
-            .map(|s| s.current_number_scheduled)
-            .unwrap_or(0),
+        desired_number_scheduled: status.map(|s| s.desired_number_scheduled).unwrap_or(0),
+        current_number_scheduled: status.map(|s| s.current_number_scheduled).unwrap_or(0),
         number_ready: status.map(|s| s.number_ready).unwrap_or(0),
         number_available: status.and_then(|s| s.number_available).unwrap_or(0),
         created_at: meta.creation_timestamp.as_ref().map(|t| t.0.to_string()),
@@ -257,10 +243,7 @@ pub async fn handle_tool(
     Some(result)
 }
 
-async fn list_daemonsets(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn list_daemonsets(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let ds_api = api(client, ns)?;
     let label_selector = args["label_selector"].as_str();
@@ -268,10 +251,7 @@ async fn list_daemonsets(
     if let Some(sel) = label_selector {
         lp = lp.labels(sel);
     }
-    let list = ds_api
-        .list(&lp)
-        .await
-        .map_err(|e| e.to_string())?;
+    let list = ds_api.list(&lp).await.map_err(|e| e.to_string())?;
 
     let summaries: Vec<serde_json::Value> = list
         .iter()
@@ -281,10 +261,7 @@ async fn list_daemonsets(
     serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
 }
 
-async fn get_daemonset(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn get_daemonset(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
     let ds_api = api(client, ns)?;
@@ -295,10 +272,7 @@ async fn get_daemonset(
         .map_err(|e| e.to_string())
 }
 
-async fn create_daemonset(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn create_daemonset(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
     let image = args["image"].as_str().ok_or("image is required")?;
@@ -306,7 +280,10 @@ async fn create_daemonset(
 
     let mut labels = BTreeMap::new();
     labels.insert("app".to_string(), name.to_string());
-    labels.insert("app.kubernetes.io/managed-by".to_string(), "mcp-k8s".to_string());
+    labels.insert(
+        "app.kubernetes.io/managed-by".to_string(),
+        "mcp-k8s".to_string(),
+    );
 
     let mut match_labels = BTreeMap::new();
     match_labels.insert("app".to_string(), name.to_string());
@@ -363,10 +340,7 @@ async fn create_daemonset(
         .map_err(|e| e.to_string())
 }
 
-async fn update_daemonset(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn update_daemonset(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
     let image = args["image"].as_str();
@@ -390,11 +364,7 @@ async fn update_daemonset(
 
     let ds_api = api(client, ns)?;
     let patched = ds_api
-        .patch(
-            name,
-            &PatchParams::apply("mcp-k8s"),
-            &Patch::Merge(&patch),
-        )
+        .patch(name, &PatchParams::apply("mcp-k8s"), &Patch::Merge(&patch))
         .await
         .map_err(|e| e.to_string())?;
 
@@ -403,10 +373,7 @@ async fn update_daemonset(
         .map_err(|e| e.to_string())
 }
 
-async fn delete_daemonset(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn delete_daemonset(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
     let ds_api = api(client, ns)?;
@@ -473,10 +440,7 @@ mod tests {
     #[test]
     fn test_tool_definitions_unique_names() {
         let defs = tool_definitions();
-        let names: Vec<&str> = defs
-            .iter()
-            .filter_map(|d| d["name"].as_str())
-            .collect();
+        let names: Vec<&str> = defs.iter().filter_map(|d| d["name"].as_str()).collect();
         assert_eq!(names.len(), 5);
         let mut unique = names.clone();
         unique.sort();

@@ -1,8 +1,6 @@
 use std::collections::BTreeMap;
 
-use k8s_openapi::api::batch::v1::{
-    CronJob, CronJobSpec, JobSpec, JobTemplateSpec,
-};
+use k8s_openapi::api::batch::v1::{CronJob, CronJobSpec, JobSpec, JobTemplateSpec};
 use k8s_openapi::api::core::v1::{Container, PodSpec, PodTemplateSpec};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use kube::api::{DeleteParams, ListParams, Patch, PatchParams, PostParams};
@@ -11,10 +9,7 @@ use serde::Serialize;
 use crate::client::K8sClient;
 use crate::extract;
 
-fn api(
-    client: &K8sClient,
-    ns: &str,
-) -> Result<kube::Api<CronJob>, String> {
+fn api(client: &K8sClient, ns: &str) -> Result<kube::Api<CronJob>, String> {
     if !client.is_namespace_allowed(ns) {
         return Err(format!("Namespace '{ns}' is not in the allowed list"));
     }
@@ -176,10 +171,7 @@ fn cronjob_detail(cj: &CronJob) -> CronJobDetail {
     }
 }
 
-async fn list_cronjobs(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn list_cronjobs(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let cj_api = api(client, ns)?;
     let label_selector = args["label_selector"].as_str();
@@ -187,10 +179,7 @@ async fn list_cronjobs(
     if let Some(sel) = label_selector {
         lp = lp.labels(sel);
     }
-    let list = cj_api
-        .list(&lp)
-        .await
-        .map_err(|e| e.to_string())?;
+    let list = cj_api.list(&lp).await.map_err(|e| e.to_string())?;
 
     let summaries: Vec<serde_json::Value> = list
         .iter()
@@ -200,10 +189,7 @@ async fn list_cronjobs(
     serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
 }
 
-async fn get_cronjob(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn get_cronjob(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
 
@@ -214,10 +200,7 @@ async fn get_cronjob(
     serde_json::to_string_pretty(&detail).map_err(|e| e.to_string())
 }
 
-async fn create_cronjob(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn create_cronjob(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
     let schedule = args["schedule"].as_str().ok_or("schedule is required")?;
@@ -280,10 +263,7 @@ async fn create_cronjob(
     serde_json::to_string_pretty(&detail).map_err(|e| e.to_string())
 }
 
-async fn update_cronjob(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn update_cronjob(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
 
@@ -301,10 +281,7 @@ async fn update_cronjob(
     }
 
     if let Some(suspend) = suspend {
-        spec_patch.insert(
-            "suspend".to_string(),
-            serde_json::Value::Bool(suspend),
-        );
+        spec_patch.insert("suspend".to_string(), serde_json::Value::Bool(suspend));
     }
 
     if let Some(image) = image {
@@ -331,11 +308,7 @@ async fn update_cronjob(
 
     let cj_api = api(client, ns)?;
     let patched = cj_api
-        .patch(
-            name,
-            &PatchParams::apply("mcp-k8s"),
-            &Patch::Merge(&patch),
-        )
+        .patch(name, &PatchParams::apply("mcp-k8s"), &Patch::Merge(&patch))
         .await
         .map_err(|e| e.to_string())?;
 
@@ -343,10 +316,7 @@ async fn update_cronjob(
     serde_json::to_string_pretty(&detail).map_err(|e| e.to_string())
 }
 
-async fn delete_cronjob(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn delete_cronjob(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
 
@@ -391,7 +361,11 @@ mod tests {
                                 containers: vec![Container {
                                     name: name.to_string(),
                                     image: Some(image.to_string()),
-                                    command: Some(vec!["/bin/sh".to_string(), "-c".to_string(), "echo hello".to_string()]),
+                                    command: Some(vec![
+                                        "/bin/sh".to_string(),
+                                        "-c".to_string(),
+                                        "echo hello".to_string(),
+                                    ]),
                                     ..Default::default()
                                 }],
                                 restart_policy: Some("OnFailure".to_string()),
@@ -418,10 +392,7 @@ mod tests {
         let tools = tool_definitions();
         assert_eq!(tools.len(), 5);
 
-        let names: Vec<&str> = tools
-            .iter()
-            .map(|t| t["name"].as_str().unwrap())
-            .collect();
+        let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
 
         let mut unique_names = names.clone();
         unique_names.sort();

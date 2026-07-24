@@ -60,9 +60,7 @@ pub struct EndpointSliceSummary {
 // Extraction helpers
 // ---------------------------------------------------------------------------
 
-fn extract_port_summary(
-    port: &k8s_openapi::api::discovery::v1::EndpointPort,
-) -> PortSummary {
+fn extract_port_summary(port: &k8s_openapi::api::discovery::v1::EndpointPort) -> PortSummary {
     PortSummary {
         name: port.name.clone(),
         protocol: port.protocol.clone(),
@@ -91,9 +89,7 @@ fn extract_summary(es: &EndpointSlice) -> EndpointSliceSummary {
     }
 }
 
-fn extract_endpoint_detail(
-    ep: &k8s_openapi::api::discovery::v1::Endpoint,
-) -> EndpointDetail {
+fn extract_endpoint_detail(ep: &k8s_openapi::api::discovery::v1::Endpoint) -> EndpointDetail {
     let conditions = ep.conditions.as_ref().map(|c| EndpointConditionsSummary {
         ready: c.ready,
         serving: c.serving,
@@ -188,10 +184,7 @@ async fn list_endpointslices(
     if let Some(sel) = field_selector {
         lp = lp.fields(sel);
     }
-    let list = es_api
-        .list(&lp)
-        .await
-        .map_err(|e| e.to_string())?;
+    let list = es_api.list(&lp).await.map_err(|e| e.to_string())?;
 
     let summaries: Vec<serde_json::Value> = list
         .iter()
@@ -204,10 +197,7 @@ async fn list_endpointslices(
     serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
 }
 
-async fn get_endpointslice(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn get_endpointslice(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
 
@@ -217,11 +207,7 @@ async fn get_endpointslice(
     let summary = extract_summary(&es);
     let meta = &es.metadata;
 
-    let endpoints: Vec<EndpointDetail> = es
-        .endpoints
-        .iter()
-        .map(extract_endpoint_detail)
-        .collect();
+    let endpoints: Vec<EndpointDetail> = es.endpoints.iter().map(extract_endpoint_detail).collect();
 
     let result = serde_json::json!({
         "name": summary.name,
@@ -245,20 +231,17 @@ async fn get_endpointslice(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::BTreeMap;
-    use k8s_openapi::api::discovery::v1::{Endpoint, EndpointConditions, EndpointPort};
     use k8s_openapi::api::core::v1::ObjectReference;
+    use k8s_openapi::api::discovery::v1::{Endpoint, EndpointConditions, EndpointPort};
     use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
+    use std::collections::BTreeMap;
 
     #[test]
     fn tool_definitions_returns_two_unique_tools() {
         let defs = tool_definitions();
         assert_eq!(defs.len(), 2);
 
-        let names: Vec<&str> = defs
-            .iter()
-            .map(|d| d["name"].as_str().unwrap())
-            .collect();
+        let names: Vec<&str> = defs.iter().map(|d| d["name"].as_str().unwrap()).collect();
 
         let mut unique = names.clone();
         unique.sort();
@@ -331,7 +314,10 @@ mod tests {
 
     fn make_test_endpointslice() -> EndpointSlice {
         let mut labels = BTreeMap::new();
-        labels.insert("kubernetes.io/service-name".to_string(), "my-svc".to_string());
+        labels.insert(
+            "kubernetes.io/service-name".to_string(),
+            "my-svc".to_string(),
+        );
 
         let mut annotations = BTreeMap::new();
         annotations.insert(
@@ -346,7 +332,9 @@ mod tests {
                 labels: Some(labels),
                 annotations: Some(annotations),
                 creation_timestamp: Some(k8s_openapi::apimachinery::pkg::apis::meta::v1::Time(
-                    "2024-06-15T12:00:00Z".parse::<k8s_openapi::jiff::Timestamp>().unwrap(),
+                    "2024-06-15T12:00:00Z"
+                        .parse::<k8s_openapi::jiff::Timestamp>()
+                        .unwrap(),
                 )),
                 ..Default::default()
             },

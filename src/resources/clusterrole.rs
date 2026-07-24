@@ -217,16 +217,12 @@ async fn list_clusterroles(client: &K8sClient) -> Result<String, String> {
         .await
         .map_err(|e| e.to_string())?;
 
-    let summaries: Vec<ClusterRoleSummary> =
-        list.iter().map(|cr| extract_summary(cr)).collect();
+    let summaries: Vec<ClusterRoleSummary> = list.iter().map(|cr| extract_summary(cr)).collect();
 
     serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
 }
 
-async fn get_clusterrole(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn get_clusterrole(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let name = args["name"].as_str().ok_or("name is required")?;
     let cr_api = api(client);
     let cr = cr_api.get(name).await.map_err(|e| e.to_string())?;
@@ -305,11 +301,7 @@ async fn update_clusterrole(
 
     let cr_api = api(client);
     let patched = cr_api
-        .patch(
-            name,
-            &PatchParams::apply("mcp-k8s"),
-            &Patch::Merge(&patch),
-        )
+        .patch(name, &PatchParams::apply("mcp-k8s"), &Patch::Merge(&patch))
         .await
         .map_err(|e| e.to_string())?;
 
@@ -338,9 +330,7 @@ async fn delete_clusterrole(
 fn parse_policy_rules(
     rules_value: &serde_json::Value,
 ) -> Result<Vec<k8s_openapi::api::rbac::v1::PolicyRule>, String> {
-    let rules_arr = rules_value
-        .as_array()
-        .ok_or("rules must be an array")?;
+    let rules_arr = rules_value.as_array().ok_or("rules must be an array")?;
 
     rules_arr
         .iter()
@@ -383,10 +373,7 @@ mod tests {
         let defs = tool_definitions();
         assert_eq!(defs.len(), 5);
 
-        let names: Vec<&str> = defs
-            .iter()
-            .map(|d| d["name"].as_str().unwrap())
-            .collect();
+        let names: Vec<&str> = defs.iter().map(|d| d["name"].as_str().unwrap()).collect();
 
         let mut unique = names.clone();
         unique.sort();
@@ -510,10 +497,7 @@ mod tests {
         );
 
         let mut annotations = BTreeMap::new();
-        annotations.insert(
-            "description".to_string(),
-            "Test cluster role".to_string(),
-        );
+        annotations.insert("description".to_string(), "Test cluster role".to_string());
 
         ClusterRole {
             metadata: ObjectMeta {
@@ -526,11 +510,7 @@ mod tests {
                 PolicyRule {
                     api_groups: Some(vec!["".to_string()]),
                     resources: Some(vec!["pods".to_string(), "services".to_string()]),
-                    verbs: vec![
-                        "get".to_string(),
-                        "list".to_string(),
-                        "watch".to_string(),
-                    ],
+                    verbs: vec!["get".to_string(), "list".to_string(), "watch".to_string()],
                     non_resource_urls: None,
                     resource_names: None,
                 },

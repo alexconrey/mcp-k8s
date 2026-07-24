@@ -7,10 +7,7 @@ use serde::Serialize;
 
 use crate::client::K8sClient;
 
-fn api(
-    client: &K8sClient,
-    ns: &str,
-) -> Result<kube::Api<ServiceAccount>, String> {
+fn api(client: &K8sClient, ns: &str) -> Result<kube::Api<ServiceAccount>, String> {
     if !client.is_namespace_allowed(ns) {
         return Err(format!("Namespace '{ns}' is not in the allowed list"));
     }
@@ -32,11 +29,7 @@ fn extract_summary(sa: &ServiceAccount) -> ServiceAccountSummary {
     let image_pull_secrets = sa
         .image_pull_secrets
         .as_ref()
-        .map(|ips| {
-            ips.iter()
-                .map(|r| r.name.clone())
-                .collect()
-        })
+        .map(|ips| ips.iter().map(|r| r.name.clone()).collect())
         .unwrap_or_default();
 
     ServiceAccountSummary {
@@ -140,10 +133,7 @@ async fn list_serviceaccounts(
     if let Some(sel) = label_selector {
         lp = lp.labels(sel);
     }
-    let list = sa_api
-        .list(&lp)
-        .await
-        .map_err(|e| e.to_string())?;
+    let list = sa_api.list(&lp).await.map_err(|e| e.to_string())?;
 
     let summaries: Vec<serde_json::Value> = list
         .iter()
@@ -194,15 +184,13 @@ async fn create_serviceaccount(
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
 
-    let annotations: Option<BTreeMap<String, String>> = args
-        .get("annotations")
-        .and_then(|v| {
-            if v.is_null() {
-                None
-            } else {
-                serde_json::from_value(v.clone()).ok()
-            }
-        });
+    let annotations: Option<BTreeMap<String, String>> = args.get("annotations").and_then(|v| {
+        if v.is_null() {
+            None
+        } else {
+            serde_json::from_value(v.clone()).ok()
+        }
+    });
 
     let automount = args
         .get("automount_service_account_token")
@@ -265,10 +253,7 @@ mod tests {
         let defs = tool_definitions();
         assert_eq!(defs.len(), 4);
 
-        let names: Vec<&str> = defs
-            .iter()
-            .map(|d| d["name"].as_str().unwrap())
-            .collect();
+        let names: Vec<&str> = defs.iter().map(|d| d["name"].as_str().unwrap()).collect();
 
         let mut unique = names.clone();
         unique.sort();
@@ -338,22 +323,17 @@ mod tests {
             metadata: ObjectMeta {
                 name: Some("test-sa".to_string()),
                 namespace: Some("prod".to_string()),
-                labels: Some(BTreeMap::from([(
-                    "app".to_string(),
-                    "myapp".to_string(),
-                )])),
+                labels: Some(BTreeMap::from([("app".to_string(), "myapp".to_string())])),
                 annotations: Some(BTreeMap::from([(
                     "eks.amazonaws.com/role-arn".to_string(),
                     "arn:aws:iam::123456789012:role/my-role".to_string(),
                 )])),
                 ..Default::default()
             },
-            secrets: Some(vec![
-                k8s_openapi::api::core::v1::ObjectReference {
-                    name: Some("test-sa-token-abc".to_string()),
-                    ..Default::default()
-                },
-            ]),
+            secrets: Some(vec![k8s_openapi::api::core::v1::ObjectReference {
+                name: Some("test-sa-token-abc".to_string()),
+                ..Default::default()
+            }]),
             image_pull_secrets: Some(vec![
                 k8s_openapi::api::core::v1::LocalObjectReference {
                     name: "ecr-creds".to_string(),
@@ -370,8 +350,12 @@ mod tests {
         assert_eq!(summary.namespace, "prod");
         assert_eq!(summary.secrets_count, 1);
         assert_eq!(summary.image_pull_secrets.len(), 2);
-        assert!(summary.image_pull_secrets.contains(&"ecr-creds".to_string()));
-        assert!(summary.image_pull_secrets.contains(&"dockerhub-creds".to_string()));
+        assert!(summary
+            .image_pull_secrets
+            .contains(&"ecr-creds".to_string()));
+        assert!(summary
+            .image_pull_secrets
+            .contains(&"dockerhub-creds".to_string()));
         assert!(summary.created_at.is_none());
     }
 

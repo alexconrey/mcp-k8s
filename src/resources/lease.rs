@@ -1,4 +1,3 @@
-
 use k8s_openapi::api::coordination::v1::Lease;
 use kube::api::ListParams;
 use serde::Serialize;
@@ -86,10 +85,7 @@ pub async fn handle_tool(
     Some(result)
 }
 
-async fn list_leases(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn list_leases(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let lease_api = api(client, ns)?;
     let label_selector = args["label_selector"].as_str();
@@ -97,10 +93,7 @@ async fn list_leases(
     if let Some(sel) = label_selector {
         lp = lp.labels(sel);
     }
-    let list = lease_api
-        .list(&lp)
-        .await
-        .map_err(|e| e.to_string())?;
+    let list = lease_api.list(&lp).await.map_err(|e| e.to_string())?;
 
     let summaries: Vec<serde_json::Value> = list
         .iter()
@@ -121,10 +114,7 @@ async fn list_leases(
     serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
 }
 
-async fn get_lease(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn get_lease(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
     let lease_api = api(client, ns)?;
@@ -132,10 +122,7 @@ async fn get_lease(
 
     let summary = extract_summary(&lease);
     let meta = &lease.metadata;
-    let lease_transitions = lease
-        .spec
-        .as_ref()
-        .and_then(|s| s.lease_transitions);
+    let lease_transitions = lease.spec.as_ref().and_then(|s| s.lease_transitions);
 
     let result = serde_json::json!({
         "name": summary.name,
@@ -156,19 +143,16 @@ async fn get_lease(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::BTreeMap;
     use k8s_openapi::api::coordination::v1::LeaseSpec;
     use k8s_openapi::apimachinery::pkg::apis::meta::v1::{MicroTime, ObjectMeta, Time};
+    use std::collections::BTreeMap;
 
     #[test]
     fn tool_definitions_returns_two_unique_tools() {
         let defs = tool_definitions();
         assert_eq!(defs.len(), 2);
 
-        let names: Vec<&str> = defs
-            .iter()
-            .map(|d| d["name"].as_str().unwrap())
-            .collect();
+        let names: Vec<&str> = defs.iter().map(|d| d["name"].as_str().unwrap()).collect();
 
         let mut unique = names.clone();
         unique.sort();
@@ -248,12 +232,14 @@ mod tests {
                 name: Some("kube-controller-manager".to_string()),
                 namespace: Some("kube-system".to_string()),
                 creation_timestamp: Some(Time(ts)),
-                labels: Some(BTreeMap::from([
-                    ("component".to_string(), "kube-controller-manager".to_string()),
-                ])),
-                annotations: Some(BTreeMap::from([
-                    ("control-plane.alpha.kubernetes.io/leader".to_string(), "true".to_string()),
-                ])),
+                labels: Some(BTreeMap::from([(
+                    "component".to_string(),
+                    "kube-controller-manager".to_string(),
+                )])),
+                annotations: Some(BTreeMap::from([(
+                    "control-plane.alpha.kubernetes.io/leader".to_string(),
+                    "true".to_string(),
+                )])),
                 ..Default::default()
             },
             spec: Some(LeaseSpec {

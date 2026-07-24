@@ -63,16 +63,19 @@ pub async fn handle_tool(
 }
 
 async fn can_i(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
-    let verb = args["verb"]
-        .as_str()
-        .ok_or("verb is required")?
-        .to_string();
+    let verb = args["verb"].as_str().ok_or("verb is required")?.to_string();
     let resource = args["resource"]
         .as_str()
         .ok_or("resource is required")?
         .to_string();
-    let namespace = args.get("namespace").and_then(|v| v.as_str()).map(String::from);
-    let subresource = args.get("subresource").and_then(|v| v.as_str()).map(String::from);
+    let namespace = args
+        .get("namespace")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    let subresource = args
+        .get("subresource")
+        .and_then(|v| v.as_str())
+        .map(String::from);
 
     let review = SelfSubjectAccessReview {
         spec: SelfSubjectAccessReviewSpec {
@@ -115,10 +118,7 @@ async fn whoami(client: &K8sClient) -> Result<String, String> {
         .await
         .map_err(|e| e.to_string())?;
 
-    let user_info = result
-        .status
-        .and_then(|s| s.user_info)
-        .unwrap_or_default();
+    let user_info = result.status.and_then(|s| s.user_info).unwrap_or_default();
 
     let output = serde_json::json!({
         "username": user_info.username,
@@ -197,10 +197,7 @@ mod tests {
         let defs = tool_definitions();
         assert_eq!(defs.len(), 3);
 
-        let names: Vec<&str> = defs
-            .iter()
-            .map(|d| d["name"].as_str().unwrap())
-            .collect();
+        let names: Vec<&str> = defs.iter().map(|d| d["name"].as_str().unwrap()).collect();
 
         let mut unique = names.clone();
         unique.sort();
@@ -231,9 +228,7 @@ mod tests {
     fn can_i_requires_verb_and_resource() {
         let defs = tool_definitions();
         let can_i_def = defs.iter().find(|d| d["name"] == "can_i").unwrap();
-        let required = can_i_def["inputSchema"]["required"]
-            .as_array()
-            .unwrap();
+        let required = can_i_def["inputSchema"]["required"].as_array().unwrap();
         assert!(required.contains(&serde_json::json!("verb")));
         assert!(required.contains(&serde_json::json!("resource")));
         assert_eq!(required.len(), 2);
@@ -268,12 +263,16 @@ mod tests {
         let defs = tool_definitions();
         let can_i_def = defs.iter().find(|d| d["name"] == "can_i").unwrap();
         let props = can_i_def["inputSchema"]["properties"].as_object().unwrap();
-        assert!(props.contains_key("namespace"), "should have namespace property");
-        assert!(props.contains_key("subresource"), "should have subresource property");
+        assert!(
+            props.contains_key("namespace"),
+            "should have namespace property"
+        );
+        assert!(
+            props.contains_key("subresource"),
+            "should have subresource property"
+        );
 
-        let required = can_i_def["inputSchema"]["required"]
-            .as_array()
-            .unwrap();
+        let required = can_i_def["inputSchema"]["required"].as_array().unwrap();
         assert!(
             !required.contains(&serde_json::json!("namespace")),
             "namespace should be optional"

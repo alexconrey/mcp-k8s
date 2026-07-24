@@ -32,15 +32,9 @@ pub struct ResourceQuotaSummary {
 // Extraction helpers
 // ---------------------------------------------------------------------------
 
-fn quantity_map_to_strings(
-    m: &Option<BTreeMap<String, Quantity>>,
-) -> BTreeMap<String, String> {
+fn quantity_map_to_strings(m: &Option<BTreeMap<String, Quantity>>) -> BTreeMap<String, String> {
     m.as_ref()
-        .map(|map| {
-            map.iter()
-                .map(|(k, v)| (k.clone(), v.0.clone()))
-                .collect()
-        })
+        .map(|map| map.iter().map(|(k, v)| (k.clone(), v.0.clone())).collect())
         .unwrap_or_default()
 }
 
@@ -184,10 +178,7 @@ async fn list_resourcequotas(
     if let Some(sel) = label_selector {
         lp = lp.labels(sel);
     }
-    let list = rq_api
-        .list(&lp)
-        .await
-        .map_err(|e| e.to_string())?;
+    let list = rq_api.list(&lp).await.map_err(|e| e.to_string())?;
 
     let summaries: Vec<serde_json::Value> = list
         .iter()
@@ -200,10 +191,7 @@ async fn list_resourcequotas(
     serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
 }
 
-async fn get_resourcequota(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn get_resourcequota(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
 
@@ -245,12 +233,9 @@ async fn create_resourcequota(
 ) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
-    let hard_raw: BTreeMap<String, String> = serde_json::from_value(
-        args.get("hard")
-            .ok_or("hard is required")?
-            .clone(),
-    )
-    .map_err(|e| e.to_string())?;
+    let hard_raw: BTreeMap<String, String> =
+        serde_json::from_value(args.get("hard").ok_or("hard is required")?.clone())
+            .map_err(|e| e.to_string())?;
 
     let hard: BTreeMap<String, Quantity> = hard_raw
         .into_iter()
@@ -294,12 +279,9 @@ async fn update_resourcequota(
 ) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
-    let hard_raw: BTreeMap<String, String> = serde_json::from_value(
-        args.get("hard")
-            .ok_or("hard is required")?
-            .clone(),
-    )
-    .map_err(|e| e.to_string())?;
+    let hard_raw: BTreeMap<String, String> =
+        serde_json::from_value(args.get("hard").ok_or("hard is required")?.clone())
+            .map_err(|e| e.to_string())?;
 
     let patch = serde_json::json!({
         "spec": {
@@ -309,11 +291,7 @@ async fn update_resourcequota(
 
     let rq_api = api(client, ns)?;
     let patched = rq_api
-        .patch(
-            name,
-            &PatchParams::apply("mcp-k8s"),
-            &Patch::Merge(&patch),
-        )
+        .patch(name, &PatchParams::apply("mcp-k8s"), &Patch::Merge(&patch))
         .await
         .map_err(|e| e.to_string())?;
 
@@ -356,10 +334,7 @@ mod tests {
         let defs = tool_definitions();
         assert_eq!(defs.len(), 5);
 
-        let names: Vec<&str> = defs
-            .iter()
-            .filter_map(|d| d["name"].as_str())
-            .collect();
+        let names: Vec<&str> = defs.iter().filter_map(|d| d["name"].as_str()).collect();
 
         let mut unique = names.clone();
         unique.sort();
@@ -452,9 +427,7 @@ mod tests {
             metadata: ObjectMeta {
                 name: Some("prod-quota".to_string()),
                 namespace: Some("production".to_string()),
-                labels: Some(BTreeMap::from([
-                    ("env".to_string(), "prod".to_string()),
-                ])),
+                labels: Some(BTreeMap::from([("env".to_string(), "prod".to_string())])),
                 ..Default::default()
             },
             spec: Some(ResourceQuotaSpec {

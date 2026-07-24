@@ -185,10 +185,7 @@ async fn list_flowschemas(client: &K8sClient) -> Result<String, String> {
     serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
 }
 
-async fn get_flowschema(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn get_flowschema(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let name = args["name"].as_str().ok_or("name is required")?;
 
     let api = flowschema_api(client);
@@ -219,10 +216,7 @@ async fn get_flowschema(
                     status: c.status.clone(),
                     reason: c.reason.clone(),
                     message: c.message.clone(),
-                    last_transition: c
-                        .last_transition_time
-                        .as_ref()
-                        .map(|t| t.0.to_string()),
+                    last_transition: c.last_transition_time.as_ref().map(|t| t.0.to_string()),
                 })
                 .collect()
         })
@@ -299,10 +293,7 @@ async fn get_prioritylevelconfig(
                     status: c.status.clone(),
                     reason: c.reason.clone(),
                     message: c.message.clone(),
-                    last_transition: c
-                        .last_transition_time
-                        .as_ref()
-                        .map(|t| t.0.to_string()),
+                    last_transition: c.last_transition_time.as_ref().map(|t| t.0.to_string()),
                 })
                 .collect()
         })
@@ -330,9 +321,8 @@ async fn get_prioritylevelconfig(
 mod tests {
     use super::*;
     use k8s_openapi::api::flowcontrol::v1::{
-        FlowDistinguisherMethod, FlowSchemaSpec, LimitResponse,
-        LimitedPriorityLevelConfiguration, PriorityLevelConfigurationReference,
-        PriorityLevelConfigurationSpec,
+        FlowDistinguisherMethod, FlowSchemaSpec, LimitResponse, LimitedPriorityLevelConfiguration,
+        PriorityLevelConfigurationReference, PriorityLevelConfigurationSpec,
     };
     use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 
@@ -341,10 +331,7 @@ mod tests {
         let defs = tool_definitions();
         assert_eq!(defs.len(), 4);
 
-        let names: Vec<&str> = defs
-            .iter()
-            .map(|d| d["name"].as_str().unwrap())
-            .collect();
+        let names: Vec<&str> = defs.iter().map(|d| d["name"].as_str().unwrap()).collect();
 
         let mut unique = names.clone();
         unique.sort();

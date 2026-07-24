@@ -218,10 +218,7 @@ mod tests {
         let defs = tool_definitions();
         assert_eq!(defs.len(), 4);
 
-        let names: Vec<&str> = defs
-            .iter()
-            .map(|d| d["name"].as_str().unwrap())
-            .collect();
+        let names: Vec<&str> = defs.iter().map(|d| d["name"].as_str().unwrap()).collect();
 
         let mut unique = names.clone();
         unique.sort();
@@ -253,12 +250,8 @@ mod tests {
         let detail = NamespaceDetail {
             name: "production".to_string(),
             status: "Active".to_string(),
-            labels: BTreeMap::from([
-                ("env".to_string(), "prod".to_string()),
-            ]),
-            annotations: BTreeMap::from([
-                ("note".to_string(), "critical".to_string()),
-            ]),
+            labels: BTreeMap::from([("env".to_string(), "prod".to_string())]),
+            annotations: BTreeMap::from([("note".to_string(), "critical".to_string())]),
             created_at: Some("2024-01-01T00:00:00Z".to_string()),
             finalizers: vec!["kubernetes".to_string()],
         };
@@ -298,12 +291,11 @@ mod tests {
         let ns = Namespace {
             metadata: ObjectMeta {
                 name: Some("test-ns".to_string()),
-                labels: Some(BTreeMap::from([
-                    ("env".to_string(), "staging".to_string()),
-                ])),
-                annotations: Some(BTreeMap::from([
-                    ("description".to_string(), "test namespace".to_string()),
-                ])),
+                labels: Some(BTreeMap::from([("env".to_string(), "staging".to_string())])),
+                annotations: Some(BTreeMap::from([(
+                    "description".to_string(),
+                    "test namespace".to_string(),
+                )])),
                 finalizers: Some(vec!["kubernetes".to_string()]),
                 ..Default::default()
             },
@@ -318,7 +310,10 @@ mod tests {
         assert_eq!(detail.name, "test-ns");
         assert_eq!(detail.status, "Active");
         assert_eq!(detail.labels.get("env").unwrap(), "staging");
-        assert_eq!(detail.annotations.get("description").unwrap(), "test namespace");
+        assert_eq!(
+            detail.annotations.get("description").unwrap(),
+            "test namespace"
+        );
         assert!(detail.created_at.is_none());
         assert_eq!(detail.finalizers, vec!["kubernetes".to_string()]);
     }

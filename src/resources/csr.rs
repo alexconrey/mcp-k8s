@@ -27,10 +27,7 @@ pub struct CsrSummary {
 }
 
 fn csr_status_label(csr: &CertificateSigningRequest) -> String {
-    let conditions = csr
-        .status
-        .as_ref()
-        .and_then(|s| s.conditions.as_ref());
+    let conditions = csr.status.as_ref().and_then(|s| s.conditions.as_ref());
 
     match conditions {
         Some(conds) => {
@@ -262,23 +259,20 @@ async fn deny_csr(client: &K8sClient, args: &serde_json::Value) -> Result<String
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::BTreeMap;
     use k8s_openapi::api::certificates::v1::{
         CertificateSigningRequestCondition, CertificateSigningRequestSpec,
         CertificateSigningRequestStatus,
     };
     use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
     use k8s_openapi::ByteString;
+    use std::collections::BTreeMap;
 
     #[test]
     fn tool_definitions_returns_four_tools() {
         let defs = tool_definitions();
         assert_eq!(defs.len(), 4);
 
-        let names: Vec<&str> = defs
-            .iter()
-            .map(|d| d["name"].as_str().unwrap())
-            .collect();
+        let names: Vec<&str> = defs.iter().map(|d| d["name"].as_str().unwrap()).collect();
 
         let mut unique = names.clone();
         unique.sort();
@@ -342,10 +336,7 @@ mod tests {
         assert!(json["created_at"].is_null());
     }
 
-    fn make_test_csr(
-        name: &str,
-        condition_type: Option<&str>,
-    ) -> CertificateSigningRequest {
+    fn make_test_csr(name: &str, condition_type: Option<&str>) -> CertificateSigningRequest {
         let conditions = condition_type.map(|ct| {
             vec![CertificateSigningRequestCondition {
                 type_: ct.to_string(),
@@ -393,14 +384,8 @@ mod tests {
         let summary = extract_summary(&csr);
 
         assert_eq!(summary.name, "pending-csr");
-        assert_eq!(
-            summary.signer_name,
-            "kubernetes.io/kube-apiserver-client"
-        );
-        assert_eq!(
-            summary.requestor.as_deref(),
-            Some("system:node:test-node")
-        );
+        assert_eq!(summary.signer_name, "kubernetes.io/kube-apiserver-client");
+        assert_eq!(summary.requestor.as_deref(), Some("system:node:test-node"));
         assert_eq!(summary.status, "Pending");
     }
 

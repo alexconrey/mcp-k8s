@@ -193,10 +193,7 @@ async fn list_mutatingadmissionpolicybindings(client: &K8sClient) -> Result<Stri
         .iter()
         .map(|binding| {
             let meta = &binding.metadata;
-            let policy_name = binding
-                .spec
-                .as_ref()
-                .and_then(|s| s.policy_name.as_ref());
+            let policy_name = binding.spec.as_ref().and_then(|s| s.policy_name.as_ref());
             serde_json::json!({
                 "name": meta.name.clone().unwrap_or_default(),
                 "policy_name": policy_name,
@@ -284,10 +281,7 @@ mod tests {
         let defs = tool_definitions();
         assert_eq!(defs.len(), 4);
 
-        let names: Vec<&str> = defs
-            .iter()
-            .map(|d| d["name"].as_str().unwrap())
-            .collect();
+        let names: Vec<&str> = defs.iter().map(|d| d["name"].as_str().unwrap()).collect();
 
         let mut unique = names.clone();
         unique.sort();

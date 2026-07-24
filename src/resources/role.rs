@@ -188,12 +188,8 @@ pub async fn handle_tool(
 }
 
 fn parse_rules(args: &serde_json::Value) -> Result<Vec<PolicyRule>, String> {
-    let rules_val = args
-        .get("rules")
-        .ok_or("rules is required")?;
-    let rules_arr = rules_val
-        .as_array()
-        .ok_or("rules must be an array")?;
+    let rules_val = args.get("rules").ok_or("rules is required")?;
+    let rules_arr = rules_val.as_array().ok_or("rules must be an array")?;
 
     rules_arr
         .iter()
@@ -229,10 +225,7 @@ fn parse_rules(args: &serde_json::Value) -> Result<Vec<PolicyRule>, String> {
         .collect()
 }
 
-async fn list_roles(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn list_roles(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let role_api = api(client, ns)?;
     let label_selector = args["label_selector"].as_str();
@@ -240,10 +233,7 @@ async fn list_roles(
     if let Some(sel) = label_selector {
         lp = lp.labels(sel);
     }
-    let list = role_api
-        .list(&lp)
-        .await
-        .map_err(|e| e.to_string())?;
+    let list = role_api.list(&lp).await.map_err(|e| e.to_string())?;
 
     let summaries: Vec<serde_json::Value> = list
         .iter()
@@ -261,10 +251,7 @@ async fn list_roles(
     serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
 }
 
-async fn get_role(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn get_role(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
     let role_api = api(client, ns)?;
@@ -288,10 +275,7 @@ async fn get_role(
     serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
 }
 
-async fn create_role(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn create_role(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
     let rules = parse_rules(args)?;
@@ -322,10 +306,7 @@ async fn create_role(
     serde_json::to_string_pretty(&summary).map_err(|e| e.to_string())
 }
 
-async fn update_role(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn update_role(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
     let rules = parse_rules(args)?;
@@ -347,11 +328,7 @@ async fn update_role(
 
     let role_api = api(client, ns)?;
     let patched = role_api
-        .patch(
-            name,
-            &PatchParams::apply("mcp-k8s"),
-            &Patch::Merge(&patch),
-        )
+        .patch(name, &PatchParams::apply("mcp-k8s"), &Patch::Merge(&patch))
         .await
         .map_err(|e| e.to_string())?;
 
@@ -359,10 +336,7 @@ async fn update_role(
     serde_json::to_string_pretty(&summary).map_err(|e| e.to_string())
 }
 
-async fn delete_role(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn delete_role(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
 
@@ -388,10 +362,7 @@ mod tests {
         let defs = tool_definitions();
         assert_eq!(defs.len(), 5);
 
-        let names: Vec<&str> = defs
-            .iter()
-            .map(|d| d["name"].as_str().unwrap())
-            .collect();
+        let names: Vec<&str> = defs.iter().map(|d| d["name"].as_str().unwrap()).collect();
 
         let mut unique = names.clone();
         unique.sort();
@@ -489,10 +460,7 @@ mod tests {
             metadata: ObjectMeta {
                 name: Some("test-role".to_string()),
                 namespace: Some("prod".to_string()),
-                labels: Some(BTreeMap::from([(
-                    "app".to_string(),
-                    "myapp".to_string(),
-                )])),
+                labels: Some(BTreeMap::from([("app".to_string(), "myapp".to_string())])),
                 ..Default::default()
             },
             rules: Some(vec![
@@ -541,11 +509,7 @@ mod tests {
         let rule = PolicyRule {
             api_groups: Some(vec!["".to_string(), "apps".to_string()]),
             resources: Some(vec!["pods".to_string(), "services".to_string()]),
-            verbs: vec![
-                "get".to_string(),
-                "list".to_string(),
-                "watch".to_string(),
-            ],
+            verbs: vec!["get".to_string(), "list".to_string(), "watch".to_string()],
             ..Default::default()
         };
 

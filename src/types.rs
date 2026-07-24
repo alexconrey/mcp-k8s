@@ -269,9 +269,11 @@ pub use crate::resources::clusterrole::ClusterRoleSummary;
 pub use crate::resources::clusterrolebinding::ClusterRoleBindingSummary;
 pub use crate::resources::configmap::ConfigMapSummary;
 pub use crate::resources::csr::CsrSummary;
-pub use crate::resources::daemonset::{DaemonSetConditionSummary, DaemonSetDetail, DaemonSetSummary};
-pub use crate::resources::endpointslice::EndpointSliceSummary;
+pub use crate::resources::daemonset::{
+    DaemonSetConditionSummary, DaemonSetDetail, DaemonSetSummary,
+};
 pub use crate::resources::endpoints::EndpointsSummary;
+pub use crate::resources::endpointslice::EndpointSliceSummary;
 pub use crate::resources::flowcontrol::{FlowSchemaSummary, PriorityLevelSummary};
 pub use crate::resources::hpa::HpaSummary;
 pub use crate::resources::ingressclass::IngressClassSummary;
@@ -295,5 +297,7 @@ pub use crate::resources::secret::SecretSummary;
 pub use crate::resources::service::{ServicePortSummary, ServiceSummary};
 pub use crate::resources::serviceaccount::ServiceAccountSummary;
 pub use crate::resources::statefulset::{StatefulSetDetail, StatefulSetSummary};
+pub use crate::resources::storage_internals::{
+    CSIDriverSummary, CSINodeSummary, VolumeAttachmentSummary,
+};
 pub use crate::resources::storageclass::StorageClassSummary;
-pub use crate::resources::storage_internals::{CSIDriverSummary, CSINodeSummary, VolumeAttachmentSummary};

@@ -147,8 +147,20 @@ impl ActionPermissions {
     /// `"apply_manifest"` → `"manifest"`, `"get_resource_yaml"` → `"resource_yaml"`.
     fn resource_from_tool(tool_name: &str) -> String {
         let prefixes = [
-            "list_", "get_", "create_", "update_", "delete_", "scale_", "restart_", "rollback_",
-            "approve_", "deny_", "cordon_", "uncordon_", "drain_", "evict_",
+            "list_",
+            "get_",
+            "create_",
+            "update_",
+            "delete_",
+            "scale_",
+            "restart_",
+            "rollback_",
+            "approve_",
+            "deny_",
+            "cordon_",
+            "uncordon_",
+            "drain_",
+            "evict_",
         ];
         for prefix in &prefixes {
             if let Some(rest) = tool_name.strip_prefix(prefix) {
@@ -260,24 +272,16 @@ mod tests {
 
     #[test]
     fn per_resource_override_is_case_insensitive() {
-        let perms = ActionPermissions::new(
-            false,
-            false,
-            false,
-            vec!["Deployment-Delete".to_string()],
-        );
+        let perms =
+            ActionPermissions::new(false, false, false, vec!["Deployment-Delete".to_string()]);
         assert!(!perms.is_action_allowed("deployment", &Action::Delete));
         assert!(!perms.is_action_allowed("DEPLOYMENT", &Action::Delete));
     }
 
     #[test]
     fn empty_disable_actions_entries_ignored() {
-        let perms = ActionPermissions::new(
-            false,
-            false,
-            false,
-            vec!["".to_string(), "  ".to_string()],
-        );
+        let perms =
+            ActionPermissions::new(false, false, false, vec!["".to_string(), "  ".to_string()]);
         assert!(perms.is_action_allowed("deployment", &Action::Create));
         assert!(perms.is_action_allowed("deployment", &Action::Update));
         assert!(perms.is_action_allowed("deployment", &Action::Delete));
@@ -289,54 +293,144 @@ mod tests {
 
     #[test]
     fn action_for_read_tools() {
-        assert_eq!(ActionPermissions::action_for_tool("list_deployments"), Action::Read);
-        assert_eq!(ActionPermissions::action_for_tool("get_deployment"), Action::Read);
-        assert_eq!(ActionPermissions::action_for_tool("get_pod_logs"), Action::Read);
-        assert_eq!(ActionPermissions::action_for_tool("get_build_logs"), Action::Read);
-        assert_eq!(ActionPermissions::action_for_tool("get_metrics"), Action::Read);
-        assert_eq!(ActionPermissions::action_for_tool("get_namespaces"), Action::Read);
+        assert_eq!(
+            ActionPermissions::action_for_tool("list_deployments"),
+            Action::Read
+        );
+        assert_eq!(
+            ActionPermissions::action_for_tool("get_deployment"),
+            Action::Read
+        );
+        assert_eq!(
+            ActionPermissions::action_for_tool("get_pod_logs"),
+            Action::Read
+        );
+        assert_eq!(
+            ActionPermissions::action_for_tool("get_build_logs"),
+            Action::Read
+        );
+        assert_eq!(
+            ActionPermissions::action_for_tool("get_metrics"),
+            Action::Read
+        );
+        assert_eq!(
+            ActionPermissions::action_for_tool("get_namespaces"),
+            Action::Read
+        );
         assert_eq!(ActionPermissions::action_for_tool("can_i"), Action::Read);
         assert_eq!(ActionPermissions::action_for_tool("whoami"), Action::Read);
-        assert_eq!(ActionPermissions::action_for_tool("list_my_permissions"), Action::Read);
-        assert_eq!(ActionPermissions::action_for_tool("get_resource_yaml"), Action::Read);
-        assert_eq!(ActionPermissions::action_for_tool("list_ingresses"), Action::Read);
-        assert_eq!(ActionPermissions::action_for_tool("get_events"), Action::Read);
+        assert_eq!(
+            ActionPermissions::action_for_tool("list_my_permissions"),
+            Action::Read
+        );
+        assert_eq!(
+            ActionPermissions::action_for_tool("get_resource_yaml"),
+            Action::Read
+        );
+        assert_eq!(
+            ActionPermissions::action_for_tool("list_ingresses"),
+            Action::Read
+        );
+        assert_eq!(
+            ActionPermissions::action_for_tool("get_events"),
+            Action::Read
+        );
     }
 
     #[test]
     fn action_for_create_tools() {
-        assert_eq!(ActionPermissions::action_for_tool("create_deployment"), Action::Create);
-        assert_eq!(ActionPermissions::action_for_tool("create_service"), Action::Create);
-        assert_eq!(ActionPermissions::action_for_tool("create_ingress"), Action::Create);
-        assert_eq!(ActionPermissions::action_for_tool("create_pod"), Action::Create);
-        assert_eq!(ActionPermissions::action_for_tool("apply_manifest"), Action::Create);
+        assert_eq!(
+            ActionPermissions::action_for_tool("create_deployment"),
+            Action::Create
+        );
+        assert_eq!(
+            ActionPermissions::action_for_tool("create_service"),
+            Action::Create
+        );
+        assert_eq!(
+            ActionPermissions::action_for_tool("create_ingress"),
+            Action::Create
+        );
+        assert_eq!(
+            ActionPermissions::action_for_tool("create_pod"),
+            Action::Create
+        );
+        assert_eq!(
+            ActionPermissions::action_for_tool("apply_manifest"),
+            Action::Create
+        );
     }
 
     #[test]
     fn action_for_update_tools() {
-        assert_eq!(ActionPermissions::action_for_tool("update_ingress"), Action::Update);
-        assert_eq!(ActionPermissions::action_for_tool("update_deployment"), Action::Update);
-        assert_eq!(ActionPermissions::action_for_tool("scale_deployment"), Action::Update);
-        assert_eq!(ActionPermissions::action_for_tool("restart_deployment"), Action::Update);
-        assert_eq!(ActionPermissions::action_for_tool("rollback_deployment"), Action::Update);
-        assert_eq!(ActionPermissions::action_for_tool("approve_csr"), Action::Update);
-        assert_eq!(ActionPermissions::action_for_tool("deny_csr"), Action::Update);
-        assert_eq!(ActionPermissions::action_for_tool("cordon_node"), Action::Update);
-        assert_eq!(ActionPermissions::action_for_tool("uncordon_node"), Action::Update);
-        assert_eq!(ActionPermissions::action_for_tool("drain_node"), Action::Update);
+        assert_eq!(
+            ActionPermissions::action_for_tool("update_ingress"),
+            Action::Update
+        );
+        assert_eq!(
+            ActionPermissions::action_for_tool("update_deployment"),
+            Action::Update
+        );
+        assert_eq!(
+            ActionPermissions::action_for_tool("scale_deployment"),
+            Action::Update
+        );
+        assert_eq!(
+            ActionPermissions::action_for_tool("restart_deployment"),
+            Action::Update
+        );
+        assert_eq!(
+            ActionPermissions::action_for_tool("rollback_deployment"),
+            Action::Update
+        );
+        assert_eq!(
+            ActionPermissions::action_for_tool("approve_csr"),
+            Action::Update
+        );
+        assert_eq!(
+            ActionPermissions::action_for_tool("deny_csr"),
+            Action::Update
+        );
+        assert_eq!(
+            ActionPermissions::action_for_tool("cordon_node"),
+            Action::Update
+        );
+        assert_eq!(
+            ActionPermissions::action_for_tool("uncordon_node"),
+            Action::Update
+        );
+        assert_eq!(
+            ActionPermissions::action_for_tool("drain_node"),
+            Action::Update
+        );
     }
 
     #[test]
     fn action_for_delete_tools() {
-        assert_eq!(ActionPermissions::action_for_tool("delete_deployment"), Action::Delete);
-        assert_eq!(ActionPermissions::action_for_tool("delete_pod"), Action::Delete);
-        assert_eq!(ActionPermissions::action_for_tool("delete_ingress"), Action::Delete);
-        assert_eq!(ActionPermissions::action_for_tool("evict_pod"), Action::Delete);
+        assert_eq!(
+            ActionPermissions::action_for_tool("delete_deployment"),
+            Action::Delete
+        );
+        assert_eq!(
+            ActionPermissions::action_for_tool("delete_pod"),
+            Action::Delete
+        );
+        assert_eq!(
+            ActionPermissions::action_for_tool("delete_ingress"),
+            Action::Delete
+        );
+        assert_eq!(
+            ActionPermissions::action_for_tool("evict_pod"),
+            Action::Delete
+        );
     }
 
     #[test]
     fn unknown_tool_defaults_to_read() {
-        assert_eq!(ActionPermissions::action_for_tool("some_unknown_thing"), Action::Read);
+        assert_eq!(
+            ActionPermissions::action_for_tool("some_unknown_thing"),
+            Action::Read
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -374,12 +468,8 @@ mod tests {
 
     #[test]
     fn tool_disallowed_by_per_resource_override() {
-        let perms = ActionPermissions::new(
-            false,
-            false,
-            false,
-            vec!["deployment-delete".to_string()],
-        );
+        let perms =
+            ActionPermissions::new(false, false, false, vec!["deployment-delete".to_string()]);
         assert!(!perms.is_tool_allowed("delete_deployment"));
         // Other delete tools still allowed
         assert!(perms.is_tool_allowed("delete_pod"));
@@ -407,11 +497,20 @@ mod tests {
 
     #[test]
     fn resource_extraction() {
-        assert_eq!(ActionPermissions::resource_from_tool("create_deployment"), "deployment");
+        assert_eq!(
+            ActionPermissions::resource_from_tool("create_deployment"),
+            "deployment"
+        );
         assert_eq!(ActionPermissions::resource_from_tool("delete_pod"), "pod");
-        assert_eq!(ActionPermissions::resource_from_tool("scale_deployment"), "deployment");
+        assert_eq!(
+            ActionPermissions::resource_from_tool("scale_deployment"),
+            "deployment"
+        );
         assert_eq!(ActionPermissions::resource_from_tool("list_pods"), "pods");
-        assert_eq!(ActionPermissions::resource_from_tool("apply_manifest"), "apply_manifest");
+        assert_eq!(
+            ActionPermissions::resource_from_tool("apply_manifest"),
+            "apply_manifest"
+        );
         assert_eq!(ActionPermissions::resource_from_tool("whoami"), "whoami");
     }
 

@@ -1,4 +1,3 @@
-
 use k8s_openapi::api::scheduling::v1::PriorityClass;
 use kube::api::ListParams;
 use serde::Serialize;
@@ -79,16 +78,12 @@ async fn list_priorityclasses(client: &K8sClient) -> Result<String, String> {
         .await
         .map_err(|e| e.to_string())?;
 
-    let summaries: Vec<PriorityClassSummary> =
-        list.iter().map(|pc| extract_summary(pc)).collect();
+    let summaries: Vec<PriorityClassSummary> = list.iter().map(|pc| extract_summary(pc)).collect();
 
     serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
 }
 
-async fn get_priorityclass(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn get_priorityclass(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let name = args["name"].as_str().ok_or("name is required")?;
     let pc_api = api(client);
     let pc = pc_api.get(name).await.map_err(|e| e.to_string())?;
@@ -113,18 +108,15 @@ async fn get_priorityclass(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::BTreeMap;
     use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
+    use std::collections::BTreeMap;
 
     #[test]
     fn tool_definitions_returns_two_tools() {
         let defs = tool_definitions();
         assert_eq!(defs.len(), 2);
 
-        let names: Vec<&str> = defs
-            .iter()
-            .map(|d| d["name"].as_str().unwrap())
-            .collect();
+        let names: Vec<&str> = defs.iter().map(|d| d["name"].as_str().unwrap()).collect();
 
         let mut unique = names.clone();
         unique.sort();
@@ -195,10 +187,7 @@ mod tests {
         let pc = PriorityClass {
             metadata: ObjectMeta {
                 name: Some("system-critical".to_string()),
-                labels: Some(BTreeMap::from([(
-                    "tier".to_string(),
-                    "system".to_string(),
-                )])),
+                labels: Some(BTreeMap::from([("tier".to_string(), "system".to_string())])),
                 annotations: Some(BTreeMap::from([(
                     "note".to_string(),
                     "do not delete".to_string(),

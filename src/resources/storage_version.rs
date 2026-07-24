@@ -70,8 +70,7 @@ async fn list_storageversions(client: &K8sClient) -> Result<String, String> {
         .await
         .map_err(|e| e.to_string())?;
 
-    let summaries: Vec<StorageVersionSummary> =
-        list.iter().map(|sv| extract_summary(sv)).collect();
+    let summaries: Vec<StorageVersionSummary> = list.iter().map(|sv| extract_summary(sv)).collect();
 
     serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
 }
@@ -151,10 +150,7 @@ mod tests {
         let defs = tool_definitions();
         assert_eq!(defs.len(), 2);
 
-        let names: Vec<&str> = defs
-            .iter()
-            .map(|d| d["name"].as_str().unwrap())
-            .collect();
+        let names: Vec<&str> = defs.iter().map(|d| d["name"].as_str().unwrap()).collect();
 
         let mut unique = names.clone();
         unique.sort();

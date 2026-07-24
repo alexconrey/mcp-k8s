@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
 use k8s_openapi::api::autoscaling::v2::{
-    CrossVersionObjectReference, HorizontalPodAutoscaler, HorizontalPodAutoscalerSpec,
-    MetricSpec, MetricTarget, ResourceMetricSource,
+    CrossVersionObjectReference, HorizontalPodAutoscaler, HorizontalPodAutoscalerSpec, MetricSpec,
+    MetricTarget, ResourceMetricSource,
 };
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use kube::api::{DeleteParams, ListParams, Patch, PatchParams, PostParams};
@@ -12,10 +12,7 @@ use crate::client::K8sClient;
 
 type Hpa = HorizontalPodAutoscaler;
 
-fn api(
-    client: &K8sClient,
-    ns: &str,
-) -> Result<kube::Api<Hpa>, String> {
+fn api(client: &K8sClient, ns: &str) -> Result<kube::Api<Hpa>, String> {
     if !client.is_namespace_allowed(ns) {
         return Err(format!("Namespace '{ns}' is not in the allowed list"));
     }
@@ -75,7 +72,12 @@ fn extract_summary(hpa: &Hpa) -> HpaSummary {
     let status = hpa.status.as_ref();
 
     let (scale_target_kind, scale_target_name) = spec
-        .map(|s| (s.scale_target_ref.kind.clone(), s.scale_target_ref.name.clone()))
+        .map(|s| {
+            (
+                s.scale_target_ref.kind.clone(),
+                s.scale_target_ref.name.clone(),
+            )
+        })
         .unwrap_or_default();
 
     HpaSummary {
@@ -96,7 +98,12 @@ fn extract_detail(hpa: &Hpa) -> HpaDetail {
     let status = hpa.status.as_ref();
 
     let (scale_target_kind, scale_target_name) = spec
-        .map(|s| (s.scale_target_ref.kind.clone(), s.scale_target_ref.name.clone()))
+        .map(|s| {
+            (
+                s.scale_target_ref.kind.clone(),
+                s.scale_target_ref.name.clone(),
+            )
+        })
         .unwrap_or_default();
 
     let metrics = spec
@@ -257,10 +264,7 @@ async fn list_hpas(client: &K8sClient, args: &serde_json::Value) -> Result<Strin
     if let Some(sel) = label_selector {
         lp = lp.labels(sel);
     }
-    let list = hpa_api
-        .list(&lp)
-        .await
-        .map_err(|e| e.to_string())?;
+    let list = hpa_api.list(&lp).await.map_err(|e| e.to_string())?;
 
     let summaries: Vec<serde_json::Value> = list
         .iter()
@@ -376,11 +380,7 @@ async fn update_hpa(client: &K8sClient, args: &serde_json::Value) -> Result<Stri
 
     let hpa_api = api(client, ns)?;
     let patched = hpa_api
-        .patch(
-            name,
-            &PatchParams::apply("mcp-k8s"),
-            &Patch::Merge(&patch),
-        )
+        .patch(name, &PatchParams::apply("mcp-k8s"), &Patch::Merge(&patch))
         .await
         .map_err(|e| e.to_string())?;
 
@@ -415,10 +415,7 @@ mod tests {
         let defs = tool_definitions();
         assert_eq!(defs.len(), 5);
 
-        let names: Vec<&str> = defs
-            .iter()
-            .filter_map(|d| d["name"].as_str())
-            .collect();
+        let names: Vec<&str> = defs.iter().filter_map(|d| d["name"].as_str()).collect();
         assert!(names.contains(&"list_hpas"));
         assert!(names.contains(&"get_hpa"));
         assert!(names.contains(&"create_hpa"));
@@ -480,7 +477,9 @@ mod tests {
                 name: Some("web-hpa".to_string()),
                 namespace: Some("production".to_string()),
                 creation_timestamp: Some(k8s_openapi::apimachinery::pkg::apis::meta::v1::Time(
-                    "2024-06-15T12:00:00Z".parse::<k8s_openapi::jiff::Timestamp>().unwrap(),
+                    "2024-06-15T12:00:00Z"
+                        .parse::<k8s_openapi::jiff::Timestamp>()
+                        .unwrap(),
                 )),
                 ..Default::default()
             },

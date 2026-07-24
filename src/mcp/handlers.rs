@@ -23,7 +23,9 @@ pub async fn handle_tool(
     // Check permissions before dispatching
     if !client.permissions().is_tool_allowed(name) {
         let action = crate::permissions::ActionPermissions::action_for_tool(name);
-        return Some(Err(format!("action '{action}' is not allowed on this tool: {name}")));
+        return Some(Err(format!(
+            "action '{action}' is not allowed on this tool: {name}"
+        )));
     }
 
     // Try resource module handlers first
@@ -65,10 +67,7 @@ async fn get_namespaces(client: &K8sClient) -> Result<String, String> {
     Ok(names.join("\n"))
 }
 
-async fn list_deployments(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn list_deployments(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let api = client.deployments_api(ns).map_err(|e| e.to_string())?;
     let label_selector = args["label_selector"].as_str();
@@ -80,10 +79,7 @@ async fn list_deployments(
     if let Some(sel) = field_selector {
         lp = lp.fields(sel);
     }
-    let list = api
-        .list(&lp)
-        .await
-        .map_err(|e| e.to_string())?;
+    let list = api.list(&lp).await.map_err(|e| e.to_string())?;
 
     let summaries: Vec<serde_json::Value> = list
         .iter()
@@ -96,10 +92,7 @@ async fn list_deployments(
     serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
 }
 
-async fn get_deployment(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn get_deployment(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
 
@@ -160,9 +153,7 @@ async fn get_deployment(
                     })
                     .unwrap_or(false)
             })
-            .map(|ing| {
-                serde_json::to_value(extract::ingress_summary(ing)).unwrap_or_default()
-            })
+            .map(|ing| serde_json::to_value(extract::ingress_summary(ing)).unwrap_or_default())
             .collect();
         matching
     };
@@ -176,10 +167,7 @@ async fn get_deployment(
     serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
 }
 
-async fn get_pod_logs(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn get_pod_logs(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let pod = args["pod_name"].as_str().ok_or("pod_name is required")?;
     let tail = args["tail_lines"].as_i64();
@@ -199,10 +187,7 @@ async fn get_pod_logs(
     Ok(logs)
 }
 
-async fn get_events(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn get_events(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let resource_name = args["resource_name"].as_str();
     let label_selector = args["label_selector"].as_str();
@@ -331,10 +316,7 @@ async fn get_deployment_history(
     }
 }
 
-async fn get_build_logs(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn get_build_logs(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let job_name = args["job_name"].as_str().ok_or("job_name is required")?;
 
@@ -359,10 +341,7 @@ async fn get_build_logs(
     Ok(logs)
 }
 
-async fn list_ingresses(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn list_ingresses(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let api = client.ingresses_api(ns).map_err(|e| e.to_string())?;
     let label_selector = args["label_selector"].as_str();
@@ -370,10 +349,7 @@ async fn list_ingresses(
     if let Some(sel) = label_selector {
         lp = lp.labels(sel);
     }
-    let list = api
-        .list(&lp)
-        .await
-        .map_err(|e| e.to_string())?;
+    let list = api.list(&lp).await.map_err(|e| e.to_string())?;
 
     let summaries: Vec<serde_json::Value> = list
         .iter()
@@ -383,10 +359,7 @@ async fn list_ingresses(
     serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
 }
 
-async fn get_metrics(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn get_metrics(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let label_selector = args["label_selector"].as_str();
 
@@ -473,10 +446,7 @@ async fn get_metrics(
     }
 }
 
-async fn create_service(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn create_service(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
     let port = args["port"].as_i64().unwrap_or(80) as i32;
@@ -576,10 +546,7 @@ async fn ensure_service(
     Ok(())
 }
 
-async fn create_ingress(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn create_ingress(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
     let service_name = args["service_name"]
@@ -587,10 +554,7 @@ async fn create_ingress(
         .ok_or("service_name is required")?;
     let service_port = args["service_port"].as_i64().unwrap_or(80) as i32;
     let path = args["path"].as_str().unwrap_or("/").to_string();
-    let path_type = args["path_type"]
-        .as_str()
-        .unwrap_or("Prefix")
-        .to_string();
+    let path_type = args["path_type"].as_str().unwrap_or("Prefix").to_string();
     let host = args["host"].as_str().map(|s| s.to_string());
     let ingress_class = args["ingress_class"].as_str().map(|s| s.to_string());
     let annotations: Option<std::collections::BTreeMap<String, String>> = args
@@ -650,10 +614,7 @@ async fn create_ingress(
         .map_err(|e| e.to_string())
 }
 
-async fn update_ingress(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn update_ingress(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
     let service_name = args["service_name"]
@@ -661,10 +622,7 @@ async fn update_ingress(
         .ok_or("service_name is required")?;
     let service_port = args["service_port"].as_i64().unwrap_or(80) as i32;
     let path = args["path"].as_str().unwrap_or("/").to_string();
-    let path_type = args["path_type"]
-        .as_str()
-        .unwrap_or("Prefix")
-        .to_string();
+    let path_type = args["path_type"].as_str().unwrap_or("Prefix").to_string();
     let host = args["host"].as_str().map(|s| s.to_string());
     let ingress_class = args["ingress_class"].as_str().map(|s| s.to_string());
     let annotations: Option<std::collections::BTreeMap<String, String>> = args
@@ -697,11 +655,7 @@ async fn update_ingress(
 
     let ing_api = client.ingresses_api(ns).map_err(|e| e.to_string())?;
     let patched = ing_api
-        .patch(
-            name,
-            &PatchParams::apply("mcp-k8s"),
-            &Patch::Merge(&patch),
-        )
+        .patch(name, &PatchParams::apply("mcp-k8s"), &Patch::Merge(&patch))
         .await
         .map_err(|e| e.to_string())?;
 

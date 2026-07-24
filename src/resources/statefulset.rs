@@ -1,21 +1,14 @@
 use std::collections::BTreeMap;
 
-use k8s_openapi::api::apps::v1::{
-    StatefulSet, StatefulSetSpec,
-};
-use k8s_openapi::api::core::v1::{
-    Container, ContainerPort, PodSpec, PodTemplateSpec,
-};
+use k8s_openapi::api::apps::v1::{StatefulSet, StatefulSetSpec};
+use k8s_openapi::api::core::v1::{Container, ContainerPort, PodSpec, PodTemplateSpec};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::{LabelSelector, ObjectMeta};
 use kube::api::{DeleteParams, ListParams, Patch, PatchParams, PostParams};
 use serde::Serialize;
 
 use crate::client::K8sClient;
 
-fn api(
-    client: &K8sClient,
-    ns: &str,
-) -> Result<kube::Api<StatefulSet>, String> {
+fn api(client: &K8sClient, ns: &str) -> Result<kube::Api<StatefulSet>, String> {
     if !client.is_namespace_allowed(ns) {
         return Err(format!("Namespace '{ns}' is not in the allowed list"));
     }
@@ -127,10 +120,7 @@ fn extract_detail(sts: &StatefulSet) -> StatefulSetDetail {
                     status: c.status.clone(),
                     reason: c.reason.clone(),
                     message: c.message.clone(),
-                    last_transition: c
-                        .last_transition_time
-                        .as_ref()
-                        .map(|t| t.0.to_string()),
+                    last_transition: c.last_transition_time.as_ref().map(|t| t.0.to_string()),
                 })
                 .collect()
         })
@@ -156,13 +146,8 @@ fn extract_detail(sts: &StatefulSet) -> StatefulSetDetail {
                 .map(|pvc| {
                     let pvc_spec = pvc.spec.as_ref();
                     VolumeClaimTemplateSummary {
-                        name: pvc
-                            .metadata
-                            .name
-                            .clone()
-                            .unwrap_or_default(),
-                        storage_class: pvc_spec
-                            .and_then(|s| s.storage_class_name.clone()),
+                        name: pvc.metadata.name.clone().unwrap_or_default(),
+                        storage_class: pvc_spec.and_then(|s| s.storage_class_name.clone()),
                         access_modes: pvc_spec
                             .and_then(|s| s.access_modes.clone())
                             .unwrap_or_default(),
@@ -297,23 +282,15 @@ pub async fn handle_tool(
 // Tool implementations
 // ---------------------------------------------------------------------------
 
-async fn list_statefulsets(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
-    let ns = args["namespace"]
-        .as_str()
-        .ok_or("namespace is required")?;
+async fn list_statefulsets(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
+    let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let sts_api = api(client, ns)?;
     let label_selector = args["label_selector"].as_str();
     let mut lp = ListParams::default();
     if let Some(sel) = label_selector {
         lp = lp.labels(sel);
     }
-    let list = sts_api
-        .list(&lp)
-        .await
-        .map_err(|e| e.to_string())?;
+    let list = sts_api.list(&lp).await.map_err(|e| e.to_string())?;
 
     let summaries: Vec<serde_json::Value> = list
         .iter()
@@ -326,32 +303,23 @@ async fn list_statefulsets(
     serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
 }
 
-async fn get_statefulset(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
-    let ns = args["namespace"]
-        .as_str()
-        .ok_or("namespace is required")?;
+async fn get_statefulset(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
+    let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
 
     let sts_api = api(client, ns)?;
     let sts = sts_api.get(name).await.map_err(|e| e.to_string())?;
     let detail = extract_detail(&sts);
 
-    serde_json::to_string_pretty(
-        &serde_json::to_value(detail).unwrap_or_default(),
-    )
-    .map_err(|e| e.to_string())
+    serde_json::to_string_pretty(&serde_json::to_value(detail).unwrap_or_default())
+        .map_err(|e| e.to_string())
 }
 
 async fn create_statefulset(
     client: &K8sClient,
     args: &serde_json::Value,
 ) -> Result<String, String> {
-    let ns = args["namespace"]
-        .as_str()
-        .ok_or("namespace is required")?;
+    let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
     let image = args["image"].as_str().ok_or("image is required")?;
     let replicas = args["replicas"].as_i64().unwrap_or(1) as i32;
@@ -423,27 +391,21 @@ async fn create_statefulset(
         .map_err(|e| e.to_string())?;
 
     let summary = extract_summary(&created);
-    serde_json::to_string_pretty(
-        &serde_json::to_value(summary).unwrap_or_default(),
-    )
-    .map_err(|e| e.to_string())
+    serde_json::to_string_pretty(&serde_json::to_value(summary).unwrap_or_default())
+        .map_err(|e| e.to_string())
 }
 
 async fn update_statefulset(
     client: &K8sClient,
     args: &serde_json::Value,
 ) -> Result<String, String> {
-    let ns = args["namespace"]
-        .as_str()
-        .ok_or("namespace is required")?;
+    let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
     let image = args["image"].as_str();
     let replicas = args["replicas"].as_i64().map(|r| r as i32);
 
     if image.is_none() && replicas.is_none() {
-        return Err(
-            "At least one of 'image' or 'replicas' must be provided".to_string()
-        );
+        return Err("At least one of 'image' or 'replicas' must be provided".to_string());
     }
 
     let mut patch = serde_json::json!({ "spec": {} });
@@ -465,28 +427,20 @@ async fn update_statefulset(
 
     let sts_api = api(client, ns)?;
     let patched = sts_api
-        .patch(
-            name,
-            &PatchParams::apply("mcp-k8s"),
-            &Patch::Merge(&patch),
-        )
+        .patch(name, &PatchParams::apply("mcp-k8s"), &Patch::Merge(&patch))
         .await
         .map_err(|e| e.to_string())?;
 
     let detail = extract_detail(&patched);
-    serde_json::to_string_pretty(
-        &serde_json::to_value(detail).unwrap_or_default(),
-    )
-    .map_err(|e| e.to_string())
+    serde_json::to_string_pretty(&serde_json::to_value(detail).unwrap_or_default())
+        .map_err(|e| e.to_string())
 }
 
 async fn delete_statefulset(
     client: &K8sClient,
     args: &serde_json::Value,
 ) -> Result<String, String> {
-    let ns = args["namespace"]
-        .as_str()
-        .ok_or("namespace is required")?;
+    let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
 
     let sts_api = api(client, ns)?;
@@ -571,10 +525,7 @@ mod tests {
         let defs = tool_definitions();
         assert_eq!(defs.len(), 5);
 
-        let names: Vec<&str> = defs
-            .iter()
-            .filter_map(|d| d["name"].as_str())
-            .collect();
+        let names: Vec<&str> = defs.iter().filter_map(|d| d["name"].as_str()).collect();
         assert_eq!(names.len(), 5);
 
         let mut unique = names.clone();

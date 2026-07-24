@@ -74,8 +74,7 @@ struct Cli {
 async fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
         .init();
 
@@ -163,9 +162,7 @@ async fn run_http(client: K8sClient, listen: &str) {
 
     tracing::info!("mcp-k8s HTTP server listening on {listen}");
 
-    axum::serve(listener, app)
-        .await
-        .expect("Server error");
+    axum::serve(listener, app).await.expect("Server error");
 }
 
 #[utoipa::path(

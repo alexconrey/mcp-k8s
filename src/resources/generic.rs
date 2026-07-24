@@ -74,23 +74,17 @@ pub async fn handle_tool(
     Some(result)
 }
 
-async fn apply_manifest(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
-    let manifest_str = args["manifest"]
-        .as_str()
-        .ok_or("manifest is required")?;
+async fn apply_manifest(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
+    let manifest_str = args["manifest"].as_str().ok_or("manifest is required")?;
 
     // Parse the manifest string as JSON. If the input is YAML (not JSON),
     // this will fail with a clear error message.
-    let manifest: serde_json::Value =
-        serde_json::from_str(manifest_str).map_err(|e| {
-            format!(
-                "Failed to parse manifest as JSON: {e}. \
+    let manifest: serde_json::Value = serde_json::from_str(manifest_str).map_err(|e| {
+        format!(
+            "Failed to parse manifest as JSON: {e}. \
                  If providing YAML, please convert to JSON first."
-            )
-        })?;
+        )
+    })?;
 
     // Extract required fields from the parsed manifest
     let api_version = manifest["apiVersion"]
@@ -120,9 +114,7 @@ async fn apply_manifest(
 
     // Build the API handle based on scope
     let api: Api<DynamicObject> = match (caps.scope, namespace) {
-        (Scope::Namespaced, Some(ns)) => {
-            Api::namespaced_with(client.inner().clone(), ns, &ar)
-        }
+        (Scope::Namespaced, Some(ns)) => Api::namespaced_with(client.inner().clone(), ns, &ar),
         (Scope::Namespaced, None) => {
             return Err(format!(
                 "Resource {kind} is namespaced but no namespace was provided in the manifest"
@@ -147,10 +139,7 @@ async fn apply_manifest(
     serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
 }
 
-async fn get_resource_json(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn get_resource_json(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let api_version = args["api_version"]
         .as_str()
         .ok_or("api_version is required")?;
@@ -174,9 +163,7 @@ async fn get_resource_json(
 
     // Build the API handle based on scope
     let api: Api<DynamicObject> = match (caps.scope, namespace) {
-        (Scope::Namespaced, Some(ns)) => {
-            Api::namespaced_with(client.inner().clone(), ns, &ar)
-        }
+        (Scope::Namespaced, Some(ns)) => Api::namespaced_with(client.inner().clone(), ns, &ar),
         (Scope::Namespaced, None) => {
             return Err(format!(
                 "Resource {kind} is namespaced but no namespace was provided"
@@ -203,10 +190,7 @@ mod tests {
         let defs = tool_definitions();
         assert_eq!(defs.len(), 2);
 
-        let names: Vec<&str> = defs
-            .iter()
-            .map(|d| d["name"].as_str().unwrap())
-            .collect();
+        let names: Vec<&str> = defs.iter().map(|d| d["name"].as_str().unwrap()).collect();
 
         let mut unique = names.clone();
         unique.sort();

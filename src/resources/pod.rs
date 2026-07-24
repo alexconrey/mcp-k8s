@@ -304,10 +304,7 @@ async fn delete_pod(client: &K8sClient, args: &serde_json::Value) -> Result<Stri
     }
 
     let pod_api = api(client, ns)?;
-    pod_api
-        .delete(name, &dp)
-        .await
-        .map_err(|e| e.to_string())?;
+    pod_api.delete(name, &dp).await.map_err(|e| e.to_string())?;
 
     let result = serde_json::json!({
         "deleted": name,
@@ -327,10 +324,7 @@ async fn evict_pod(client: &K8sClient, args: &serde_json::Value) -> Result<Strin
     }
 
     let pod_api = api(client, ns)?;
-    pod_api
-        .evict(name, &ep)
-        .await
-        .map_err(|e| e.to_string())?;
+    pod_api.evict(name, &ep).await.map_err(|e| e.to_string())?;
 
     let result = serde_json::json!({
         "evicted": name,
@@ -444,10 +438,7 @@ mod tests {
         let defs = tool_definitions();
         assert_eq!(defs.len(), 7);
 
-        let names: Vec<&str> = defs
-            .iter()
-            .map(|d| d["name"].as_str().unwrap())
-            .collect();
+        let names: Vec<&str> = defs.iter().map(|d| d["name"].as_str().unwrap()).collect();
 
         let mut unique = names.clone();
         unique.sort();

@@ -1,8 +1,6 @@
 use std::collections::BTreeMap;
 
-use k8s_openapi::api::storage::v1::{
-    CSIDriver, CSINode, CSIStorageCapacity, VolumeAttachment,
-};
+use k8s_openapi::api::storage::v1::{CSIDriver, CSINode, CSIStorageCapacity, VolumeAttachment};
 use kube::api::ListParams;
 use serde::Serialize;
 
@@ -103,10 +101,7 @@ fn extract_csinode_summary(node: &CSINode) -> CSINodeSummary {
         .map(|d| CSINodeDriverInfo {
             name: d.name.clone(),
             node_id: d.node_id.clone(),
-            allocatable_count: d
-                .allocatable
-                .as_ref()
-                .and_then(|a| a.count),
+            allocatable_count: d.allocatable.as_ref().and_then(|a| a.count),
         })
         .collect();
 
@@ -148,16 +143,9 @@ fn extract_va_summary(va: &VolumeAttachment) -> VolumeAttachmentSummary {
     let meta = &va.metadata;
     let spec = &va.spec;
 
-    let pv_name = spec
-        .source
-        .persistent_volume_name
-        .clone();
+    let pv_name = spec.source.persistent_volume_name.clone();
 
-    let attached = va
-        .status
-        .as_ref()
-        .map(|s| s.attached)
-        .unwrap_or(false);
+    let attached = va.status.as_ref().map(|s| s.attached).unwrap_or(false);
 
     VolumeAttachmentSummary {
         name: meta.name.clone().unwrap_or_default(),
@@ -172,10 +160,7 @@ fn extract_va_detail(va: &VolumeAttachment) -> VolumeAttachmentDetail {
     let meta = &va.metadata;
     let spec = &va.spec;
 
-    let pv_name = spec
-        .source
-        .persistent_volume_name
-        .clone();
+    let pv_name = spec.source.persistent_volume_name.clone();
 
     let status = va.status.as_ref();
     let attached = status.map(|s| s.attached).unwrap_or(false);
@@ -344,10 +329,7 @@ async fn list_csidrivers(client: &K8sClient) -> Result<String, String> {
         .await
         .map_err(|e| e.to_string())?;
 
-    let summaries: Vec<CSIDriverSummary> = list
-        .iter()
-        .map(extract_csidriver_summary)
-        .collect();
+    let summaries: Vec<CSIDriverSummary> = list.iter().map(extract_csidriver_summary).collect();
 
     serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
 }
@@ -368,10 +350,7 @@ async fn list_csinodes(client: &K8sClient) -> Result<String, String> {
         .await
         .map_err(|e| e.to_string())?;
 
-    let summaries: Vec<CSINodeSummary> = list
-        .iter()
-        .map(extract_csinode_summary)
-        .collect();
+    let summaries: Vec<CSINodeSummary> = list.iter().map(extract_csinode_summary).collect();
 
     serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
 }
@@ -383,10 +362,7 @@ async fn list_volumeattachments(client: &K8sClient) -> Result<String, String> {
         .await
         .map_err(|e| e.to_string())?;
 
-    let summaries: Vec<VolumeAttachmentSummary> = list
-        .iter()
-        .map(extract_va_summary)
-        .collect();
+    let summaries: Vec<VolumeAttachmentSummary> = list.iter().map(extract_va_summary).collect();
 
     serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
 }
@@ -419,10 +395,8 @@ async fn list_csistoragecapacities(
             .map_err(|e| e.to_string())?
     };
 
-    let summaries: Vec<CSIStorageCapacitySummary> = list
-        .iter()
-        .map(extract_csicap_summary)
-        .collect();
+    let summaries: Vec<CSIStorageCapacitySummary> =
+        list.iter().map(extract_csicap_summary).collect();
 
     serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
 }
@@ -435,8 +409,8 @@ async fn list_csistoragecapacities(
 mod tests {
     use super::*;
     use k8s_openapi::api::storage::v1::{
-        CSIDriverSpec, CSINodeDriver, CSINodeSpec, VolumeAttachmentSource,
-        VolumeAttachmentSpec, VolumeAttachmentStatus, VolumeError,
+        CSIDriverSpec, CSINodeDriver, CSINodeSpec, VolumeAttachmentSource, VolumeAttachmentSpec,
+        VolumeAttachmentStatus, VolumeError,
     };
     use k8s_openapi::apimachinery::pkg::api::resource::Quantity;
     use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
@@ -447,10 +421,7 @@ mod tests {
         let defs = tool_definitions();
         assert_eq!(defs.len(), 6);
 
-        let names: Vec<&str> = defs
-            .iter()
-            .map(|d| d["name"].as_str().unwrap())
-            .collect();
+        let names: Vec<&str> = defs.iter().map(|d| d["name"].as_str().unwrap()).collect();
 
         let mut unique = names.clone();
         unique.sort();
@@ -503,10 +474,7 @@ mod tests {
             attach_required: Some(true),
             pod_info_on_mount: Some(true),
             created_at: Some("2024-06-15T10:00:00Z".to_string()),
-            volume_lifecycle_modes: vec![
-                "Persistent".to_string(),
-                "Ephemeral".to_string(),
-            ],
+            volume_lifecycle_modes: vec!["Persistent".to_string(), "Ephemeral".to_string()],
             fs_group_policy: Some("File".to_string()),
             labels: BTreeMap::from([("app".to_string(), "ebs-csi".to_string())]),
             annotations: BTreeMap::new(),

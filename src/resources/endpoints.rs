@@ -1,4 +1,3 @@
-
 use k8s_openapi::api::core::v1::Endpoints;
 use kube::api::ListParams;
 use serde::Serialize;
@@ -84,10 +83,7 @@ pub async fn handle_tool(
     Some(result)
 }
 
-async fn list_endpoints(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn list_endpoints(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let ep_api = api(client, ns)?;
     let label_selector = args["label_selector"].as_str();
@@ -99,10 +95,7 @@ async fn list_endpoints(
     if let Some(sel) = field_selector {
         lp = lp.fields(sel);
     }
-    let list = ep_api
-        .list(&lp)
-        .await
-        .map_err(|e| e.to_string())?;
+    let list = ep_api.list(&lp).await.map_err(|e| e.to_string())?;
 
     let summaries: Vec<serde_json::Value> = list
         .iter()
@@ -115,10 +108,7 @@ async fn list_endpoints(
     serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
 }
 
-async fn get_endpoints(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn get_endpoints(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
 
@@ -180,19 +170,18 @@ async fn get_endpoints(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::BTreeMap;
-    use k8s_openapi::api::core::v1::{EndpointAddress, EndpointPort, EndpointSubset, ObjectReference};
+    use k8s_openapi::api::core::v1::{
+        EndpointAddress, EndpointPort, EndpointSubset, ObjectReference,
+    };
     use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
+    use std::collections::BTreeMap;
 
     #[test]
     fn tool_definitions_returns_two_unique_tools() {
         let defs = tool_definitions();
         assert_eq!(defs.len(), 2);
 
-        let names: Vec<&str> = defs
-            .iter()
-            .map(|d| d["name"].as_str().unwrap())
-            .collect();
+        let names: Vec<&str> = defs.iter().map(|d| d["name"].as_str().unwrap()).collect();
 
         let mut unique = names.clone();
         unique.sort();
@@ -291,24 +280,20 @@ mod tests {
                             ..Default::default()
                         },
                     ]),
-                    ports: Some(vec![
-                        EndpointPort {
-                            port: 8080,
-                            protocol: Some("TCP".to_string()),
-                            name: Some("http".to_string()),
-                            ..Default::default()
-                        },
-                    ]),
+                    ports: Some(vec![EndpointPort {
+                        port: 8080,
+                        protocol: Some("TCP".to_string()),
+                        name: Some("http".to_string()),
+                        ..Default::default()
+                    }]),
                     not_ready_addresses: None,
                 },
                 EndpointSubset {
-                    addresses: Some(vec![
-                        EndpointAddress {
-                            ip: "10.0.1.1".to_string(),
-                            target_ref: None,
-                            ..Default::default()
-                        },
-                    ]),
+                    addresses: Some(vec![EndpointAddress {
+                        ip: "10.0.1.1".to_string(),
+                        target_ref: None,
+                        ..Default::default()
+                    }]),
                     ports: Some(vec![
                         EndpointPort {
                             port: 9090,
@@ -368,13 +353,11 @@ mod tests {
                 namespace: Some("default".to_string()),
                 ..Default::default()
             },
-            subsets: Some(vec![
-                EndpointSubset {
-                    addresses: None,
-                    ports: Some(vec![]),
-                    not_ready_addresses: None,
-                },
-            ]),
+            subsets: Some(vec![EndpointSubset {
+                addresses: None,
+                ports: Some(vec![]),
+                not_ready_addresses: None,
+            }]),
         };
 
         let summary = extract_summary(&ep);

@@ -1,9 +1,7 @@
 use std::collections::BTreeMap;
 
 use k8s_openapi::api::apps::v1::{Deployment, DeploymentSpec, ReplicaSet};
-use k8s_openapi::api::core::v1::{
-    Container, ContainerPort, EnvVar, PodSpec, PodTemplateSpec,
-};
+use k8s_openapi::api::core::v1::{Container, ContainerPort, EnvVar, PodSpec, PodTemplateSpec};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::{LabelSelector, ObjectMeta};
 use kube::api::{DeleteParams, ListParams, Patch, PatchParams, PostParams};
 use serde::Serialize;
@@ -84,17 +82,15 @@ fn extract_summary(dep: &Deployment) -> DeploymentSummary {
 
 /// Build env vars from an optional JSON object of key-value pairs.
 fn env_from_args(args: &serde_json::Value) -> Option<Vec<EnvVar>> {
-    args.get("env")
-        .and_then(|v| v.as_object())
-        .map(|obj| {
-            obj.iter()
-                .map(|(k, v)| EnvVar {
-                    name: k.clone(),
-                    value: Some(v.as_str().unwrap_or_default().to_string()),
-                    ..Default::default()
-                })
-                .collect()
-        })
+    args.get("env").and_then(|v| v.as_object()).map(|obj| {
+        obj.iter()
+            .map(|(k, v)| EnvVar {
+                name: k.clone(),
+                value: Some(v.as_str().unwrap_or_default().to_string()),
+                ..Default::default()
+            })
+            .collect()
+    })
 }
 
 /// Format the current UTC time as an RFC 3339 string using only std.
@@ -267,13 +263,8 @@ pub async fn handle_tool(
 // Tool implementations
 // ---------------------------------------------------------------------------
 
-async fn create_deployment(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
-    let ns = args["namespace"]
-        .as_str()
-        .ok_or("namespace is required")?;
+async fn create_deployment(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
+    let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
     let image = args["image"].as_str().ok_or("image is required")?;
     let replicas = args["replicas"].as_i64().unwrap_or(1) as i32;
@@ -343,28 +334,19 @@ async fn create_deployment(
         .map_err(|e| e.to_string())?;
 
     let summary = extract_summary(&created);
-    serde_json::to_string_pretty(
-        &serde_json::to_value(summary).unwrap_or_default(),
-    )
-    .map_err(|e| e.to_string())
+    serde_json::to_string_pretty(&serde_json::to_value(summary).unwrap_or_default())
+        .map_err(|e| e.to_string())
 }
 
-async fn update_deployment(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
-    let ns = args["namespace"]
-        .as_str()
-        .ok_or("namespace is required")?;
+async fn update_deployment(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
+    let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
     let image = args["image"].as_str();
     let replicas = args["replicas"].as_i64().map(|r| r as i32);
     let env = env_from_args(args);
 
     if image.is_none() && replicas.is_none() && env.is_none() {
-        return Err(
-            "At least one of 'image', 'replicas', or 'env' must be provided".to_string(),
-        );
+        return Err("At least one of 'image', 'replicas', or 'env' must be provided".to_string());
     }
 
     let mut patch = serde_json::json!({ "spec": {} });
@@ -399,28 +381,17 @@ async fn update_deployment(
 
     let dep_api = api(client, ns)?;
     let patched = dep_api
-        .patch(
-            name,
-            &PatchParams::apply("mcp-k8s"),
-            &Patch::Merge(&patch),
-        )
+        .patch(name, &PatchParams::apply("mcp-k8s"), &Patch::Merge(&patch))
         .await
         .map_err(|e| e.to_string())?;
 
     let summary = extract_summary(&patched);
-    serde_json::to_string_pretty(
-        &serde_json::to_value(summary).unwrap_or_default(),
-    )
-    .map_err(|e| e.to_string())
+    serde_json::to_string_pretty(&serde_json::to_value(summary).unwrap_or_default())
+        .map_err(|e| e.to_string())
 }
 
-async fn delete_deployment(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
-    let ns = args["namespace"]
-        .as_str()
-        .ok_or("namespace is required")?;
+async fn delete_deployment(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
+    let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
 
     let dep_api = api(client, ns)?;
@@ -436,9 +407,7 @@ async fn restart_deployment(
     client: &K8sClient,
     args: &serde_json::Value,
 ) -> Result<String, String> {
-    let ns = args["namespace"]
-        .as_str()
-        .ok_or("namespace is required")?;
+    let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
 
     let now = utc_now_rfc3339();
@@ -456,11 +425,7 @@ async fn restart_deployment(
 
     let dep_api = api(client, ns)?;
     let patched = dep_api
-        .patch(
-            name,
-            &PatchParams::apply("mcp-k8s"),
-            &Patch::Merge(&patch),
-        )
+        .patch(name, &PatchParams::apply("mcp-k8s"), &Patch::Merge(&patch))
         .await
         .map_err(|e| e.to_string())?;
 
@@ -473,17 +438,10 @@ async fn restart_deployment(
     serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
 }
 
-async fn scale_deployment(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
-    let ns = args["namespace"]
-        .as_str()
-        .ok_or("namespace is required")?;
+async fn scale_deployment(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
+    let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
-    let replicas = args["replicas"]
-        .as_i64()
-        .ok_or("replicas is required")? as i32;
+    let replicas = args["replicas"].as_i64().ok_or("replicas is required")? as i32;
 
     let patch = serde_json::json!({
         "spec": {
@@ -493,32 +451,22 @@ async fn scale_deployment(
 
     let dep_api = api(client, ns)?;
     let patched = dep_api
-        .patch(
-            name,
-            &PatchParams::apply("mcp-k8s"),
-            &Patch::Merge(&patch),
-        )
+        .patch(name, &PatchParams::apply("mcp-k8s"), &Patch::Merge(&patch))
         .await
         .map_err(|e| e.to_string())?;
 
     let summary = extract_summary(&patched);
-    serde_json::to_string_pretty(
-        &serde_json::to_value(summary).unwrap_or_default(),
-    )
-    .map_err(|e| e.to_string())
+    serde_json::to_string_pretty(&serde_json::to_value(summary).unwrap_or_default())
+        .map_err(|e| e.to_string())
 }
 
 async fn rollback_deployment(
     client: &K8sClient,
     args: &serde_json::Value,
 ) -> Result<String, String> {
-    let ns = args["namespace"]
-        .as_str()
-        .ok_or("namespace is required")?;
+    let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
-    let revision = args["revision"]
-        .as_i64()
-        .ok_or("revision is required")?;
+    let revision = args["revision"].as_i64().ok_or("revision is required")?;
 
     // Get the deployment to find its label selector.
     let dep_api = api(client, ns)?;
@@ -570,11 +518,7 @@ async fn rollback_deployment(
     });
 
     let patched = dep_api
-        .patch(
-            name,
-            &PatchParams::apply("mcp-k8s"),
-            &Patch::Merge(&patch),
-        )
+        .patch(name, &PatchParams::apply("mcp-k8s"), &Patch::Merge(&patch))
         .await
         .map_err(|e| e.to_string())?;
 
@@ -665,10 +609,7 @@ mod tests {
         let defs = tool_definitions();
         assert_eq!(defs.len(), 6);
 
-        let names: Vec<&str> = defs
-            .iter()
-            .filter_map(|d| d["name"].as_str())
-            .collect();
+        let names: Vec<&str> = defs.iter().filter_map(|d| d["name"].as_str()).collect();
         assert_eq!(names.len(), 6);
 
         let mut unique = names.clone();

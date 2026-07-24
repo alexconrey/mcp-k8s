@@ -149,16 +149,15 @@ async fn list_ipaddresses(client: &K8sClient) -> Result<String, String> {
         .await
         .map_err(|e| e.to_string())?;
 
-    let summaries: Vec<IPAddressSummary> =
-        list.iter().map(|ip| extract_ipaddress_summary(ip)).collect();
+    let summaries: Vec<IPAddressSummary> = list
+        .iter()
+        .map(|ip| extract_ipaddress_summary(ip))
+        .collect();
 
     serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
 }
 
-async fn get_ipaddress(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn get_ipaddress(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let name = args["name"].as_str().ok_or("name is required")?;
     let api = ipaddress_api(client);
     let ip = api.get(name).await.map_err(|e| e.to_string())?;
@@ -199,10 +198,7 @@ async fn list_servicecidrs(client: &K8sClient) -> Result<String, String> {
     serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
 }
 
-async fn get_servicecidr(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn get_servicecidr(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let name = args["name"].as_str().ok_or("name is required")?;
     let api = servicecidr_api(client);
     let sc = api.get(name).await.map_err(|e| e.to_string())?;
@@ -256,10 +252,7 @@ mod tests {
         let defs = tool_definitions();
         assert_eq!(defs.len(), 4);
 
-        let names: Vec<&str> = defs
-            .iter()
-            .map(|d| d["name"].as_str().unwrap())
-            .collect();
+        let names: Vec<&str> = defs.iter().map(|d| d["name"].as_str().unwrap()).collect();
 
         let mut unique = names.clone();
         unique.sort();
@@ -437,10 +430,7 @@ mod tests {
                 ..Default::default()
             },
             spec: Some(ServiceCIDRSpec {
-                cidrs: Some(vec![
-                    "10.96.0.0/12".to_string(),
-                    "fd00::/108".to_string(),
-                ]),
+                cidrs: Some(vec!["10.96.0.0/12".to_string(), "fd00::/108".to_string()]),
             }),
             status: None,
         };

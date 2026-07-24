@@ -25,10 +25,7 @@ pub struct SecretSummary {
 }
 
 fn secret_type(secret: &Secret) -> String {
-    secret
-        .type_
-        .clone()
-        .unwrap_or_else(|| "Opaque".to_string())
+    secret.type_.clone().unwrap_or_else(|| "Opaque".to_string())
 }
 
 fn data_keys(secret: &Secret) -> Vec<String> {
@@ -151,10 +148,7 @@ pub async fn handle_tool(
     Some(result)
 }
 
-async fn list_secrets(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn list_secrets(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let secrets_api = api(client, ns)?;
     let label_selector = args["label_selector"].as_str();
@@ -166,10 +160,7 @@ async fn list_secrets(
     if let Some(sel) = field_selector {
         lp = lp.fields(sel);
     }
-    let list = secrets_api
-        .list(&lp)
-        .await
-        .map_err(|e| e.to_string())?;
+    let list = secrets_api.list(&lp).await.map_err(|e| e.to_string())?;
 
     let summaries: Vec<serde_json::Value> = list
         .iter()
@@ -188,10 +179,7 @@ async fn list_secrets(
     serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
 }
 
-async fn get_secret(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn get_secret(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
     let decode = args["decode"].as_bool().unwrap_or(false);
@@ -218,9 +206,7 @@ async fn get_secret(
             .as_ref()
             .map(|data| {
                 data.iter()
-                    .map(|(k, ByteString(v))| {
-                        (k.clone(), String::from_utf8_lossy(v).to_string())
-                    })
+                    .map(|(k, ByteString(v))| (k.clone(), String::from_utf8_lossy(v).to_string()))
                     .collect()
             })
             .unwrap_or_default();
@@ -230,10 +216,7 @@ async fn get_secret(
     serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
 }
 
-async fn create_secret(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn create_secret(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
     let secret_type_str = args["type"].as_str().unwrap_or("Opaque");
@@ -272,10 +255,7 @@ async fn create_secret(
     serde_json::to_string_pretty(&summary).map_err(|e| e.to_string())
 }
 
-async fn update_secret(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn update_secret(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
     let string_data: BTreeMap<String, String> = serde_json::from_value(
@@ -291,11 +271,7 @@ async fn update_secret(
 
     let secrets_api = api(client, ns)?;
     let patched = secrets_api
-        .patch(
-            name,
-            &PatchParams::apply("mcp-k8s"),
-            &Patch::Merge(&patch),
-        )
+        .patch(name, &PatchParams::apply("mcp-k8s"), &Patch::Merge(&patch))
         .await
         .map_err(|e| e.to_string())?;
 
@@ -303,10 +279,7 @@ async fn update_secret(
     serde_json::to_string_pretty(&summary).map_err(|e| e.to_string())
 }
 
-async fn delete_secret(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn delete_secret(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
 
@@ -392,10 +365,7 @@ mod tests {
             "password".to_string(),
             ByteString(b"super-secret-value".to_vec()),
         );
-        data.insert(
-            "api_key".to_string(),
-            ByteString(b"ak_12345".to_vec()),
-        );
+        data.insert("api_key".to_string(), ByteString(b"ak_12345".to_vec()));
 
         let secret = Secret {
             metadata: ObjectMeta {
@@ -509,7 +479,10 @@ mod tests {
         let output = serde_json::to_string_pretty(&result).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&output).unwrap();
 
-        assert!(parsed.get("data").is_some(), "decode=true must include 'data' field");
+        assert!(
+            parsed.get("data").is_some(),
+            "decode=true must include 'data' field"
+        );
         assert_eq!(parsed["data"]["password"], "super-secret-value");
     }
 }

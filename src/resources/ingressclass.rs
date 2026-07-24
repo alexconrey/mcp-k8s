@@ -107,16 +107,12 @@ async fn list_ingressclasses(client: &K8sClient) -> Result<String, String> {
         .await
         .map_err(|e| e.to_string())?;
 
-    let summaries: Vec<IngressClassSummary> =
-        list.iter().map(|ic| extract_summary(ic)).collect();
+    let summaries: Vec<IngressClassSummary> = list.iter().map(|ic| extract_summary(ic)).collect();
 
     serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
 }
 
-async fn get_ingressclass(
-    client: &K8sClient,
-    args: &serde_json::Value,
-) -> Result<String, String> {
+async fn get_ingressclass(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let name = args["name"].as_str().ok_or("name is required")?;
 
     let ic_api = api(client);
@@ -147,9 +143,7 @@ async fn get_ingressclass(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use k8s_openapi::api::networking::v1::{
-        IngressClassParametersReference, IngressClassSpec,
-    };
+    use k8s_openapi::api::networking::v1::{IngressClassParametersReference, IngressClassSpec};
     use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
     use std::collections::BTreeMap;
 
@@ -158,10 +152,7 @@ mod tests {
         let defs = tool_definitions();
         assert_eq!(defs.len(), 2);
 
-        let names: Vec<&str> = defs
-            .iter()
-            .map(|d| d["name"].as_str().unwrap())
-            .collect();
+        let names: Vec<&str> = defs.iter().map(|d| d["name"].as_str().unwrap()).collect();
 
         let mut unique = names.clone();
         unique.sort();
@@ -269,10 +260,7 @@ mod tests {
         let summary = extract_summary(&ic);
 
         assert_eq!(summary.name, "nginx");
-        assert_eq!(
-            summary.controller.as_deref(),
-            Some("k8s.io/ingress-nginx")
-        );
+        assert_eq!(summary.controller.as_deref(), Some("k8s.io/ingress-nginx"));
         assert!(summary.is_default);
         assert!(summary.parameters.is_some());
 

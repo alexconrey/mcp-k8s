@@ -10,10 +10,7 @@ use serde::Serialize;
 
 use crate::client::K8sClient;
 
-fn api(
-    client: &K8sClient,
-    ns: &str,
-) -> Result<kube::Api<PersistentVolumeClaim>, String> {
+fn api(client: &K8sClient, ns: &str) -> Result<kube::Api<PersistentVolumeClaim>, String> {
     if !client.is_namespace_allowed(ns) {
         return Err(format!("Namespace '{ns}' is not in the allowed list"));
     }
@@ -52,22 +49,12 @@ fn extract_summary(pvc: &PersistentVolumeClaim) -> PvcSummary {
         .status
         .as_ref()
         .and_then(|s| s.access_modes.clone())
-        .or_else(|| {
-            pvc.spec
-                .as_ref()
-                .and_then(|s| s.access_modes.clone())
-        })
+        .or_else(|| pvc.spec.as_ref().and_then(|s| s.access_modes.clone()))
         .unwrap_or_default();
 
-    let storage_class = pvc
-        .spec
-        .as_ref()
-        .and_then(|s| s.storage_class_name.clone());
+    let storage_class = pvc.spec.as_ref().and_then(|s| s.storage_class_name.clone());
 
-    let volume_name = pvc
-        .spec
-        .as_ref()
-        .and_then(|s| s.volume_name.clone());
+    let volume_name = pvc.spec.as_ref().and_then(|s| s.volume_name.clone());
 
     PvcSummary {
         name: meta.name.clone().unwrap_or_default(),
@@ -183,10 +170,7 @@ async fn list_pvcs(client: &K8sClient, args: &serde_json::Value) -> Result<Strin
     if let Some(sel) = label_selector {
         lp = lp.labels(sel);
     }
-    let list = pvc_api
-        .list(&lp)
-        .await
-        .map_err(|e| e.to_string())?;
+    let list = pvc_api.list(&lp).await.map_err(|e| e.to_string())?;
 
     let summaries: Vec<PvcSummary> = list.iter().map(extract_summary).collect();
 
@@ -337,19 +321,14 @@ async fn delete_pvc(client: &K8sClient, args: &serde_json::Value) -> Result<Stri
 #[cfg(test)]
 mod tests {
     use super::*;
-    use k8s_openapi::api::core::v1::{
-        PersistentVolumeClaimCondition, PersistentVolumeClaimStatus,
-    };
+    use k8s_openapi::api::core::v1::{PersistentVolumeClaimCondition, PersistentVolumeClaimStatus};
 
     #[test]
     fn tool_definitions_returns_five_tools() {
         let defs = tool_definitions();
         assert_eq!(defs.len(), 5);
 
-        let names: Vec<&str> = defs
-            .iter()
-            .map(|d| d["name"].as_str().unwrap())
-            .collect();
+        let names: Vec<&str> = defs.iter().map(|d| d["name"].as_str().unwrap()).collect();
 
         let mut unique = names.clone();
         unique.sort();

@@ -185,23 +185,18 @@ async fn delete_pv(client: &K8sClient, args: &serde_json::Value) -> Result<Strin
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::BTreeMap;
-    use k8s_openapi::api::core::v1::{
-        PersistentVolumeSpec, PersistentVolumeStatus,
-    };
+    use k8s_openapi::api::core::v1::ObjectReference;
+    use k8s_openapi::api::core::v1::{PersistentVolumeSpec, PersistentVolumeStatus};
     use k8s_openapi::apimachinery::pkg::api::resource::Quantity;
     use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
-    use k8s_openapi::api::core::v1::ObjectReference;
+    use std::collections::BTreeMap;
 
     #[test]
     fn tool_definitions_returns_three_tools() {
         let defs = tool_definitions();
         assert_eq!(defs.len(), 3);
 
-        let names: Vec<&str> = defs
-            .iter()
-            .map(|d| d["name"].as_str().unwrap())
-            .collect();
+        let names: Vec<&str> = defs.iter().map(|d| d["name"].as_str().unwrap()).collect();
 
         let mut unique = names.clone();
         unique.sort();
@@ -282,9 +277,10 @@ mod tests {
         let pv = PersistentVolume {
             metadata: ObjectMeta {
                 name: Some("pv-test-01".to_string()),
-                labels: Some(BTreeMap::from([
-                    ("tier".to_string(), "storage".to_string()),
-                ])),
+                labels: Some(BTreeMap::from([(
+                    "tier".to_string(),
+                    "storage".to_string(),
+                )])),
                 ..Default::default()
             },
             spec: Some(PersistentVolumeSpec {
