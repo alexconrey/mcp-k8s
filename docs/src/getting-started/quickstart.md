@@ -184,8 +184,91 @@ Here are some commonly used tools and their parameters:
 }
 ```
 
+## SSE Transport
+
+In HTTP mode, mcp-k8s exposes an SSE (Server-Sent Events) endpoint at `POST /mcp/sse` alongside the standard `POST /mcp` JSON-RPC endpoint. The SSE endpoint accepts the same JSON-RPC request body but returns the response as an SSE event stream instead of a plain JSON response. This is useful for clients that prefer streaming transport.
+
+```bash
+curl -X POST http://localhost:8080/mcp/sse \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+```
+
+The response arrives as an SSE `data:` event containing the JSON-RPC response.
+
+## MCP Resources and Prompts
+
+Beyond tools, mcp-k8s supports the MCP `resources` and `prompts` capabilities.
+
+### Resources
+
+Use `resources/list` to discover available `k8s://` resource URIs, then `resources/read` to fetch a specific resource by URI:
+
+```json
+{
+  "jsonrpc": "2.0", "id": 1,
+  "method": "resources/read",
+  "params": { "uri": "k8s://default/pods/nginx-abc123" }
+}
+```
+
+Supported URI patterns:
+
+- `k8s://{namespace}/pods/{name}`
+- `k8s://{namespace}/deployments/{name}`
+- `k8s://{namespace}/services/{name}`
+- `k8s://{namespace}/configmaps/{name}`
+- `k8s://{namespace}/secrets/{name}`
+- `k8s://{namespace}/statefulsets/{name}`
+- `k8s://{namespace}/daemonsets/{name}`
+- `k8s://{namespace}/jobs/{name}`
+- `k8s://{namespace}/cronjobs/{name}`
+- `k8s://{namespace}/ingresses/{name}`
+- `k8s://cluster/nodes/{name}`
+- `k8s://cluster/namespaces/{name}`
+
+### Prompts
+
+Use `prompts/list` to discover built-in diagnostic prompts, then `prompts/get` to retrieve the prompt messages. Available prompts:
+
+- **`diagnose-pod`** -- Guides the AI through pod diagnosis (status, logs, events)
+- **`review-namespace-rbac`** -- Reviews RBAC configuration for a namespace
+- **`cluster-health-check`** -- Checks overall cluster health (nodes, system pods, resource pressure)
+- **`resource-usage-report`** -- Summarizes CPU/memory usage in a namespace
+
+Example:
+
+```json
+{
+  "jsonrpc": "2.0", "id": 1,
+  "method": "prompts/get",
+  "params": { "name": "diagnose-pod", "arguments": { "namespace": "default", "pod_name": "nginx-abc123" } }
+}
+```
+
+## Multi-Cluster Switching
+
+When mcp-k8s is started with `--contexts`, you can switch between clusters at runtime:
+
+> "List the available Kubernetes clusters."
+
+This calls `list_clusters` and returns:
+
+```
+* staging (active)
+  production
+```
+
+> "Switch to the production cluster."
+
+This calls `switch_cluster` with `name: "production"`. All subsequent tool calls will target the production cluster.
+
+> "Which cluster am I connected to?"
+
+This calls `get_active_cluster` and returns `production`.
+
 ## Next Steps
 
 - [Configuration](./configuration.md) -- Fine-tune namespace restrictions and permission controls
-- [Tools Reference](../tools/overview.md) -- Browse all 166 available tools
+- [Tools Reference](../tools/overview.md) -- Browse all 202 available tools
 - [Permissions](../permissions.md) -- Lock down operations for production environments

@@ -15,7 +15,9 @@ mcp-k8s is configured through CLI arguments and environment variables. Every fla
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/mcp` | POST | MCP JSON-RPC 2.0 endpoint |
+| `/mcp/sse` | POST | MCP JSON-RPC 2.0 via Server-Sent Events (SSE) transport |
 | `/healthz` | GET | Health check (returns `ok`) |
+| `/metrics` | GET | Prometheus metrics (request counts, tool call durations) |
 | `/swagger-ui` | GET | OpenAPI / Swagger UI |
 | `/openapi.json` | GET | OpenAPI JSON spec |
 
@@ -24,6 +26,22 @@ mcp-k8s is configured through CLI arguments and environment variables. Every fla
 | Flag | Env Var | Default | Description |
 |------|---------|---------|-------------|
 | `--listen` | `MCP_K8S_LISTEN` | `0.0.0.0:8080` | HTTP listen address (only used with `--http`) |
+
+## Multi-Cluster Support
+
+| Flag | Env Var | Default | Description |
+|------|---------|---------|-------------|
+| `--contexts` | `MCP_K8S_CONTEXTS` | *(empty)* | Comma-separated list of kubeconfig context names to load. Each context becomes a named cluster that can be switched at runtime via the `list_clusters`, `switch_cluster`, and `get_active_cluster` tools. The first context becomes the active cluster on startup. When omitted, mcp-k8s uses the default kubeconfig context. |
+
+Example:
+
+```bash
+# Load two clusters; staging is active initially
+mcp-k8s --contexts staging,production
+
+# Via environment variable
+MCP_K8S_CONTEXTS=staging,production mcp-k8s
+```
 
 ## Namespace Filtering
 
@@ -85,11 +103,58 @@ mcp-k8s uses the standard [kube-rs](https://github.com/kube-rs/kube) client conf
 - Kubeconfig file with multiple contexts
 - OIDC, exec-based, and token-based authentication plugins
 
+## Security
+
+### Bearer Token Authentication
+
+| Flag | Env Var | Default | Description |
+|------|---------|---------|-------------|
+| `--auth-token` | `AUTH_TOKEN` | *(none)* | When set, all HTTP requests (except `/healthz`, `/metrics`, `/swagger-ui`, and `/openapi.json`) must include an `Authorization: Bearer <token>` header. Unauthorized requests receive a 401 response. |
+
+Example:
+
+```bash
+mcp-k8s --http --auth-token my-secret-token
+```
+
+Clients must then include the header:
+
+```
+Authorization: Bearer my-secret-token
+```
+
+### TLS / HTTPS
+
+| Flag | Env Var | Default | Description |
+|------|---------|---------|-------------|
+| `--tls-cert` | `TLS_CERT` | *(none)* | Path to a TLS certificate PEM file. Must be paired with `--tls-key`. |
+| `--tls-key` | `TLS_KEY` | *(none)* | Path to a TLS private key PEM file. Must be paired with `--tls-cert`. |
+
+When both are provided, the HTTP server runs over HTTPS using rustls. If only one is provided, the server exits with an error.
+
+Example:
+
+```bash
+mcp-k8s --http --tls-cert /etc/certs/tls.crt --tls-key /etc/certs/tls.key
+```
+
+### Secret Decoding Control
+
+| Flag | Env Var | Default | Description |
+|------|---------|---------|-------------|
+| `--disable-secret-decode` | `DISABLE_SECRET_DECODE` | `false` | When set, the `get_secret` tool never returns decoded secret values, even if the caller passes `decode: true`. Use this in environments where secret values must not be exposed to MCP clients. |
+
 ## Logging
 
 | Env Var | Default | Description |
 |---------|---------|-------------|
 | `RUST_LOG` | `info` | Controls log verbosity using the `tracing` crate's `EnvFilter` syntax. |
+
+### Log Format
+
+| Flag | Env Var | Default | Description |
+|------|---------|---------|-------------|
+| `--log-format` | `LOG_FORMAT` | `text` | Log output format. Set to `json` for structured JSON logging suitable for log aggregation pipelines (e.g. Loki, Datadog, CloudWatch). |
 
 Examples:
 
@@ -102,6 +167,9 @@ RUST_LOG=trace mcp-k8s
 
 # Info for mcp-k8s, warn for dependencies
 RUST_LOG=mcp_k8s=info,kube=warn mcp-k8s
+
+# Structured JSON logging for production
+mcp-k8s --http --log-format json
 ```
 
 ## Complete Example
@@ -112,7 +180,13 @@ mcp-k8s \
   --listen 0.0.0.0:9090 \
   --namespaces default,production \
   --disable-delete \
-  --disable deployment-create,secret-create
+  --disable deployment-create,secret-create \
+  --auth-token my-secret-token \
+  --tls-cert /etc/certs/tls.crt \
+  --tls-key /etc/certs/tls.key \
+  --disable-secret-decode \
+  --log-format json \
+  --contexts staging,production
 ```
 
-This starts mcp-k8s as an HTTP server on port 9090, restricted to the `default` and `production` namespaces, with all delete operations disabled globally and deployment/secret creation disabled individually.
+This starts mcp-k8s as an HTTPS server on port 9090 with bearer token authentication, restricted to the `default` and `production` namespaces, with all delete operations disabled globally, deployment/secret creation disabled individually, secret decoding disabled, structured JSON logging enabled, and two cluster contexts loaded (`staging` active by default).

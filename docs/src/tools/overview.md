@@ -1,6 +1,6 @@
 # Tools Overview
 
-mcp-k8s exposes 166 tools covering every GA Kubernetes resource type. Each tool corresponds to a specific Kubernetes API operation. Tools are categorized by action type:
+mcp-k8s exposes 202 tools covering every GA Kubernetes resource type plus CRDs, multi-cluster management, and resource watching. Each tool corresponds to a specific Kubernetes API operation. Tools are categorized by action type:
 
 - **Read** -- List, get, and inspect resources. Always available regardless of permission configuration.
 - **Create** -- Create new resources. Disabled by `--disable-create`.
@@ -222,6 +222,38 @@ See [RBAC & Auth](./rbac.md) for full parameter details.
 | `get_csr` | Read | Get CSR detail |
 | `approve_csr` | Update | Approve a CSR |
 | `deny_csr` | Update | Deny a CSR |
+
+See [Cluster Resources](./cluster.md) for full parameter details.
+
+### Cluster Management (3 tools)
+
+| Tool | Action | Description |
+|------|--------|-------------|
+| `list_clusters` | Read | List all configured cluster contexts and show which is active |
+| `switch_cluster` | Update | Switch the active cluster context |
+| `get_active_cluster` | Read | Get the name of the currently active cluster context |
+
+See [Cluster Resources](./cluster.md) for full parameter details.
+
+### Watch (1 tool)
+
+| Tool | Action | Description |
+|------|--------|-------------|
+| `watch_resource` | Read | Watch a resource type for ADDED/MODIFIED/DELETED events over a time window |
+
+See [Cluster Resources](./cluster.md) for full parameter details.
+
+### CRD Discovery (7 tools)
+
+| Tool | Action | Description |
+|------|--------|-------------|
+| `list_crds` | Read | List all CustomResourceDefinitions installed in the cluster |
+| `get_crd` | Read | Get a CRD by name with full spec and schema info |
+| `list_custom_resources` | Read | List instances of a custom resource via dynamic API discovery |
+| `get_custom_resource` | Read | Get a single custom resource by name |
+| `create_custom_resource` | Create | Create a custom resource from a JSON manifest |
+| `update_custom_resource` | Update | Merge-patch a custom resource |
+| `delete_custom_resource` | Delete | Delete a custom resource by name |
 
 See [Cluster Resources](./cluster.md) for full parameter details.
 

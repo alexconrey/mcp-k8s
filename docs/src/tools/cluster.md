@@ -1,6 +1,6 @@
 # Cluster Resources
 
-This page documents tools for cluster-level resources: Nodes, Leases, PodDisruptionBudgets, LimitRanges, PriorityClasses, RuntimeClasses, FlowControl, Admission webhooks, and CertificateSigningRequests.
+This page documents tools for cluster-level resources: Nodes, Leases, PodDisruptionBudgets, LimitRanges, PriorityClasses, RuntimeClasses, FlowControl, Admission webhooks, CertificateSigningRequests, Cluster Management, Watch, and CRD Discovery.
 
 ## Nodes
 
@@ -316,3 +316,203 @@ Deny a CertificateSigningRequest.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | Yes | CSR name |
+
+---
+
+## Cluster Management
+
+These tools allow switching between multiple Kubernetes cluster contexts at runtime. Multi-cluster support is enabled by passing `--contexts` (or `MCP_K8S_CONTEXTS`) with a comma-separated list of kubeconfig context names. See [Configuration](../getting-started/configuration.md) for details.
+
+### list_clusters
+
+List all configured cluster contexts and indicate which is currently active.
+
+No required parameters.
+
+Example response:
+
+```
+* staging (active)
+  production
+```
+
+### switch_cluster
+
+Switch the active cluster context. All subsequent tool calls will operate against the new cluster.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | string | Yes | Cluster context name to switch to |
+
+Example:
+
+```json
+{
+  "name": "switch_cluster",
+  "arguments": { "name": "production" }
+}
+```
+
+### get_active_cluster
+
+Get the name of the currently active cluster context.
+
+No required parameters.
+
+Returns the context name as a plain string (e.g. `staging`).
+
+---
+
+## Watch
+
+### watch_resource
+
+Watch a Kubernetes resource type for changes over a specified duration. Since MCP tools are request/response, this collects all ADDED, MODIFIED, and DELETED events during the watch window and returns them as a batch.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `api_version` | string | Yes | API version (e.g. `v1`, `apps/v1`, `networking.k8s.io/v1`) |
+| `kind` | string | Yes | Resource kind (e.g. `Pod`, `Deployment`, `Service`) |
+| `namespace` | string | No | Kubernetes namespace. Omit for cluster-scoped resources or to watch across all namespaces. |
+| `label_selector` | string | No | Label selector to filter watched resources (e.g. `app=nginx`) |
+| `duration_seconds` | integer | No | How long to watch in seconds (default: 10, max: 60) |
+
+Example:
+
+```json
+{
+  "name": "watch_resource",
+  "arguments": {
+    "api_version": "apps/v1",
+    "kind": "Deployment",
+    "namespace": "default",
+    "duration_seconds": 15
+  }
+}
+```
+
+Example response:
+
+```json
+{
+  "api_version": "apps/v1",
+  "kind": "Deployment",
+  "namespace": "default",
+  "duration_seconds": 15,
+  "events_count": 2,
+  "events": [
+    { "type": "MODIFIED", "name": "nginx", "namespace": "default" },
+    { "type": "ADDED", "name": "hello-world", "namespace": "default" }
+  ]
+}
+```
+
+---
+
+## CRD Discovery
+
+These tools provide full lifecycle management of CustomResourceDefinitions and their instances. CRD discovery uses the Kubernetes API discovery mechanism to dynamically resolve resource types, so any installed CRD is supported without code changes.
+
+### list_crds
+
+List all CustomResourceDefinitions installed in the cluster. Returns name, group, kind, scope, versions, and creation timestamp for each CRD.
+
+No required parameters.
+
+### get_crd
+
+Get a CustomResourceDefinition by name. Returns the full spec including group, names, scope, and versions with schema information.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | string | Yes | CRD name (e.g. `crontabs.stable.example.com`) |
+
+### list_custom_resources
+
+List instances of a custom resource. Uses dynamic API discovery to resolve the resource type from group/version/kind.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `group` | string | Yes | API group of the custom resource (e.g. `stable.example.com`) |
+| `version` | string | Yes | API version (e.g. `v1`, `v1alpha1`) |
+| `kind` | string | Yes | Resource kind (e.g. `CronTab`) |
+| `namespace` | string | No | Kubernetes namespace. Omit for cluster-scoped custom resources. |
+
+Example:
+
+```json
+{
+  "name": "list_custom_resources",
+  "arguments": {
+    "group": "stable.example.com",
+    "version": "v1",
+    "kind": "CronTab",
+    "namespace": "default"
+  }
+}
+```
+
+### get_custom_resource
+
+Get a single custom resource by name.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `group` | string | Yes | API group of the custom resource |
+| `version` | string | Yes | API version |
+| `kind` | string | Yes | Resource kind |
+| `name` | string | Yes | Resource name |
+| `namespace` | string | No | Kubernetes namespace. Omit for cluster-scoped custom resources. |
+
+### create_custom_resource
+
+Create a custom resource from a JSON manifest.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `group` | string | Yes | API group of the custom resource |
+| `version` | string | Yes | API version |
+| `kind` | string | Yes | Resource kind |
+| `manifest` | object | Yes | Full resource manifest (must include apiVersion, kind, metadata, and spec) |
+| `namespace` | string | No | Kubernetes namespace. Omit for cluster-scoped custom resources. |
+
+### update_custom_resource
+
+Merge-patch a custom resource.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `group` | string | Yes | API group of the custom resource |
+| `version` | string | Yes | API version |
+| `kind` | string | Yes | Resource kind |
+| `name` | string | Yes | Resource name |
+| `patch` | object | Yes | JSON merge-patch object to apply to the resource |
+| `namespace` | string | No | Kubernetes namespace. Omit for cluster-scoped custom resources. |
+
+Example:
+
+```json
+{
+  "name": "update_custom_resource",
+  "arguments": {
+    "group": "stable.example.com",
+    "version": "v1",
+    "kind": "CronTab",
+    "name": "my-crontab",
+    "namespace": "default",
+    "patch": { "spec": { "cronSpec": "*/10 * * * *" } }
+  }
+}
+```
+
+### delete_custom_resource
+
+Delete a custom resource by name.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `group` | string | Yes | API group of the custom resource |
+| `version` | string | Yes | API version |
+| `kind` | string | Yes | Resource kind |
+| `name` | string | Yes | Resource name |
+| `namespace` | string | No | Kubernetes namespace. Omit for cluster-scoped custom resources. |
