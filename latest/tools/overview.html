@@ -36,7 +36,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-70458157.js";
+            window.path_to_searchindex_js = "../searchindex-414a075b.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-caea04ac.js"></script>
@@ -182,7 +182,7 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="tools-overview"><a class="header" href="#tools-overview">Tools Overview</a></h1>
-<p>mcp-k8s exposes 166 tools covering every GA Kubernetes resource type. Each tool corresponds to a specific Kubernetes API operation. Tools are categorized by action type:</p>
+<p>mcp-k8s exposes 202 tools covering every GA Kubernetes resource type plus CRDs, multi-cluster management, and resource watching. Each tool corresponds to a specific Kubernetes API operation. Tools are categorized by action type:</p>
 <ul>
 <li><strong>Read</strong> – List, get, and inspect resources. Always available regardless of permission configuration.</li>
 <li><strong>Create</strong> – Create new resources. Disabled by <code>--disable-create</code>.</li>
@@ -426,6 +426,50 @@
 <tr><td><code>get_csr</code></td><td>Read</td><td>Get CSR detail</td></tr>
 <tr><td><code>approve_csr</code></td><td>Update</td><td>Approve a CSR</td></tr>
 <tr><td><code>deny_csr</code></td><td>Update</td><td>Deny a CSR</td></tr>
+</tbody>
+</table>
+</div>
+<p>See <a href="./cluster.html">Cluster Resources</a> for full parameter details.</p>
+<h3 id="cluster-management-3-tools"><a class="header" href="#cluster-management-3-tools">Cluster Management (3 tools)</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Tool</th><th>Action</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>list_clusters</code></td><td>Read</td><td>List all configured cluster contexts and show which is active</td></tr>
+<tr><td><code>switch_cluster</code></td><td>Update</td><td>Switch the active cluster context</td></tr>
+<tr><td><code>get_active_cluster</code></td><td>Read</td><td>Get the name of the currently active cluster context</td></tr>
+</tbody>
+</table>
+</div>
+<p>See <a href="./cluster.html">Cluster Resources</a> for full parameter details.</p>
+<h3 id="watch-1-tool"><a class="header" href="#watch-1-tool">Watch (1 tool)</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Tool</th><th>Action</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>watch_resource</code></td><td>Read</td><td>Watch a resource type for ADDED/MODIFIED/DELETED events over a time window</td></tr>
+</tbody>
+</table>
+</div>
+<p>See <a href="./cluster.html">Cluster Resources</a> for full parameter details.</p>
+<h3 id="crd-discovery-7-tools"><a class="header" href="#crd-discovery-7-tools">CRD Discovery (7 tools)</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Tool</th><th>Action</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>list_crds</code></td><td>Read</td><td>List all CustomResourceDefinitions installed in the cluster</td></tr>
+<tr><td><code>get_crd</code></td><td>Read</td><td>Get a CRD by name with full spec and schema info</td></tr>
+<tr><td><code>list_custom_resources</code></td><td>Read</td><td>List instances of a custom resource via dynamic API discovery</td></tr>
+<tr><td><code>get_custom_resource</code></td><td>Read</td><td>Get a single custom resource by name</td></tr>
+<tr><td><code>create_custom_resource</code></td><td>Create</td><td>Create a custom resource from a JSON manifest</td></tr>
+<tr><td><code>update_custom_resource</code></td><td>Update</td><td>Merge-patch a custom resource</td></tr>
+<tr><td><code>delete_custom_resource</code></td><td>Delete</td><td>Delete a custom resource by name</td></tr>
 </tbody>
 </table>
 </div>

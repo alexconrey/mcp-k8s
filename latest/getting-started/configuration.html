@@ -36,7 +36,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-70458157.js";
+            window.path_to_searchindex_js = "../searchindex-414a075b.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-caea04ac.js"></script>
@@ -203,7 +203,9 @@
 </thead>
 <tbody>
 <tr><td><code>/mcp</code></td><td>POST</td><td>MCP JSON-RPC 2.0 endpoint</td></tr>
+<tr><td><code>/mcp/sse</code></td><td>POST</td><td>MCP JSON-RPC 2.0 via Server-Sent Events (SSE) transport</td></tr>
 <tr><td><code>/healthz</code></td><td>GET</td><td>Health check (returns <code>ok</code>)</td></tr>
+<tr><td><code>/metrics</code></td><td>GET</td><td>Prometheus metrics (request counts, tool call durations)</td></tr>
 <tr><td><code>/swagger-ui</code></td><td>GET</td><td>OpenAPI / Swagger UI</td></tr>
 <tr><td><code>/openapi.json</code></td><td>GET</td><td>OpenAPI JSON spec</td></tr>
 </tbody>
@@ -220,6 +222,24 @@
 </tbody>
 </table>
 </div>
+<h2 id="multi-cluster-support"><a class="header" href="#multi-cluster-support">Multi-Cluster Support</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Env Var</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--contexts</code></td><td><code>MCP_K8S_CONTEXTS</code></td><td><em>(empty)</em></td><td>Comma-separated list of kubeconfig context names to load. Each context becomes a named cluster that can be switched at runtime via the <code>list_clusters</code>, <code>switch_cluster</code>, and <code>get_active_cluster</code> tools. The first context becomes the active cluster on startup. When omitted, mcp-k8s uses the default kubeconfig context.</td></tr>
+</tbody>
+</table>
+</div>
+<p>Example:</p>
+<pre><code class="language-bash"># Load two clusters; staging is active initially
+mcp-k8s --contexts staging,production
+
+# Via environment variable
+MCP_K8S_CONTEXTS=staging,production mcp-k8s
+</code></pre>
 <h2 id="namespace-filtering"><a class="header" href="#namespace-filtering">Namespace Filtering</a></h2>
 <div class="table-wrapper">
 <table>
@@ -290,6 +310,51 @@ MCP_K8S_DISABLE=deployment-delete,pod-create mcp-k8s
 <li>Kubeconfig file with multiple contexts</li>
 <li>OIDC, exec-based, and token-based authentication plugins</li>
 </ul>
+<h2 id="security"><a class="header" href="#security">Security</a></h2>
+<h3 id="bearer-token-authentication"><a class="header" href="#bearer-token-authentication">Bearer Token Authentication</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Env Var</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--auth-token</code></td><td><code>AUTH_TOKEN</code></td><td><em>(none)</em></td><td>When set, all HTTP requests (except <code>/healthz</code>, <code>/metrics</code>, <code>/swagger-ui</code>, and <code>/openapi.json</code>) must include an <code>Authorization: Bearer &lt;token&gt;</code> header. Unauthorized requests receive a 401 response.</td></tr>
+</tbody>
+</table>
+</div>
+<p>Example:</p>
+<pre><code class="language-bash">mcp-k8s --http --auth-token my-secret-token
+</code></pre>
+<p>Clients must then include the header:</p>
+<pre><code>Authorization: Bearer my-secret-token
+</code></pre>
+<h3 id="tls--https"><a class="header" href="#tls--https">TLS / HTTPS</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Env Var</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--tls-cert</code></td><td><code>TLS_CERT</code></td><td><em>(none)</em></td><td>Path to a TLS certificate PEM file. Must be paired with <code>--tls-key</code>.</td></tr>
+<tr><td><code>--tls-key</code></td><td><code>TLS_KEY</code></td><td><em>(none)</em></td><td>Path to a TLS private key PEM file. Must be paired with <code>--tls-cert</code>.</td></tr>
+</tbody>
+</table>
+</div>
+<p>When both are provided, the HTTP server runs over HTTPS using rustls. If only one is provided, the server exits with an error.</p>
+<p>Example:</p>
+<pre><code class="language-bash">mcp-k8s --http --tls-cert /etc/certs/tls.crt --tls-key /etc/certs/tls.key
+</code></pre>
+<h3 id="secret-decoding-control"><a class="header" href="#secret-decoding-control">Secret Decoding Control</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Env Var</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--disable-secret-decode</code></td><td><code>DISABLE_SECRET_DECODE</code></td><td><code>false</code></td><td>When set, the <code>get_secret</code> tool never returns decoded secret values, even if the caller passes <code>decode: true</code>. Use this in environments where secret values must not be exposed to MCP clients.</td></tr>
+</tbody>
+</table>
+</div>
 <h2 id="logging"><a class="header" href="#logging">Logging</a></h2>
 <div class="table-wrapper">
 <table>
@@ -298,6 +363,17 @@ MCP_K8S_DISABLE=deployment-delete,pod-create mcp-k8s
 </thead>
 <tbody>
 <tr><td><code>RUST_LOG</code></td><td><code>info</code></td><td>Controls log verbosity using the <code>tracing</code> crate’s <code>EnvFilter</code> syntax.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="log-format"><a class="header" href="#log-format">Log Format</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Env Var</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--log-format</code></td><td><code>LOG_FORMAT</code></td><td><code>text</code></td><td>Log output format. Set to <code>json</code> for structured JSON logging suitable for log aggregation pipelines (e.g. Loki, Datadog, CloudWatch).</td></tr>
 </tbody>
 </table>
 </div>
@@ -310,6 +386,9 @@ RUST_LOG=trace mcp-k8s
 
 # Info for mcp-k8s, warn for dependencies
 RUST_LOG=mcp_k8s=info,kube=warn mcp-k8s
+
+# Structured JSON logging for production
+mcp-k8s --http --log-format json
 </code></pre>
 <h2 id="complete-example"><a class="header" href="#complete-example">Complete Example</a></h2>
 <pre><code class="language-bash">mcp-k8s \
@@ -317,9 +396,15 @@ RUST_LOG=mcp_k8s=info,kube=warn mcp-k8s
   --listen 0.0.0.0:9090 \
   --namespaces default,production \
   --disable-delete \
-  --disable deployment-create,secret-create
+  --disable deployment-create,secret-create \
+  --auth-token my-secret-token \
+  --tls-cert /etc/certs/tls.crt \
+  --tls-key /etc/certs/tls.key \
+  --disable-secret-decode \
+  --log-format json \
+  --contexts staging,production
 </code></pre>
-<p>This starts mcp-k8s as an HTTP server on port 9090, restricted to the <code>default</code> and <code>production</code> namespaces, with all delete operations disabled globally and deployment/secret creation disabled individually.</p>
+<p>This starts mcp-k8s as an HTTPS server on port 9090 with bearer token authentication, restricted to the <code>default</code> and <code>production</code> namespaces, with all delete operations disabled globally, deployment/secret creation disabled individually, secret decoding disabled, structured JSON logging enabled, and two cluster contexts loaded (<code>staging</code> active by default).</p>
 
                     </main>
 

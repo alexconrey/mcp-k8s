@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-70458157.js";
+            window.path_to_searchindex_js = "searchindex-414a075b.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-caea04ac.js"></script>
@@ -187,7 +187,7 @@
 <p>mcp-k8s bridges the gap between AI assistants and Kubernetes clusters. It translates natural-language requests from an MCP client into Kubernetes API calls, returning structured, token-efficient responses. Instead of raw Kubernetes JSON objects (which can be hundreds of lines), mcp-k8s returns focused summaries containing only the fields relevant to the caller.</p>
 <h2 id="key-features"><a class="header" href="#key-features">Key Features</a></h2>
 <ul>
-<li><strong>191 tools</strong> across 46 resource modules covering every GA Kubernetes resource type – Deployments, Pods, Services, Ingresses, ConfigMaps, Secrets, StatefulSets, DaemonSets, CronJobs, Jobs, RBAC resources, Nodes, PVs, PVCs, HPAs, PDBs, NetworkPolicies, admission controllers, CSI resources, and more.</li>
+<li><strong>202 tools</strong> across 49 resource modules covering every GA Kubernetes resource type – Deployments, Pods, Services, Ingresses, ConfigMaps, Secrets, StatefulSets, DaemonSets, CronJobs, Jobs, RBAC resources, Nodes, PVs, PVCs, HPAs, PDBs, NetworkPolicies, admission controllers, CSI resources, and more.</li>
 <li><strong>Two runtime modes</strong> – stdio for local use with Claude Code, and HTTP for in-cluster deployment as a Kubernetes pod.</li>
 <li><strong>SSE transport</strong> – <code>POST /mcp/sse</code> endpoint for Server-Sent Events streaming alongside the standard <code>POST /mcp</code> JSON-RPC endpoint.</li>
 <li><strong>MCP resources</strong> – <code>resources/list</code> and <code>resources/read</code> support for direct resource access via <code>k8s://</code> URIs (pods, deployments, services, configmaps, secrets, statefulsets, daemonsets, jobs, cronjobs, ingresses, nodes, namespaces).</li>
@@ -196,6 +196,9 @@
 <li><strong>Fine-grained permission controls</strong> – Global and per-resource flags to disable create, update, or delete operations. Read operations are always allowed. Disabled tools are filtered from <code>tools/list</code> responses and rejected in <code>tools/call</code>.</li>
 <li><strong>Namespace allowlisting</strong> – Restrict tool operations to a set of allowed namespaces.</li>
 <li><strong>Token-efficient responses</strong> – Focused summary and detail types strip irrelevant fields from Kubernetes API responses, reducing context window consumption.</li>
+<li><strong>Multi-cluster support</strong> – Load multiple kubeconfig contexts with <code>--contexts</code> and switch between clusters at runtime using <code>list_clusters</code>, <code>switch_cluster</code>, and <code>get_active_cluster</code> tools.</li>
+<li><strong>Watch/subscribe</strong> – <code>watch_resource</code> tool watches any resource type for ADDED, MODIFIED, and DELETED events over a configurable time window.</li>
+<li><strong>CRD discovery</strong> – <code>list_crds</code>, <code>get_crd</code>, <code>list_custom_resources</code>, <code>get_custom_resource</code>, <code>create_custom_resource</code>, <code>update_custom_resource</code>, and <code>delete_custom_resource</code> tools provide full lifecycle management of any installed CRD via dynamic API discovery.</li>
 <li><strong>Generic tools</strong> – <code>apply_manifest</code> (server-side apply) and <code>get_resource_yaml</code> work with any Kubernetes resource type, including CRDs.</li>
 <li><strong>Auth introspection</strong> – <code>whoami</code>, <code>can_i</code>, and <code>list_my_permissions</code> tools let the AI understand its own access level.</li>
 <li><strong>TLS and bearer token auth</strong> – Optional <code>--tls-cert</code>/<code>--tls-key</code> for HTTPS and <code>--auth-token</code> for bearer token authentication on the HTTP server.</li>
@@ -215,7 +218,7 @@
 │                 │http │  ┌──────────┐    ┌───────────────────┐   │
 └─────────────────┘     │  │ Resource │    │   K8sClient       │   │
                         │  │ Modules  │───▶│   (kube-rs)       │──▶│ K8s API
-┌─────────────────┐     │  │ (46)     │    └───────────────────┘   │
+┌─────────────────┐     │  │ (49)     │    └───────────────────┘   │
 │  Prometheus     │────▶│  └──────────┘                            │
 │                 │/metrics                                        │
 └─────────────────┘     │  Endpoints:                              │
@@ -272,7 +275,7 @@
 <li><a href="./getting-started/installation.html">Installation</a> – Build from source or pull the Docker image</li>
 <li><a href="./getting-started/configuration.html">Configuration</a> – CLI args, environment variables, and permission flags</li>
 <li><a href="./getting-started/quickstart.html">Quick Start</a> – Get up and running in minutes</li>
-<li><a href="./tools/overview.html">Tools Reference</a> – Complete reference for all 191 tools</li>
+<li><a href="./tools/overview.html">Tools Reference</a> – Complete reference for all 202 tools</li>
 </ul>
 
                     </main>

@@ -36,7 +36,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-70458157.js";
+            window.path_to_searchindex_js = "../searchindex-414a075b.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-caea04ac.js"></script>
@@ -232,6 +232,39 @@ docker build -t mcp-k8s .
   -e MCP_K8S_DISABLE=deployment-delete,secret-create,namespace-delete \
   ghcr.io/alexconrey/mcp-k8s:latest
 </code></pre>
+<h3 id="bearer-token-authentication"><a class="header" href="#bearer-token-authentication">Bearer token authentication</a></h3>
+<pre><code class="language-bash">docker run --rm \
+  -v ~/.kube/config:/home/nonroot/.kube/config:ro \
+  -p 8080:8080 \
+  -e AUTH_TOKEN=my-secret-token \
+  ghcr.io/alexconrey/mcp-k8s:latest
+</code></pre>
+<p>When <code>AUTH_TOKEN</code> is set, all requests to <code>/mcp</code> and <code>/mcp/sse</code> must include an <code>Authorization: Bearer my-secret-token</code> header. The <code>/healthz</code>, <code>/metrics</code>, <code>/swagger-ui</code>, and <code>/openapi.json</code> endpoints remain unauthenticated.</p>
+<h3 id="tls--https"><a class="header" href="#tls--https">TLS / HTTPS</a></h3>
+<pre><code class="language-bash">docker run --rm \
+  -v ~/.kube/config:/home/nonroot/.kube/config:ro \
+  -v /path/to/certs:/certs:ro \
+  -p 8443:8443 \
+  -e MCP_K8S_LISTEN=0.0.0.0:8443 \
+  -e TLS_CERT=/certs/tls.crt \
+  -e TLS_KEY=/certs/tls.key \
+  ghcr.io/alexconrey/mcp-k8s:latest
+</code></pre>
+<h3 id="structured-json-logging"><a class="header" href="#structured-json-logging">Structured JSON logging</a></h3>
+<pre><code class="language-bash">docker run --rm \
+  -v ~/.kube/config:/home/nonroot/.kube/config:ro \
+  -p 8080:8080 \
+  -e LOG_FORMAT=json \
+  ghcr.io/alexconrey/mcp-k8s:latest
+</code></pre>
+<p>Set <code>LOG_FORMAT=json</code> for structured JSON log output, suitable for log aggregation pipelines such as Loki, Datadog, or CloudWatch.</p>
+<h3 id="multi-cluster"><a class="header" href="#multi-cluster">Multi-cluster</a></h3>
+<pre><code class="language-bash">docker run --rm \
+  -v ~/.kube/config:/home/nonroot/.kube/config:ro \
+  -p 8080:8080 \
+  -e MCP_K8S_CONTEXTS=staging,production \
+  ghcr.io/alexconrey/mcp-k8s:latest
+</code></pre>
 <h2 id="environment-variables-reference"><a class="header" href="#environment-variables-reference">Environment Variables Reference</a></h2>
 <div class="table-wrapper">
 <table>
@@ -241,10 +274,16 @@ docker build -t mcp-k8s .
 <tbody>
 <tr><td><code>MCP_K8S_LISTEN</code></td><td>HTTP listen address</td><td><code>0.0.0.0:8080</code></td></tr>
 <tr><td><code>MCP_K8S_NAMESPACES</code></td><td>Comma-separated namespace allowlist</td><td><em>(all)</em></td></tr>
+<tr><td><code>MCP_K8S_CONTEXTS</code></td><td>Comma-separated kubeconfig context names for multi-cluster</td><td><em>(default context)</em></td></tr>
 <tr><td><code>DISABLE_CREATE</code></td><td>Disable all create operations</td><td><code>false</code></td></tr>
 <tr><td><code>DISABLE_UPDATE</code></td><td>Disable all update operations</td><td><code>false</code></td></tr>
 <tr><td><code>DISABLE_DELETE</code></td><td>Disable all delete operations</td><td><code>false</code></td></tr>
 <tr><td><code>MCP_K8S_DISABLE</code></td><td>Comma-separated resource-action overrides</td><td><em>(none)</em></td></tr>
+<tr><td><code>AUTH_TOKEN</code></td><td>Bearer token for HTTP endpoint authentication</td><td><em>(none)</em></td></tr>
+<tr><td><code>TLS_CERT</code></td><td>Path to TLS certificate PEM file</td><td><em>(none)</em></td></tr>
+<tr><td><code>TLS_KEY</code></td><td>Path to TLS private key PEM file</td><td><em>(none)</em></td></tr>
+<tr><td><code>DISABLE_SECRET_DECODE</code></td><td>Prevent secret value decoding</td><td><code>false</code></td></tr>
+<tr><td><code>LOG_FORMAT</code></td><td>Log output format (<code>text</code> or <code>json</code>)</td><td><code>text</code></td></tr>
 <tr><td><code>KUBECONFIG</code></td><td>Path to kubeconfig file</td><td><em>(auto-detected)</em></td></tr>
 <tr><td><code>RUST_LOG</code></td><td>Log level filter</td><td><code>info</code></td></tr>
 </tbody>
@@ -259,9 +298,33 @@ docker build -t mcp-k8s .
 </thead>
 <tbody>
 <tr><td><code>/mcp</code></td><td>POST</td><td>MCP JSON-RPC 2.0 endpoint</td></tr>
+<tr><td><code>/mcp/sse</code></td><td>POST</td><td>MCP JSON-RPC 2.0 via Server-Sent Events transport</td></tr>
 <tr><td><code>/healthz</code></td><td>GET</td><td>Health check (returns <code>ok</code>)</td></tr>
+<tr><td><code>/metrics</code></td><td>GET</td><td>Prometheus metrics (<code>mcp_requests_total</code>, <code>mcp_tool_calls_total</code>, <code>mcp_tool_call_duration_seconds</code>)</td></tr>
 <tr><td><code>/swagger-ui</code></td><td>GET</td><td>OpenAPI / Swagger UI</td></tr>
 <tr><td><code>/openapi.json</code></td><td>GET</td><td>OpenAPI JSON spec</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="prometheus-metrics"><a class="header" href="#prometheus-metrics">Prometheus Metrics</a></h3>
+<p>The <code>/metrics</code> endpoint serves Prometheus-format metrics. Scrape it with your Prometheus instance to monitor request volume and tool call latency:</p>
+<pre><code class="language-yaml"># prometheus.yml scrape config
+scrape_configs:
+  - job_name: mcp-k8s
+    static_configs:
+      - targets: ['mcp-k8s:8080']
+</code></pre>
+<p>Exposed metrics:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Metric</th><th>Type</th><th>Labels</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>mcp_requests_total</code></td><td>Counter</td><td><code>method</code></td><td>Total MCP JSON-RPC requests by method</td></tr>
+<tr><td><code>mcp_tool_calls_total</code></td><td>Counter</td><td><code>tool</code></td><td>Total tool calls by tool name</td></tr>
+<tr><td><code>mcp_tool_call_duration_seconds</code></td><td>Histogram</td><td><code>tool</code></td><td>Tool call duration in seconds</td></tr>
+<tr><td><code>mcp_tool_call_errors_total</code></td><td>Counter</td><td><code>tool</code></td><td>Total tool call errors by tool name</td></tr>
 </tbody>
 </table>
 </div>

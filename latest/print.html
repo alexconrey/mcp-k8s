@@ -37,7 +37,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-70458157.js";
+            window.path_to_searchindex_js = "searchindex-414a075b.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-caea04ac.js"></script>
@@ -185,7 +185,7 @@
 <p>mcp-k8s bridges the gap between AI assistants and Kubernetes clusters. It translates natural-language requests from an MCP client into Kubernetes API calls, returning structured, token-efficient responses. Instead of raw Kubernetes JSON objects (which can be hundreds of lines), mcp-k8s returns focused summaries containing only the fields relevant to the caller.</p>
 <h2 id="key-features"><a class="header" href="#key-features">Key Features</a></h2>
 <ul>
-<li><strong>191 tools</strong> across 46 resource modules covering every GA Kubernetes resource type – Deployments, Pods, Services, Ingresses, ConfigMaps, Secrets, StatefulSets, DaemonSets, CronJobs, Jobs, RBAC resources, Nodes, PVs, PVCs, HPAs, PDBs, NetworkPolicies, admission controllers, CSI resources, and more.</li>
+<li><strong>202 tools</strong> across 49 resource modules covering every GA Kubernetes resource type – Deployments, Pods, Services, Ingresses, ConfigMaps, Secrets, StatefulSets, DaemonSets, CronJobs, Jobs, RBAC resources, Nodes, PVs, PVCs, HPAs, PDBs, NetworkPolicies, admission controllers, CSI resources, and more.</li>
 <li><strong>Two runtime modes</strong> – stdio for local use with Claude Code, and HTTP for in-cluster deployment as a Kubernetes pod.</li>
 <li><strong>SSE transport</strong> – <code>POST /mcp/sse</code> endpoint for Server-Sent Events streaming alongside the standard <code>POST /mcp</code> JSON-RPC endpoint.</li>
 <li><strong>MCP resources</strong> – <code>resources/list</code> and <code>resources/read</code> support for direct resource access via <code>k8s://</code> URIs (pods, deployments, services, configmaps, secrets, statefulsets, daemonsets, jobs, cronjobs, ingresses, nodes, namespaces).</li>
@@ -194,6 +194,9 @@
 <li><strong>Fine-grained permission controls</strong> – Global and per-resource flags to disable create, update, or delete operations. Read operations are always allowed. Disabled tools are filtered from <code>tools/list</code> responses and rejected in <code>tools/call</code>.</li>
 <li><strong>Namespace allowlisting</strong> – Restrict tool operations to a set of allowed namespaces.</li>
 <li><strong>Token-efficient responses</strong> – Focused summary and detail types strip irrelevant fields from Kubernetes API responses, reducing context window consumption.</li>
+<li><strong>Multi-cluster support</strong> – Load multiple kubeconfig contexts with <code>--contexts</code> and switch between clusters at runtime using <code>list_clusters</code>, <code>switch_cluster</code>, and <code>get_active_cluster</code> tools.</li>
+<li><strong>Watch/subscribe</strong> – <code>watch_resource</code> tool watches any resource type for ADDED, MODIFIED, and DELETED events over a configurable time window.</li>
+<li><strong>CRD discovery</strong> – <code>list_crds</code>, <code>get_crd</code>, <code>list_custom_resources</code>, <code>get_custom_resource</code>, <code>create_custom_resource</code>, <code>update_custom_resource</code>, and <code>delete_custom_resource</code> tools provide full lifecycle management of any installed CRD via dynamic API discovery.</li>
 <li><strong>Generic tools</strong> – <code>apply_manifest</code> (server-side apply) and <code>get_resource_yaml</code> work with any Kubernetes resource type, including CRDs.</li>
 <li><strong>Auth introspection</strong> – <code>whoami</code>, <code>can_i</code>, and <code>list_my_permissions</code> tools let the AI understand its own access level.</li>
 <li><strong>TLS and bearer token auth</strong> – Optional <code>--tls-cert</code>/<code>--tls-key</code> for HTTPS and <code>--auth-token</code> for bearer token authentication on the HTTP server.</li>
@@ -213,7 +216,7 @@
 │                 │http │  ┌──────────┐    ┌───────────────────┐   │
 └─────────────────┘     │  │ Resource │    │   K8sClient       │   │
                         │  │ Modules  │───▶│   (kube-rs)       │──▶│ K8s API
-┌─────────────────┐     │  │ (46)     │    └───────────────────┘   │
+┌─────────────────┐     │  │ (49)     │    └───────────────────┘   │
 │  Prometheus     │────▶│  └──────────┘                            │
 │                 │/metrics                                        │
 └─────────────────┘     │  Endpoints:                              │
@@ -270,7 +273,7 @@
 <li><a href="#installation">Installation</a> – Build from source or pull the Docker image</li>
 <li><a href="#configuration">Configuration</a> – CLI args, environment variables, and permission flags</li>
 <li><a href="#quick-start">Quick Start</a> – Get up and running in minutes</li>
-<li><a href="#tools-overview">Tools Reference</a> – Complete reference for all 191 tools</li>
+<li><a href="#tools-overview">Tools Reference</a> – Complete reference for all 202 tools</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="installation"><a class="header" href="#installation">Installation</a></h1>
@@ -381,7 +384,9 @@ docker run --rm \
 </thead>
 <tbody>
 <tr><td><code>/mcp</code></td><td>POST</td><td>MCP JSON-RPC 2.0 endpoint</td></tr>
+<tr><td><code>/mcp/sse</code></td><td>POST</td><td>MCP JSON-RPC 2.0 via Server-Sent Events (SSE) transport</td></tr>
 <tr><td><code>/healthz</code></td><td>GET</td><td>Health check (returns <code>ok</code>)</td></tr>
+<tr><td><code>/metrics</code></td><td>GET</td><td>Prometheus metrics (request counts, tool call durations)</td></tr>
 <tr><td><code>/swagger-ui</code></td><td>GET</td><td>OpenAPI / Swagger UI</td></tr>
 <tr><td><code>/openapi.json</code></td><td>GET</td><td>OpenAPI JSON spec</td></tr>
 </tbody>
@@ -398,6 +403,24 @@ docker run --rm \
 </tbody>
 </table>
 </div>
+<h2 id="multi-cluster-support"><a class="header" href="#multi-cluster-support">Multi-Cluster Support</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Env Var</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--contexts</code></td><td><code>MCP_K8S_CONTEXTS</code></td><td><em>(empty)</em></td><td>Comma-separated list of kubeconfig context names to load. Each context becomes a named cluster that can be switched at runtime via the <code>list_clusters</code>, <code>switch_cluster</code>, and <code>get_active_cluster</code> tools. The first context becomes the active cluster on startup. When omitted, mcp-k8s uses the default kubeconfig context.</td></tr>
+</tbody>
+</table>
+</div>
+<p>Example:</p>
+<pre><code class="language-bash"># Load two clusters; staging is active initially
+mcp-k8s --contexts staging,production
+
+# Via environment variable
+MCP_K8S_CONTEXTS=staging,production mcp-k8s
+</code></pre>
 <h2 id="namespace-filtering"><a class="header" href="#namespace-filtering">Namespace Filtering</a></h2>
 <div class="table-wrapper">
 <table>
@@ -468,6 +491,51 @@ MCP_K8S_DISABLE=deployment-delete,pod-create mcp-k8s
 <li>Kubeconfig file with multiple contexts</li>
 <li>OIDC, exec-based, and token-based authentication plugins</li>
 </ul>
+<h2 id="security"><a class="header" href="#security">Security</a></h2>
+<h3 id="bearer-token-authentication"><a class="header" href="#bearer-token-authentication">Bearer Token Authentication</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Env Var</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--auth-token</code></td><td><code>AUTH_TOKEN</code></td><td><em>(none)</em></td><td>When set, all HTTP requests (except <code>/healthz</code>, <code>/metrics</code>, <code>/swagger-ui</code>, and <code>/openapi.json</code>) must include an <code>Authorization: Bearer &lt;token&gt;</code> header. Unauthorized requests receive a 401 response.</td></tr>
+</tbody>
+</table>
+</div>
+<p>Example:</p>
+<pre><code class="language-bash">mcp-k8s --http --auth-token my-secret-token
+</code></pre>
+<p>Clients must then include the header:</p>
+<pre><code>Authorization: Bearer my-secret-token
+</code></pre>
+<h3 id="tls--https"><a class="header" href="#tls--https">TLS / HTTPS</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Env Var</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--tls-cert</code></td><td><code>TLS_CERT</code></td><td><em>(none)</em></td><td>Path to a TLS certificate PEM file. Must be paired with <code>--tls-key</code>.</td></tr>
+<tr><td><code>--tls-key</code></td><td><code>TLS_KEY</code></td><td><em>(none)</em></td><td>Path to a TLS private key PEM file. Must be paired with <code>--tls-cert</code>.</td></tr>
+</tbody>
+</table>
+</div>
+<p>When both are provided, the HTTP server runs over HTTPS using rustls. If only one is provided, the server exits with an error.</p>
+<p>Example:</p>
+<pre><code class="language-bash">mcp-k8s --http --tls-cert /etc/certs/tls.crt --tls-key /etc/certs/tls.key
+</code></pre>
+<h3 id="secret-decoding-control"><a class="header" href="#secret-decoding-control">Secret Decoding Control</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Env Var</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--disable-secret-decode</code></td><td><code>DISABLE_SECRET_DECODE</code></td><td><code>false</code></td><td>When set, the <code>get_secret</code> tool never returns decoded secret values, even if the caller passes <code>decode: true</code>. Use this in environments where secret values must not be exposed to MCP clients.</td></tr>
+</tbody>
+</table>
+</div>
 <h2 id="logging"><a class="header" href="#logging">Logging</a></h2>
 <div class="table-wrapper">
 <table>
@@ -476,6 +544,17 @@ MCP_K8S_DISABLE=deployment-delete,pod-create mcp-k8s
 </thead>
 <tbody>
 <tr><td><code>RUST_LOG</code></td><td><code>info</code></td><td>Controls log verbosity using the <code>tracing</code> crate’s <code>EnvFilter</code> syntax.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="log-format"><a class="header" href="#log-format">Log Format</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Env Var</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--log-format</code></td><td><code>LOG_FORMAT</code></td><td><code>text</code></td><td>Log output format. Set to <code>json</code> for structured JSON logging suitable for log aggregation pipelines (e.g. Loki, Datadog, CloudWatch).</td></tr>
 </tbody>
 </table>
 </div>
@@ -488,6 +567,9 @@ RUST_LOG=trace mcp-k8s
 
 # Info for mcp-k8s, warn for dependencies
 RUST_LOG=mcp_k8s=info,kube=warn mcp-k8s
+
+# Structured JSON logging for production
+mcp-k8s --http --log-format json
 </code></pre>
 <h2 id="complete-example"><a class="header" href="#complete-example">Complete Example</a></h2>
 <pre><code class="language-bash">mcp-k8s \
@@ -495,9 +577,15 @@ RUST_LOG=mcp_k8s=info,kube=warn mcp-k8s
   --listen 0.0.0.0:9090 \
   --namespaces default,production \
   --disable-delete \
-  --disable deployment-create,secret-create
+  --disable deployment-create,secret-create \
+  --auth-token my-secret-token \
+  --tls-cert /etc/certs/tls.crt \
+  --tls-key /etc/certs/tls.key \
+  --disable-secret-decode \
+  --log-format json \
+  --contexts staging,production
 </code></pre>
-<p>This starts mcp-k8s as an HTTP server on port 9090, restricted to the <code>default</code> and <code>production</code> namespaces, with all delete operations disabled globally and deployment/secret creation disabled individually.</p>
+<p>This starts mcp-k8s as an HTTPS server on port 9090 with bearer token authentication, restricted to the <code>default</code> and <code>production</code> namespaces, with all delete operations disabled globally, deployment/secret creation disabled individually, secret decoding disabled, structured JSON logging enabled, and two cluster contexts loaded (<code>staging</code> active by default).</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h1>
 <p>This guide walks you through setting up mcp-k8s with Claude Code and using it to interact with a Kubernetes cluster.</p>
@@ -643,15 +731,79 @@ RUST_LOG=mcp_k8s=info,kube=warn mcp-k8s
   }
 }
 </code></pre>
+<h2 id="sse-transport"><a class="header" href="#sse-transport">SSE Transport</a></h2>
+<p>In HTTP mode, mcp-k8s exposes an SSE (Server-Sent Events) endpoint at <code>POST /mcp/sse</code> alongside the standard <code>POST /mcp</code> JSON-RPC endpoint. The SSE endpoint accepts the same JSON-RPC request body but returns the response as an SSE event stream instead of a plain JSON response. This is useful for clients that prefer streaming transport.</p>
+<pre><code class="language-bash">curl -X POST http://localhost:8080/mcp/sse \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+</code></pre>
+<p>The response arrives as an SSE <code>data:</code> event containing the JSON-RPC response.</p>
+<h2 id="mcp-resources-and-prompts"><a class="header" href="#mcp-resources-and-prompts">MCP Resources and Prompts</a></h2>
+<p>Beyond tools, mcp-k8s supports the MCP <code>resources</code> and <code>prompts</code> capabilities.</p>
+<h3 id="resources"><a class="header" href="#resources">Resources</a></h3>
+<p>Use <code>resources/list</code> to discover available <code>k8s://</code> resource URIs, then <code>resources/read</code> to fetch a specific resource by URI:</p>
+<pre><code class="language-json">{
+  "jsonrpc": "2.0", "id": 1,
+  "method": "resources/read",
+  "params": { "uri": "k8s://default/pods/nginx-abc123" }
+}
+</code></pre>
+<p>Supported URI patterns:</p>
+<ul>
+<li><code>k8s://{namespace}/pods/{name}</code></li>
+<li><code>k8s://{namespace}/deployments/{name}</code></li>
+<li><code>k8s://{namespace}/services/{name}</code></li>
+<li><code>k8s://{namespace}/configmaps/{name}</code></li>
+<li><code>k8s://{namespace}/secrets/{name}</code></li>
+<li><code>k8s://{namespace}/statefulsets/{name}</code></li>
+<li><code>k8s://{namespace}/daemonsets/{name}</code></li>
+<li><code>k8s://{namespace}/jobs/{name}</code></li>
+<li><code>k8s://{namespace}/cronjobs/{name}</code></li>
+<li><code>k8s://{namespace}/ingresses/{name}</code></li>
+<li><code>k8s://cluster/nodes/{name}</code></li>
+<li><code>k8s://cluster/namespaces/{name}</code></li>
+</ul>
+<h3 id="prompts"><a class="header" href="#prompts">Prompts</a></h3>
+<p>Use <code>prompts/list</code> to discover built-in diagnostic prompts, then <code>prompts/get</code> to retrieve the prompt messages. Available prompts:</p>
+<ul>
+<li><strong><code>diagnose-pod</code></strong> – Guides the AI through pod diagnosis (status, logs, events)</li>
+<li><strong><code>review-namespace-rbac</code></strong> – Reviews RBAC configuration for a namespace</li>
+<li><strong><code>cluster-health-check</code></strong> – Checks overall cluster health (nodes, system pods, resource pressure)</li>
+<li><strong><code>resource-usage-report</code></strong> – Summarizes CPU/memory usage in a namespace</li>
+</ul>
+<p>Example:</p>
+<pre><code class="language-json">{
+  "jsonrpc": "2.0", "id": 1,
+  "method": "prompts/get",
+  "params": { "name": "diagnose-pod", "arguments": { "namespace": "default", "pod_name": "nginx-abc123" } }
+}
+</code></pre>
+<h2 id="multi-cluster-switching"><a class="header" href="#multi-cluster-switching">Multi-Cluster Switching</a></h2>
+<p>When mcp-k8s is started with <code>--contexts</code>, you can switch between clusters at runtime:</p>
+<blockquote>
+<p>“List the available Kubernetes clusters.”</p>
+</blockquote>
+<p>This calls <code>list_clusters</code> and returns:</p>
+<pre><code>* staging (active)
+  production
+</code></pre>
+<blockquote>
+<p>“Switch to the production cluster.”</p>
+</blockquote>
+<p>This calls <code>switch_cluster</code> with <code>name: "production"</code>. All subsequent tool calls will target the production cluster.</p>
+<blockquote>
+<p>“Which cluster am I connected to?”</p>
+</blockquote>
+<p>This calls <code>get_active_cluster</code> and returns <code>production</code>.</p>
 <h2 id="next-steps-1"><a class="header" href="#next-steps-1">Next Steps</a></h2>
 <ul>
 <li><a href="#configuration">Configuration</a> – Fine-tune namespace restrictions and permission controls</li>
-<li><a href="#tools-overview">Tools Reference</a> – Browse all 166 available tools</li>
+<li><a href="#tools-overview">Tools Reference</a> – Browse all 202 available tools</li>
 <li><a href="#permissions">Permissions</a> – Lock down operations for production environments</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="tools-overview"><a class="header" href="#tools-overview">Tools Overview</a></h1>
-<p>mcp-k8s exposes 166 tools covering every GA Kubernetes resource type. Each tool corresponds to a specific Kubernetes API operation. Tools are categorized by action type:</p>
+<p>mcp-k8s exposes 202 tools covering every GA Kubernetes resource type plus CRDs, multi-cluster management, and resource watching. Each tool corresponds to a specific Kubernetes API operation. Tools are categorized by action type:</p>
 <ul>
 <li><strong>Read</strong> – List, get, and inspect resources. Always available regardless of permission configuration.</li>
 <li><strong>Create</strong> – Create new resources. Disabled by <code>--disable-create</code>.</li>
@@ -895,6 +1047,50 @@ RUST_LOG=mcp_k8s=info,kube=warn mcp-k8s
 <tr><td><code>get_csr</code></td><td>Read</td><td>Get CSR detail</td></tr>
 <tr><td><code>approve_csr</code></td><td>Update</td><td>Approve a CSR</td></tr>
 <tr><td><code>deny_csr</code></td><td>Update</td><td>Deny a CSR</td></tr>
+</tbody>
+</table>
+</div>
+<p>See <a href="#cluster-resources">Cluster Resources</a> for full parameter details.</p>
+<h3 id="cluster-management-3-tools"><a class="header" href="#cluster-management-3-tools">Cluster Management (3 tools)</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Tool</th><th>Action</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>list_clusters</code></td><td>Read</td><td>List all configured cluster contexts and show which is active</td></tr>
+<tr><td><code>switch_cluster</code></td><td>Update</td><td>Switch the active cluster context</td></tr>
+<tr><td><code>get_active_cluster</code></td><td>Read</td><td>Get the name of the currently active cluster context</td></tr>
+</tbody>
+</table>
+</div>
+<p>See <a href="#cluster-resources">Cluster Resources</a> for full parameter details.</p>
+<h3 id="watch-1-tool"><a class="header" href="#watch-1-tool">Watch (1 tool)</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Tool</th><th>Action</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>watch_resource</code></td><td>Read</td><td>Watch a resource type for ADDED/MODIFIED/DELETED events over a time window</td></tr>
+</tbody>
+</table>
+</div>
+<p>See <a href="#cluster-resources">Cluster Resources</a> for full parameter details.</p>
+<h3 id="crd-discovery-7-tools"><a class="header" href="#crd-discovery-7-tools">CRD Discovery (7 tools)</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Tool</th><th>Action</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>list_crds</code></td><td>Read</td><td>List all CustomResourceDefinitions installed in the cluster</td></tr>
+<tr><td><code>get_crd</code></td><td>Read</td><td>Get a CRD by name with full spec and schema info</td></tr>
+<tr><td><code>list_custom_resources</code></td><td>Read</td><td>List instances of a custom resource via dynamic API discovery</td></tr>
+<tr><td><code>get_custom_resource</code></td><td>Read</td><td>Get a single custom resource by name</td></tr>
+<tr><td><code>create_custom_resource</code></td><td>Create</td><td>Create a custom resource from a JSON manifest</td></tr>
+<tr><td><code>update_custom_resource</code></td><td>Update</td><td>Merge-patch a custom resource</td></tr>
+<tr><td><code>delete_custom_resource</code></td><td>Delete</td><td>Delete a custom resource by name</td></tr>
 </tbody>
 </table>
 </div>
@@ -2764,7 +2960,7 @@ RUST_LOG=mcp_k8s=info,kube=warn mcp-k8s
 </div>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="cluster-resources"><a class="header" href="#cluster-resources">Cluster Resources</a></h1>
-<p>This page documents tools for cluster-level resources: Nodes, Leases, PodDisruptionBudgets, LimitRanges, PriorityClasses, RuntimeClasses, FlowControl, Admission webhooks, and CertificateSigningRequests.</p>
+<p>This page documents tools for cluster-level resources: Nodes, Leases, PodDisruptionBudgets, LimitRanges, PriorityClasses, RuntimeClasses, FlowControl, Admission webhooks, CertificateSigningRequests, Cluster Management, Watch, and CRD Discovery.</p>
 <h2 id="nodes"><a class="header" href="#nodes">Nodes</a></h2>
 <h3 id="list_nodes"><a class="header" href="#list_nodes">list_nodes</a></h3>
 <p>List all nodes in the cluster with status, roles, capacity, and version info.</p>
@@ -3147,6 +3343,202 @@ RUST_LOG=mcp_k8s=info,kube=warn mcp-k8s
 </tbody>
 </table>
 </div>
+<hr>
+<h2 id="cluster-management"><a class="header" href="#cluster-management">Cluster Management</a></h2>
+<p>These tools allow switching between multiple Kubernetes cluster contexts at runtime. Multi-cluster support is enabled by passing <code>--contexts</code> (or <code>MCP_K8S_CONTEXTS</code>) with a comma-separated list of kubeconfig context names. See <a href="#configuration">Configuration</a> for details.</p>
+<h3 id="list_clusters"><a class="header" href="#list_clusters">list_clusters</a></h3>
+<p>List all configured cluster contexts and indicate which is currently active.</p>
+<p>No required parameters.</p>
+<p>Example response:</p>
+<pre><code>* staging (active)
+  production
+</code></pre>
+<h3 id="switch_cluster"><a class="header" href="#switch_cluster">switch_cluster</a></h3>
+<p>Switch the active cluster context. All subsequent tool calls will operate against the new cluster.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Cluster context name to switch to</td></tr>
+</tbody>
+</table>
+</div>
+<p>Example:</p>
+<pre><code class="language-json">{
+  "name": "switch_cluster",
+  "arguments": { "name": "production" }
+}
+</code></pre>
+<h3 id="get_active_cluster"><a class="header" href="#get_active_cluster">get_active_cluster</a></h3>
+<p>Get the name of the currently active cluster context.</p>
+<p>No required parameters.</p>
+<p>Returns the context name as a plain string (e.g. <code>staging</code>).</p>
+<hr>
+<h2 id="watch"><a class="header" href="#watch">Watch</a></h2>
+<h3 id="watch_resource"><a class="header" href="#watch_resource">watch_resource</a></h3>
+<p>Watch a Kubernetes resource type for changes over a specified duration. Since MCP tools are request/response, this collects all ADDED, MODIFIED, and DELETED events during the watch window and returns them as a batch.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>api_version</code></td><td>string</td><td>Yes</td><td>API version (e.g. <code>v1</code>, <code>apps/v1</code>, <code>networking.k8s.io/v1</code>)</td></tr>
+<tr><td><code>kind</code></td><td>string</td><td>Yes</td><td>Resource kind (e.g. <code>Pod</code>, <code>Deployment</code>, <code>Service</code>)</td></tr>
+<tr><td><code>namespace</code></td><td>string</td><td>No</td><td>Kubernetes namespace. Omit for cluster-scoped resources or to watch across all namespaces.</td></tr>
+<tr><td><code>label_selector</code></td><td>string</td><td>No</td><td>Label selector to filter watched resources (e.g. <code>app=nginx</code>)</td></tr>
+<tr><td><code>duration_seconds</code></td><td>integer</td><td>No</td><td>How long to watch in seconds (default: 10, max: 60)</td></tr>
+</tbody>
+</table>
+</div>
+<p>Example:</p>
+<pre><code class="language-json">{
+  "name": "watch_resource",
+  "arguments": {
+    "api_version": "apps/v1",
+    "kind": "Deployment",
+    "namespace": "default",
+    "duration_seconds": 15
+  }
+}
+</code></pre>
+<p>Example response:</p>
+<pre><code class="language-json">{
+  "api_version": "apps/v1",
+  "kind": "Deployment",
+  "namespace": "default",
+  "duration_seconds": 15,
+  "events_count": 2,
+  "events": [
+    { "type": "MODIFIED", "name": "nginx", "namespace": "default" },
+    { "type": "ADDED", "name": "hello-world", "namespace": "default" }
+  ]
+}
+</code></pre>
+<hr>
+<h2 id="crd-discovery"><a class="header" href="#crd-discovery">CRD Discovery</a></h2>
+<p>These tools provide full lifecycle management of CustomResourceDefinitions and their instances. CRD discovery uses the Kubernetes API discovery mechanism to dynamically resolve resource types, so any installed CRD is supported without code changes.</p>
+<h3 id="list_crds"><a class="header" href="#list_crds">list_crds</a></h3>
+<p>List all CustomResourceDefinitions installed in the cluster. Returns name, group, kind, scope, versions, and creation timestamp for each CRD.</p>
+<p>No required parameters.</p>
+<h3 id="get_crd"><a class="header" href="#get_crd">get_crd</a></h3>
+<p>Get a CustomResourceDefinition by name. Returns the full spec including group, names, scope, and versions with schema information.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>name</code></td><td>string</td><td>Yes</td><td>CRD name (e.g. <code>crontabs.stable.example.com</code>)</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="list_custom_resources"><a class="header" href="#list_custom_resources">list_custom_resources</a></h3>
+<p>List instances of a custom resource. Uses dynamic API discovery to resolve the resource type from group/version/kind.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>group</code></td><td>string</td><td>Yes</td><td>API group of the custom resource (e.g. <code>stable.example.com</code>)</td></tr>
+<tr><td><code>version</code></td><td>string</td><td>Yes</td><td>API version (e.g. <code>v1</code>, <code>v1alpha1</code>)</td></tr>
+<tr><td><code>kind</code></td><td>string</td><td>Yes</td><td>Resource kind (e.g. <code>CronTab</code>)</td></tr>
+<tr><td><code>namespace</code></td><td>string</td><td>No</td><td>Kubernetes namespace. Omit for cluster-scoped custom resources.</td></tr>
+</tbody>
+</table>
+</div>
+<p>Example:</p>
+<pre><code class="language-json">{
+  "name": "list_custom_resources",
+  "arguments": {
+    "group": "stable.example.com",
+    "version": "v1",
+    "kind": "CronTab",
+    "namespace": "default"
+  }
+}
+</code></pre>
+<h3 id="get_custom_resource"><a class="header" href="#get_custom_resource">get_custom_resource</a></h3>
+<p>Get a single custom resource by name.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>group</code></td><td>string</td><td>Yes</td><td>API group of the custom resource</td></tr>
+<tr><td><code>version</code></td><td>string</td><td>Yes</td><td>API version</td></tr>
+<tr><td><code>kind</code></td><td>string</td><td>Yes</td><td>Resource kind</td></tr>
+<tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Resource name</td></tr>
+<tr><td><code>namespace</code></td><td>string</td><td>No</td><td>Kubernetes namespace. Omit for cluster-scoped custom resources.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="create_custom_resource"><a class="header" href="#create_custom_resource">create_custom_resource</a></h3>
+<p>Create a custom resource from a JSON manifest.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>group</code></td><td>string</td><td>Yes</td><td>API group of the custom resource</td></tr>
+<tr><td><code>version</code></td><td>string</td><td>Yes</td><td>API version</td></tr>
+<tr><td><code>kind</code></td><td>string</td><td>Yes</td><td>Resource kind</td></tr>
+<tr><td><code>manifest</code></td><td>object</td><td>Yes</td><td>Full resource manifest (must include apiVersion, kind, metadata, and spec)</td></tr>
+<tr><td><code>namespace</code></td><td>string</td><td>No</td><td>Kubernetes namespace. Omit for cluster-scoped custom resources.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="update_custom_resource"><a class="header" href="#update_custom_resource">update_custom_resource</a></h3>
+<p>Merge-patch a custom resource.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>group</code></td><td>string</td><td>Yes</td><td>API group of the custom resource</td></tr>
+<tr><td><code>version</code></td><td>string</td><td>Yes</td><td>API version</td></tr>
+<tr><td><code>kind</code></td><td>string</td><td>Yes</td><td>Resource kind</td></tr>
+<tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Resource name</td></tr>
+<tr><td><code>patch</code></td><td>object</td><td>Yes</td><td>JSON merge-patch object to apply to the resource</td></tr>
+<tr><td><code>namespace</code></td><td>string</td><td>No</td><td>Kubernetes namespace. Omit for cluster-scoped custom resources.</td></tr>
+</tbody>
+</table>
+</div>
+<p>Example:</p>
+<pre><code class="language-json">{
+  "name": "update_custom_resource",
+  "arguments": {
+    "group": "stable.example.com",
+    "version": "v1",
+    "kind": "CronTab",
+    "name": "my-crontab",
+    "namespace": "default",
+    "patch": { "spec": { "cronSpec": "*/10 * * * *" } }
+  }
+}
+</code></pre>
+<h3 id="delete_custom_resource"><a class="header" href="#delete_custom_resource">delete_custom_resource</a></h3>
+<p>Delete a custom resource by name.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>group</code></td><td>string</td><td>Yes</td><td>API group of the custom resource</td></tr>
+<tr><td><code>version</code></td><td>string</td><td>Yes</td><td>API version</td></tr>
+<tr><td><code>kind</code></td><td>string</td><td>Yes</td><td>Resource kind</td></tr>
+<tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Resource name</td></tr>
+<tr><td><code>namespace</code></td><td>string</td><td>No</td><td>Kubernetes namespace. Omit for cluster-scoped custom resources.</td></tr>
+</tbody>
+</table>
+</div>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="generic-tools"><a class="header" href="#generic-tools">Generic Tools</a></h1>
 <p>mcp-k8s provides two generic tools that work with any Kubernetes resource type, including Custom Resource Definitions (CRDs). These tools use Kubernetes API discovery to resolve resource types at runtime.</p>
@@ -3410,6 +3802,39 @@ docker build -t mcp-k8s .
   -e MCP_K8S_DISABLE=deployment-delete,secret-create,namespace-delete \
   ghcr.io/alexconrey/mcp-k8s:latest
 </code></pre>
+<h3 id="bearer-token-authentication-1"><a class="header" href="#bearer-token-authentication-1">Bearer token authentication</a></h3>
+<pre><code class="language-bash">docker run --rm \
+  -v ~/.kube/config:/home/nonroot/.kube/config:ro \
+  -p 8080:8080 \
+  -e AUTH_TOKEN=my-secret-token \
+  ghcr.io/alexconrey/mcp-k8s:latest
+</code></pre>
+<p>When <code>AUTH_TOKEN</code> is set, all requests to <code>/mcp</code> and <code>/mcp/sse</code> must include an <code>Authorization: Bearer my-secret-token</code> header. The <code>/healthz</code>, <code>/metrics</code>, <code>/swagger-ui</code>, and <code>/openapi.json</code> endpoints remain unauthenticated.</p>
+<h3 id="tls--https-1"><a class="header" href="#tls--https-1">TLS / HTTPS</a></h3>
+<pre><code class="language-bash">docker run --rm \
+  -v ~/.kube/config:/home/nonroot/.kube/config:ro \
+  -v /path/to/certs:/certs:ro \
+  -p 8443:8443 \
+  -e MCP_K8S_LISTEN=0.0.0.0:8443 \
+  -e TLS_CERT=/certs/tls.crt \
+  -e TLS_KEY=/certs/tls.key \
+  ghcr.io/alexconrey/mcp-k8s:latest
+</code></pre>
+<h3 id="structured-json-logging"><a class="header" href="#structured-json-logging">Structured JSON logging</a></h3>
+<pre><code class="language-bash">docker run --rm \
+  -v ~/.kube/config:/home/nonroot/.kube/config:ro \
+  -p 8080:8080 \
+  -e LOG_FORMAT=json \
+  ghcr.io/alexconrey/mcp-k8s:latest
+</code></pre>
+<p>Set <code>LOG_FORMAT=json</code> for structured JSON log output, suitable for log aggregation pipelines such as Loki, Datadog, or CloudWatch.</p>
+<h3 id="multi-cluster"><a class="header" href="#multi-cluster">Multi-cluster</a></h3>
+<pre><code class="language-bash">docker run --rm \
+  -v ~/.kube/config:/home/nonroot/.kube/config:ro \
+  -p 8080:8080 \
+  -e MCP_K8S_CONTEXTS=staging,production \
+  ghcr.io/alexconrey/mcp-k8s:latest
+</code></pre>
 <h2 id="environment-variables-reference"><a class="header" href="#environment-variables-reference">Environment Variables Reference</a></h2>
 <div class="table-wrapper">
 <table>
@@ -3419,10 +3844,16 @@ docker build -t mcp-k8s .
 <tbody>
 <tr><td><code>MCP_K8S_LISTEN</code></td><td>HTTP listen address</td><td><code>0.0.0.0:8080</code></td></tr>
 <tr><td><code>MCP_K8S_NAMESPACES</code></td><td>Comma-separated namespace allowlist</td><td><em>(all)</em></td></tr>
+<tr><td><code>MCP_K8S_CONTEXTS</code></td><td>Comma-separated kubeconfig context names for multi-cluster</td><td><em>(default context)</em></td></tr>
 <tr><td><code>DISABLE_CREATE</code></td><td>Disable all create operations</td><td><code>false</code></td></tr>
 <tr><td><code>DISABLE_UPDATE</code></td><td>Disable all update operations</td><td><code>false</code></td></tr>
 <tr><td><code>DISABLE_DELETE</code></td><td>Disable all delete operations</td><td><code>false</code></td></tr>
 <tr><td><code>MCP_K8S_DISABLE</code></td><td>Comma-separated resource-action overrides</td><td><em>(none)</em></td></tr>
+<tr><td><code>AUTH_TOKEN</code></td><td>Bearer token for HTTP endpoint authentication</td><td><em>(none)</em></td></tr>
+<tr><td><code>TLS_CERT</code></td><td>Path to TLS certificate PEM file</td><td><em>(none)</em></td></tr>
+<tr><td><code>TLS_KEY</code></td><td>Path to TLS private key PEM file</td><td><em>(none)</em></td></tr>
+<tr><td><code>DISABLE_SECRET_DECODE</code></td><td>Prevent secret value decoding</td><td><code>false</code></td></tr>
+<tr><td><code>LOG_FORMAT</code></td><td>Log output format (<code>text</code> or <code>json</code>)</td><td><code>text</code></td></tr>
 <tr><td><code>KUBECONFIG</code></td><td>Path to kubeconfig file</td><td><em>(auto-detected)</em></td></tr>
 <tr><td><code>RUST_LOG</code></td><td>Log level filter</td><td><code>info</code></td></tr>
 </tbody>
@@ -3437,9 +3868,33 @@ docker build -t mcp-k8s .
 </thead>
 <tbody>
 <tr><td><code>/mcp</code></td><td>POST</td><td>MCP JSON-RPC 2.0 endpoint</td></tr>
+<tr><td><code>/mcp/sse</code></td><td>POST</td><td>MCP JSON-RPC 2.0 via Server-Sent Events transport</td></tr>
 <tr><td><code>/healthz</code></td><td>GET</td><td>Health check (returns <code>ok</code>)</td></tr>
+<tr><td><code>/metrics</code></td><td>GET</td><td>Prometheus metrics (<code>mcp_requests_total</code>, <code>mcp_tool_calls_total</code>, <code>mcp_tool_call_duration_seconds</code>)</td></tr>
 <tr><td><code>/swagger-ui</code></td><td>GET</td><td>OpenAPI / Swagger UI</td></tr>
 <tr><td><code>/openapi.json</code></td><td>GET</td><td>OpenAPI JSON spec</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="prometheus-metrics"><a class="header" href="#prometheus-metrics">Prometheus Metrics</a></h3>
+<p>The <code>/metrics</code> endpoint serves Prometheus-format metrics. Scrape it with your Prometheus instance to monitor request volume and tool call latency:</p>
+<pre><code class="language-yaml"># prometheus.yml scrape config
+scrape_configs:
+  - job_name: mcp-k8s
+    static_configs:
+      - targets: ['mcp-k8s:8080']
+</code></pre>
+<p>Exposed metrics:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Metric</th><th>Type</th><th>Labels</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>mcp_requests_total</code></td><td>Counter</td><td><code>method</code></td><td>Total MCP JSON-RPC requests by method</td></tr>
+<tr><td><code>mcp_tool_calls_total</code></td><td>Counter</td><td><code>tool</code></td><td>Total tool calls by tool name</td></tr>
+<tr><td><code>mcp_tool_call_duration_seconds</code></td><td>Histogram</td><td><code>tool</code></td><td>Tool call duration in seconds</td></tr>
+<tr><td><code>mcp_tool_call_errors_total</code></td><td>Counter</td><td><code>tool</code></td><td>Total tool call errors by tool name</td></tr>
 </tbody>
 </table>
 </div>
@@ -3549,7 +4004,7 @@ cd mcp-k8s
 </tbody>
 </table>
 </div>
-<h3 id="resources"><a class="header" href="#resources">Resources</a></h3>
+<h3 id="resources-1"><a class="header" href="#resources-1">Resources</a></h3>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -3600,6 +4055,50 @@ cd mcp-k8s
 </tbody>
 </table>
 </div>
+<h3 id="poddisruptionbudget"><a class="header" href="#poddisruptionbudget">PodDisruptionBudget</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>pdb.enabled</code></td><td><code>false</code></td><td>Create a PodDisruptionBudget for the mcp-k8s pods</td></tr>
+<tr><td><code>pdb.minAvailable</code></td><td><em>(unset)</em></td><td>Minimum number of pods that must remain available during disruption (number or percentage)</td></tr>
+<tr><td><code>pdb.maxUnavailable</code></td><td><em>(unset)</em></td><td>Maximum number of pods that can be unavailable during disruption (number or percentage)</td></tr>
+</tbody>
+</table>
+</div>
+<p>Specify either <code>minAvailable</code> or <code>maxUnavailable</code>, not both.</p>
+<h3 id="autoscaling-hpa"><a class="header" href="#autoscaling-hpa">Autoscaling (HPA)</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>autoscaling.enabled</code></td><td><code>false</code></td><td>Create a HorizontalPodAutoscaler</td></tr>
+<tr><td><code>autoscaling.minReplicas</code></td><td><code>1</code></td><td>Minimum replica count</td></tr>
+<tr><td><code>autoscaling.maxReplicas</code></td><td><code>3</code></td><td>Maximum replica count</td></tr>
+<tr><td><code>autoscaling.targetCPUUtilizationPercentage</code></td><td><code>80</code></td><td>Target CPU utilization percentage</td></tr>
+<tr><td><code>autoscaling.targetMemoryUtilizationPercentage</code></td><td><em>(unset)</em></td><td>Target memory utilization percentage (optional)</td></tr>
+</tbody>
+</table>
+</div>
+<p>When autoscaling is enabled, the HPA manages the replica count instead of <code>replicaCount</code>.</p>
+<h3 id="networkpolicy"><a class="header" href="#networkpolicy">NetworkPolicy</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>networkPolicy.enabled</code></td><td><code>false</code></td><td>Create a NetworkPolicy restricting ingress to mcp-k8s pods</td></tr>
+<tr><td><code>networkPolicy.allowedCIDRs</code></td><td><code>[]</code></td><td>List of CIDR blocks allowed to reach the service port</td></tr>
+<tr><td><code>networkPolicy.allowedNamespaces</code></td><td><code>[]</code></td><td>List of namespace names whose pods are allowed to reach the service port</td></tr>
+</tbody>
+</table>
+</div>
+<p>When enabled, the NetworkPolicy restricts ingress to the service port (<code>service.port</code>) and only from the specified CIDRs and/or namespaces. If neither <code>allowedCIDRs</code> nor <code>allowedNamespaces</code> is set, all ingress traffic on the service port is allowed.</p>
 <h2 id="example-values-files"><a class="header" href="#example-values-files">Example Values Files</a></h2>
 <h3 id="read-only-deployment"><a class="header" href="#read-only-deployment">Read-only deployment</a></h3>
 <pre><code class="language-yaml"># values-readonly.yaml
@@ -3643,6 +4142,35 @@ ingress:
   enabled: true
   className: nginx
   host: mcp-k8s.internal.example.com
+</code></pre>
+<h3 id="production-deployment-with-autoscaling-and-network-policy"><a class="header" href="#production-deployment-with-autoscaling-and-network-policy">Production deployment with autoscaling and network policy</a></h3>
+<pre><code class="language-yaml"># values-production-hardened.yaml
+image:
+  tag: v0.5.0
+
+replicaCount: 2
+
+namespaces:
+  - production
+
+permissions:
+  disableDelete: true
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 70
+
+pdb:
+  enabled: true
+  minAvailable: 1
+
+networkPolicy:
+  enabled: true
+  allowedNamespaces:
+    - monitoring
+    - ai-agents
 </code></pre>
 <h3 id="namespace-scoped-deployment"><a class="header" href="#namespace-scoped-deployment">Namespace-scoped deployment</a></h3>
 <pre><code class="language-yaml"># values-namespaced.yaml

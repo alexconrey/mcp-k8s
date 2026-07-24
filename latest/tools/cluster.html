@@ -36,7 +36,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-70458157.js";
+            window.path_to_searchindex_js = "../searchindex-414a075b.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-caea04ac.js"></script>
@@ -182,7 +182,7 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="cluster-resources"><a class="header" href="#cluster-resources">Cluster Resources</a></h1>
-<p>This page documents tools for cluster-level resources: Nodes, Leases, PodDisruptionBudgets, LimitRanges, PriorityClasses, RuntimeClasses, FlowControl, Admission webhooks, and CertificateSigningRequests.</p>
+<p>This page documents tools for cluster-level resources: Nodes, Leases, PodDisruptionBudgets, LimitRanges, PriorityClasses, RuntimeClasses, FlowControl, Admission webhooks, CertificateSigningRequests, Cluster Management, Watch, and CRD Discovery.</p>
 <h2 id="nodes"><a class="header" href="#nodes">Nodes</a></h2>
 <h3 id="list_nodes"><a class="header" href="#list_nodes">list_nodes</a></h3>
 <p>List all nodes in the cluster with status, roles, capacity, and version info.</p>
@@ -562,6 +562,202 @@
 </thead>
 <tbody>
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>CSR name</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="cluster-management"><a class="header" href="#cluster-management">Cluster Management</a></h2>
+<p>These tools allow switching between multiple Kubernetes cluster contexts at runtime. Multi-cluster support is enabled by passing <code>--contexts</code> (or <code>MCP_K8S_CONTEXTS</code>) with a comma-separated list of kubeconfig context names. See <a href="../getting-started/configuration.html">Configuration</a> for details.</p>
+<h3 id="list_clusters"><a class="header" href="#list_clusters">list_clusters</a></h3>
+<p>List all configured cluster contexts and indicate which is currently active.</p>
+<p>No required parameters.</p>
+<p>Example response:</p>
+<pre><code>* staging (active)
+  production
+</code></pre>
+<h3 id="switch_cluster"><a class="header" href="#switch_cluster">switch_cluster</a></h3>
+<p>Switch the active cluster context. All subsequent tool calls will operate against the new cluster.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Cluster context name to switch to</td></tr>
+</tbody>
+</table>
+</div>
+<p>Example:</p>
+<pre><code class="language-json">{
+  "name": "switch_cluster",
+  "arguments": { "name": "production" }
+}
+</code></pre>
+<h3 id="get_active_cluster"><a class="header" href="#get_active_cluster">get_active_cluster</a></h3>
+<p>Get the name of the currently active cluster context.</p>
+<p>No required parameters.</p>
+<p>Returns the context name as a plain string (e.g. <code>staging</code>).</p>
+<hr>
+<h2 id="watch"><a class="header" href="#watch">Watch</a></h2>
+<h3 id="watch_resource"><a class="header" href="#watch_resource">watch_resource</a></h3>
+<p>Watch a Kubernetes resource type for changes over a specified duration. Since MCP tools are request/response, this collects all ADDED, MODIFIED, and DELETED events during the watch window and returns them as a batch.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>api_version</code></td><td>string</td><td>Yes</td><td>API version (e.g. <code>v1</code>, <code>apps/v1</code>, <code>networking.k8s.io/v1</code>)</td></tr>
+<tr><td><code>kind</code></td><td>string</td><td>Yes</td><td>Resource kind (e.g. <code>Pod</code>, <code>Deployment</code>, <code>Service</code>)</td></tr>
+<tr><td><code>namespace</code></td><td>string</td><td>No</td><td>Kubernetes namespace. Omit for cluster-scoped resources or to watch across all namespaces.</td></tr>
+<tr><td><code>label_selector</code></td><td>string</td><td>No</td><td>Label selector to filter watched resources (e.g. <code>app=nginx</code>)</td></tr>
+<tr><td><code>duration_seconds</code></td><td>integer</td><td>No</td><td>How long to watch in seconds (default: 10, max: 60)</td></tr>
+</tbody>
+</table>
+</div>
+<p>Example:</p>
+<pre><code class="language-json">{
+  "name": "watch_resource",
+  "arguments": {
+    "api_version": "apps/v1",
+    "kind": "Deployment",
+    "namespace": "default",
+    "duration_seconds": 15
+  }
+}
+</code></pre>
+<p>Example response:</p>
+<pre><code class="language-json">{
+  "api_version": "apps/v1",
+  "kind": "Deployment",
+  "namespace": "default",
+  "duration_seconds": 15,
+  "events_count": 2,
+  "events": [
+    { "type": "MODIFIED", "name": "nginx", "namespace": "default" },
+    { "type": "ADDED", "name": "hello-world", "namespace": "default" }
+  ]
+}
+</code></pre>
+<hr>
+<h2 id="crd-discovery"><a class="header" href="#crd-discovery">CRD Discovery</a></h2>
+<p>These tools provide full lifecycle management of CustomResourceDefinitions and their instances. CRD discovery uses the Kubernetes API discovery mechanism to dynamically resolve resource types, so any installed CRD is supported without code changes.</p>
+<h3 id="list_crds"><a class="header" href="#list_crds">list_crds</a></h3>
+<p>List all CustomResourceDefinitions installed in the cluster. Returns name, group, kind, scope, versions, and creation timestamp for each CRD.</p>
+<p>No required parameters.</p>
+<h3 id="get_crd"><a class="header" href="#get_crd">get_crd</a></h3>
+<p>Get a CustomResourceDefinition by name. Returns the full spec including group, names, scope, and versions with schema information.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>name</code></td><td>string</td><td>Yes</td><td>CRD name (e.g. <code>crontabs.stable.example.com</code>)</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="list_custom_resources"><a class="header" href="#list_custom_resources">list_custom_resources</a></h3>
+<p>List instances of a custom resource. Uses dynamic API discovery to resolve the resource type from group/version/kind.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>group</code></td><td>string</td><td>Yes</td><td>API group of the custom resource (e.g. <code>stable.example.com</code>)</td></tr>
+<tr><td><code>version</code></td><td>string</td><td>Yes</td><td>API version (e.g. <code>v1</code>, <code>v1alpha1</code>)</td></tr>
+<tr><td><code>kind</code></td><td>string</td><td>Yes</td><td>Resource kind (e.g. <code>CronTab</code>)</td></tr>
+<tr><td><code>namespace</code></td><td>string</td><td>No</td><td>Kubernetes namespace. Omit for cluster-scoped custom resources.</td></tr>
+</tbody>
+</table>
+</div>
+<p>Example:</p>
+<pre><code class="language-json">{
+  "name": "list_custom_resources",
+  "arguments": {
+    "group": "stable.example.com",
+    "version": "v1",
+    "kind": "CronTab",
+    "namespace": "default"
+  }
+}
+</code></pre>
+<h3 id="get_custom_resource"><a class="header" href="#get_custom_resource">get_custom_resource</a></h3>
+<p>Get a single custom resource by name.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>group</code></td><td>string</td><td>Yes</td><td>API group of the custom resource</td></tr>
+<tr><td><code>version</code></td><td>string</td><td>Yes</td><td>API version</td></tr>
+<tr><td><code>kind</code></td><td>string</td><td>Yes</td><td>Resource kind</td></tr>
+<tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Resource name</td></tr>
+<tr><td><code>namespace</code></td><td>string</td><td>No</td><td>Kubernetes namespace. Omit for cluster-scoped custom resources.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="create_custom_resource"><a class="header" href="#create_custom_resource">create_custom_resource</a></h3>
+<p>Create a custom resource from a JSON manifest.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>group</code></td><td>string</td><td>Yes</td><td>API group of the custom resource</td></tr>
+<tr><td><code>version</code></td><td>string</td><td>Yes</td><td>API version</td></tr>
+<tr><td><code>kind</code></td><td>string</td><td>Yes</td><td>Resource kind</td></tr>
+<tr><td><code>manifest</code></td><td>object</td><td>Yes</td><td>Full resource manifest (must include apiVersion, kind, metadata, and spec)</td></tr>
+<tr><td><code>namespace</code></td><td>string</td><td>No</td><td>Kubernetes namespace. Omit for cluster-scoped custom resources.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="update_custom_resource"><a class="header" href="#update_custom_resource">update_custom_resource</a></h3>
+<p>Merge-patch a custom resource.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>group</code></td><td>string</td><td>Yes</td><td>API group of the custom resource</td></tr>
+<tr><td><code>version</code></td><td>string</td><td>Yes</td><td>API version</td></tr>
+<tr><td><code>kind</code></td><td>string</td><td>Yes</td><td>Resource kind</td></tr>
+<tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Resource name</td></tr>
+<tr><td><code>patch</code></td><td>object</td><td>Yes</td><td>JSON merge-patch object to apply to the resource</td></tr>
+<tr><td><code>namespace</code></td><td>string</td><td>No</td><td>Kubernetes namespace. Omit for cluster-scoped custom resources.</td></tr>
+</tbody>
+</table>
+</div>
+<p>Example:</p>
+<pre><code class="language-json">{
+  "name": "update_custom_resource",
+  "arguments": {
+    "group": "stable.example.com",
+    "version": "v1",
+    "kind": "CronTab",
+    "name": "my-crontab",
+    "namespace": "default",
+    "patch": { "spec": { "cronSpec": "*/10 * * * *" } }
+  }
+}
+</code></pre>
+<h3 id="delete_custom_resource"><a class="header" href="#delete_custom_resource">delete_custom_resource</a></h3>
+<p>Delete a custom resource by name.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>group</code></td><td>string</td><td>Yes</td><td>API group of the custom resource</td></tr>
+<tr><td><code>version</code></td><td>string</td><td>Yes</td><td>API version</td></tr>
+<tr><td><code>kind</code></td><td>string</td><td>Yes</td><td>Resource kind</td></tr>
+<tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Resource name</td></tr>
+<tr><td><code>namespace</code></td><td>string</td><td>No</td><td>Kubernetes namespace. Omit for cluster-scoped custom resources.</td></tr>
 </tbody>
 </table>
 </div>

@@ -36,7 +36,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-70458157.js";
+            window.path_to_searchindex_js = "../searchindex-414a075b.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-caea04ac.js"></script>
@@ -325,10 +325,74 @@
   }
 }
 </code></pre>
+<h2 id="sse-transport"><a class="header" href="#sse-transport">SSE Transport</a></h2>
+<p>In HTTP mode, mcp-k8s exposes an SSE (Server-Sent Events) endpoint at <code>POST /mcp/sse</code> alongside the standard <code>POST /mcp</code> JSON-RPC endpoint. The SSE endpoint accepts the same JSON-RPC request body but returns the response as an SSE event stream instead of a plain JSON response. This is useful for clients that prefer streaming transport.</p>
+<pre><code class="language-bash">curl -X POST http://localhost:8080/mcp/sse \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+</code></pre>
+<p>The response arrives as an SSE <code>data:</code> event containing the JSON-RPC response.</p>
+<h2 id="mcp-resources-and-prompts"><a class="header" href="#mcp-resources-and-prompts">MCP Resources and Prompts</a></h2>
+<p>Beyond tools, mcp-k8s supports the MCP <code>resources</code> and <code>prompts</code> capabilities.</p>
+<h3 id="resources"><a class="header" href="#resources">Resources</a></h3>
+<p>Use <code>resources/list</code> to discover available <code>k8s://</code> resource URIs, then <code>resources/read</code> to fetch a specific resource by URI:</p>
+<pre><code class="language-json">{
+  "jsonrpc": "2.0", "id": 1,
+  "method": "resources/read",
+  "params": { "uri": "k8s://default/pods/nginx-abc123" }
+}
+</code></pre>
+<p>Supported URI patterns:</p>
+<ul>
+<li><code>k8s://{namespace}/pods/{name}</code></li>
+<li><code>k8s://{namespace}/deployments/{name}</code></li>
+<li><code>k8s://{namespace}/services/{name}</code></li>
+<li><code>k8s://{namespace}/configmaps/{name}</code></li>
+<li><code>k8s://{namespace}/secrets/{name}</code></li>
+<li><code>k8s://{namespace}/statefulsets/{name}</code></li>
+<li><code>k8s://{namespace}/daemonsets/{name}</code></li>
+<li><code>k8s://{namespace}/jobs/{name}</code></li>
+<li><code>k8s://{namespace}/cronjobs/{name}</code></li>
+<li><code>k8s://{namespace}/ingresses/{name}</code></li>
+<li><code>k8s://cluster/nodes/{name}</code></li>
+<li><code>k8s://cluster/namespaces/{name}</code></li>
+</ul>
+<h3 id="prompts"><a class="header" href="#prompts">Prompts</a></h3>
+<p>Use <code>prompts/list</code> to discover built-in diagnostic prompts, then <code>prompts/get</code> to retrieve the prompt messages. Available prompts:</p>
+<ul>
+<li><strong><code>diagnose-pod</code></strong> – Guides the AI through pod diagnosis (status, logs, events)</li>
+<li><strong><code>review-namespace-rbac</code></strong> – Reviews RBAC configuration for a namespace</li>
+<li><strong><code>cluster-health-check</code></strong> – Checks overall cluster health (nodes, system pods, resource pressure)</li>
+<li><strong><code>resource-usage-report</code></strong> – Summarizes CPU/memory usage in a namespace</li>
+</ul>
+<p>Example:</p>
+<pre><code class="language-json">{
+  "jsonrpc": "2.0", "id": 1,
+  "method": "prompts/get",
+  "params": { "name": "diagnose-pod", "arguments": { "namespace": "default", "pod_name": "nginx-abc123" } }
+}
+</code></pre>
+<h2 id="multi-cluster-switching"><a class="header" href="#multi-cluster-switching">Multi-Cluster Switching</a></h2>
+<p>When mcp-k8s is started with <code>--contexts</code>, you can switch between clusters at runtime:</p>
+<blockquote>
+<p>“List the available Kubernetes clusters.”</p>
+</blockquote>
+<p>This calls <code>list_clusters</code> and returns:</p>
+<pre><code>* staging (active)
+  production
+</code></pre>
+<blockquote>
+<p>“Switch to the production cluster.”</p>
+</blockquote>
+<p>This calls <code>switch_cluster</code> with <code>name: "production"</code>. All subsequent tool calls will target the production cluster.</p>
+<blockquote>
+<p>“Which cluster am I connected to?”</p>
+</blockquote>
+<p>This calls <code>get_active_cluster</code> and returns <code>production</code>.</p>
 <h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
 <ul>
 <li><a href="./configuration.html">Configuration</a> – Fine-tune namespace restrictions and permission controls</li>
-<li><a href="../tools/overview.html">Tools Reference</a> – Browse all 166 available tools</li>
+<li><a href="../tools/overview.html">Tools Reference</a> – Browse all 202 available tools</li>
 <li><a href="../permissions.html">Permissions</a> – Lock down operations for production environments</li>
 </ul>
 

@@ -36,7 +36,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-70458157.js";
+            window.path_to_searchindex_js = "../searchindex-414a075b.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-caea04ac.js"></script>
@@ -315,6 +315,50 @@ cd mcp-k8s
 </tbody>
 </table>
 </div>
+<h3 id="poddisruptionbudget"><a class="header" href="#poddisruptionbudget">PodDisruptionBudget</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>pdb.enabled</code></td><td><code>false</code></td><td>Create a PodDisruptionBudget for the mcp-k8s pods</td></tr>
+<tr><td><code>pdb.minAvailable</code></td><td><em>(unset)</em></td><td>Minimum number of pods that must remain available during disruption (number or percentage)</td></tr>
+<tr><td><code>pdb.maxUnavailable</code></td><td><em>(unset)</em></td><td>Maximum number of pods that can be unavailable during disruption (number or percentage)</td></tr>
+</tbody>
+</table>
+</div>
+<p>Specify either <code>minAvailable</code> or <code>maxUnavailable</code>, not both.</p>
+<h3 id="autoscaling-hpa"><a class="header" href="#autoscaling-hpa">Autoscaling (HPA)</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>autoscaling.enabled</code></td><td><code>false</code></td><td>Create a HorizontalPodAutoscaler</td></tr>
+<tr><td><code>autoscaling.minReplicas</code></td><td><code>1</code></td><td>Minimum replica count</td></tr>
+<tr><td><code>autoscaling.maxReplicas</code></td><td><code>3</code></td><td>Maximum replica count</td></tr>
+<tr><td><code>autoscaling.targetCPUUtilizationPercentage</code></td><td><code>80</code></td><td>Target CPU utilization percentage</td></tr>
+<tr><td><code>autoscaling.targetMemoryUtilizationPercentage</code></td><td><em>(unset)</em></td><td>Target memory utilization percentage (optional)</td></tr>
+</tbody>
+</table>
+</div>
+<p>When autoscaling is enabled, the HPA manages the replica count instead of <code>replicaCount</code>.</p>
+<h3 id="networkpolicy"><a class="header" href="#networkpolicy">NetworkPolicy</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>networkPolicy.enabled</code></td><td><code>false</code></td><td>Create a NetworkPolicy restricting ingress to mcp-k8s pods</td></tr>
+<tr><td><code>networkPolicy.allowedCIDRs</code></td><td><code>[]</code></td><td>List of CIDR blocks allowed to reach the service port</td></tr>
+<tr><td><code>networkPolicy.allowedNamespaces</code></td><td><code>[]</code></td><td>List of namespace names whose pods are allowed to reach the service port</td></tr>
+</tbody>
+</table>
+</div>
+<p>When enabled, the NetworkPolicy restricts ingress to the service port (<code>service.port</code>) and only from the specified CIDRs and/or namespaces. If neither <code>allowedCIDRs</code> nor <code>allowedNamespaces</code> is set, all ingress traffic on the service port is allowed.</p>
 <h2 id="example-values-files"><a class="header" href="#example-values-files">Example Values Files</a></h2>
 <h3 id="read-only-deployment"><a class="header" href="#read-only-deployment">Read-only deployment</a></h3>
 <pre><code class="language-yaml"># values-readonly.yaml
@@ -358,6 +402,35 @@ ingress:
   enabled: true
   className: nginx
   host: mcp-k8s.internal.example.com
+</code></pre>
+<h3 id="production-deployment-with-autoscaling-and-network-policy"><a class="header" href="#production-deployment-with-autoscaling-and-network-policy">Production deployment with autoscaling and network policy</a></h3>
+<pre><code class="language-yaml"># values-production-hardened.yaml
+image:
+  tag: v0.5.0
+
+replicaCount: 2
+
+namespaces:
+  - production
+
+permissions:
+  disableDelete: true
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 70
+
+pdb:
+  enabled: true
+  minAvailable: 1
+
+networkPolicy:
+  enabled: true
+  allowedNamespaces:
+    - monitoring
+    - ai-agents
 </code></pre>
 <h3 id="namespace-scoped-deployment"><a class="header" href="#namespace-scoped-deployment">Namespace-scoped deployment</a></h3>
 <pre><code class="language-yaml"># values-namespaced.yaml
