@@ -73,13 +73,13 @@ async fn setup_k3s_client() -> (K8sClient, ContainerAsync<K3s>) {
 
 #[tokio::test]
 #[ignore] // requires Docker
-async fn k3s_get_namespaces() {
+async fn k3s_list_namespaces() {
     let (client, _container) = setup_k3s_client().await;
 
-    let result = handle_tool(&client, "get_namespaces", &serde_json::json!({})).await;
+    let result = handle_tool(&client, "list_namespaces", &serde_json::json!({})).await;
     let text = result
-        .expect("get_namespaces should be a known tool")
-        .expect("get_namespaces should succeed");
+        .expect("list_namespaces should be a known tool")
+        .expect("list_namespaces should succeed");
 
     // k3s always provisions these namespaces.
     assert!(text.contains("default"), "missing 'default' namespace");
@@ -187,10 +187,10 @@ async fn k3s_create_and_delete_namespace() {
         .expect("create_namespace should succeed");
 
     // Verify it appears in the namespace list.
-    let result = handle_tool(&client, "get_namespaces", &serde_json::json!({})).await;
+    let result = handle_tool(&client, "list_namespaces", &serde_json::json!({})).await;
     let text = result
-        .expect("get_namespaces should be a known tool")
-        .expect("get_namespaces should succeed");
+        .expect("list_namespaces should be a known tool")
+        .expect("list_namespaces should succeed");
     assert!(
         text.contains("integration-test-ns"),
         "created namespace not found"

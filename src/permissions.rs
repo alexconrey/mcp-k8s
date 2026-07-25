@@ -331,7 +331,7 @@ mod tests {
             Action::Read
         );
         assert_eq!(
-            ActionPermissions::action_for_tool("get_namespaces"),
+            ActionPermissions::action_for_tool("list_namespaces"),
             Action::Read
         );
         assert_eq!(ActionPermissions::action_for_tool("can_i"), Action::Read);

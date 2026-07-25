@@ -48,3 +48,72 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           helm push mcp-k8s-${VERSION}.tgz oci://ghcr.io/${{ github.repository_owner }}/charts
+
+  release:
+    runs-on: ubuntu-latest
+    needs: [docker, helm]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          # Find the previous tag
+          PREV_TAG=$(git tag --sort=-v:refname | grep '^v' | sed -n '2p')
+
+          if [ -z "$PREV_TAG" ]; then
+            # First release — use all commits
+            COMMITS=$(git log --pretty=format:"- %s (%h)" HEAD)
+          else
+            COMMITS=$(git log --pretty=format:"- %s (%h)" "${PREV_TAG}..HEAD")
+          fi
+
+          # Count tools by grepping tool definitions
+          TOOL_COUNT=$(grep -r '"name":' src/mcp/definitions.rs src/resources/*.rs | grep -c 'inputSchema')
+
+          # Count tests
+          TEST_COUNT=$(cargo test 2>&1 | grep -oP '\d+ passed' | head -1 || echo "unknown")
+
+          # Build the release body
+          cat > /tmp/release_notes.md << NOTES_EOF
+          ## What's Changed
+
+          ${COMMITS}
+
+          ## Artifacts
+
+          | Artifact | Location |
+          |----------|----------|
+          | Docker image | \`ghcr.io/${{ github.repository }}:${{ github.ref_name }}\` |
+          | Helm chart | \`oci://ghcr.io/${{ github.repository_owner }}/charts/mcp-k8s:${GITHUB_REF_NAME#v}\` |
+          | Documentation | https://${{ github.repository_owner }}.github.io/mcp-k8s/${{ github.ref_name }}/ |
+
+          ## Quick Start
+
+          \`\`\`bash
+          # Docker
+          docker run -p 8080:8080 ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+
+          # Helm
+          helm install mcp-k8s oci://ghcr.io/${{ github.repository_owner }}/charts/mcp-k8s --version ${GITHUB_REF_NAME#v}
+
+          # Claude Code (stdio)
+          claude mcp add k8s -- /path/to/mcp-k8s
+          \`\`\`
+
+          ## Stats
+
+          - **${TOOL_COUNT}** MCP tools
+          - **${TEST_COUNT}** tests
+          NOTES_EOF
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: /tmp/release_notes.md
+          generate_release_notes: true
+          append_body: true

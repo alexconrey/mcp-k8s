@@ -213,7 +213,7 @@ mcp-k8s/
 │   └── charts/mcp-k8s/     # Raw K8s manifests + Kustomize
 ├── .github/workflows/
 │   ├── ci.yaml             # Build, test, clippy, fmt on PR
-│   ├── release.yaml        # Docker image + Helm OCI push on tag
+│   ├── release.yaml        # Docker + Helm OCI + GitHub Release on tag
 │   └── docs.yaml           # Versioned mdBook deploy to GitHub Pages
 ├── Dockerfile              # Static musl binary in scratch container
 ├── Makefile                # 17 targets (build, test, fmt, clippy, docker, deploy, etc.)
@@ -243,18 +243,45 @@ docker build -t mcp-k8s .
 Static musl binary in `scratch` container. Runs `/mcp-k8s --http` on
 port 8080. Installs `rustls::crypto::ring` provider at startup.
 
+## Releasing
+
+Cutting a new release:
+
+```bash
+git tag v0.X.Y
+git push origin v0.X.Y
+```
+
+This triggers three workflows:
+1. **Release** (`release.yaml`) — builds Docker image, packages + pushes Helm
+   chart to GHCR OCI registry, creates a GitHub Release with auto-generated
+   release notes (commit log, artifact links, quick start, tool/test counts)
+2. **Docs** (`docs.yaml`) — builds mdBook and deploys to GitHub Pages under
+   `/vX.Y.Z/` and updates `/latest/`
+3. **Pages build** — GitHub deploys the updated `gh-pages` branch
+
+Artifacts produced per release:
+- Docker image: `ghcr.io/alexconrey/mcp-k8s:vX.Y.Z`
+- Helm chart: `oci://ghcr.io/alexconrey/charts/mcp-k8s:X.Y.Z`
+- Versioned docs: `https://alexconrey.github.io/mcp-k8s/vX.Y.Z/`
+- GitHub Release with release notes: `https://github.com/alexconrey/mcp-k8s/releases/tag/vX.Y.Z`
+
+The release workflow uses `softprops/action-gh-release@v2` with
+`generate_release_notes: true` for GitHub's auto-generated changelog
+plus a custom body with commit log, artifact table, and quick start.
+
 ## Helm Chart
 
 Published to GHCR OCI registry on tag push:
 ```bash
-helm install mcp-k8s oci://ghcr.io/alexconrey/charts/mcp-k8s --version 0.0.1
+helm install mcp-k8s oci://ghcr.io/alexconrey/charts/mcp-k8s --version 0.1.0
 ```
 
 ## Documentation
 
 Published to GitHub Pages at https://alexconrey.github.io/mcp-k8s/
 
-Built with mdBook, versioned per tag (`/latest/`, `/v0.0.1/`).
+Built with mdBook, versioned per tag (`/latest/`, `/v0.1.0/`).
 
 ## Origin
 

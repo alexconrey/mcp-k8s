@@ -3,7 +3,7 @@ use crate::permissions::ActionPermissions;
 pub fn tool_definitions(permissions: &ActionPermissions) -> Vec<serde_json::Value> {
     let mut tools = vec![
         serde_json::json!({
-            "name": "get_namespaces",
+            "name": "list_namespaces",
             "description": "List all Kubernetes namespaces visible to the server.",
             "inputSchema": {
                 "type": "object",

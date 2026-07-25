@@ -699,7 +699,7 @@ fn handle_prompts_get(request: &JsonRpcRequest) -> JsonRpcResponse {
                     "text": "Perform a cluster health check. \
                          Use list_nodes to check node status, conditions, and resource pressure \
                          (MemoryPressure, DiskPressure, PIDPressure). \
-                         Use get_namespaces to list all namespaces. \
+                         Use list_namespaces to list all namespaces. \
                          Use list_pods in the 'kube-system' namespace to verify system pods are \
                          running. Use get_events in 'kube-system' to check for recent warnings. \
                          Summarize the overall cluster health and flag any issues."
