@@ -274,6 +274,7 @@ async fn k3s_permission_controls() {
         true,  // disable_delete = true   (delete blocked)
         vec![],
         true,
+        true, // apply_manifest_enabled
     );
     let k8s_client = K8sClient::new(kube_client, vec![], perms);
 

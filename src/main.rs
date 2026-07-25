@@ -12,6 +12,7 @@ use clap::Parser;
 use futures::stream;
 use metrics::{counter, histogram};
 use metrics_exporter_prometheus::PrometheusHandle;
+use subtle::ConstantTimeEq;
 use tower_http::cors::CorsLayer;
 use tracing::Instrument;
 use utoipa::OpenApi;
@@ -23,7 +24,7 @@ use mcp_k8s::mcp::{
     JsonRpcResponse,
 };
 use mcp_k8s::permissions::ActionPermissions;
-use mcp_k8s::{ClusterManager, K8sClient};
+use mcp_k8s::{ClusterManager, K8sClient, ResponseCache};
 
 #[derive(OpenApi)]
 #[openapi(
@@ -96,9 +97,19 @@ struct Cli {
     #[arg(long, env = "DISABLE_SECRET_DECODE")]
     disable_secret_decode: bool,
 
+    /// Disable the apply_manifest tool. When set, apply_manifest calls are
+    /// rejected regardless of other permission settings.
+    #[arg(long, env = "DISABLE_APPLY_MANIFEST")]
+    disable_apply_manifest: bool,
+
     /// Log output format: "text" (default) or "json" for structured JSON logging.
     #[arg(long, default_value = "text", env = "LOG_FORMAT")]
     log_format: String,
+
+    /// Response cache TTL in seconds for list operations.
+    /// Set to 0 (default) to disable caching.
+    #[arg(long, env = "CACHE_TTL", default_value = "0")]
+    cache_ttl: u64,
 
     /// Comma-separated list of kubeconfig context names to load.
     /// Each context becomes a named cluster that can be switched via MCP tools.
@@ -143,6 +154,7 @@ async fn main() {
         cli.disable_delete,
         cli.disable_actions,
         !cli.disable_secret_decode,
+        !cli.disable_apply_manifest,
     );
 
     let contexts: Vec<String> = cli.contexts.into_iter().filter(|s| !s.is_empty()).collect();
@@ -198,6 +210,13 @@ async fn main() {
         manager
     };
 
+    let cache = if cli.cache_ttl > 0 {
+        tracing::info!(ttl = cli.cache_ttl, "response cache enabled");
+        ResponseCache::new(cli.cache_ttl, true)
+    } else {
+        ResponseCache::disabled()
+    };
+
     if cli.http {
         let auth_token = cli.auth_token.clone();
 
@@ -210,11 +229,19 @@ async fn main() {
                     key_path,
                     auth_token,
                     prometheus_handle,
+                    cache,
                 )
                 .await;
             }
             (None, None) => {
-                run_http(cluster_manager, &cli.listen, auth_token, prometheus_handle).await;
+                run_http(
+                    cluster_manager,
+                    &cli.listen,
+                    auth_token,
+                    prometheus_handle,
+                    cache,
+                )
+                .await;
             }
             _ => {
                 eprintln!("Error: --tls-cert and --tls-key must both be provided for TLS");
@@ -290,7 +317,14 @@ async fn auth_middleware(
                 .get(header::AUTHORIZATION)
                 .and_then(|v| v.to_str().ok())
                 .and_then(|v| v.strip_prefix("Bearer "))
-                .map(|t| t == expected.as_str())
+                .map(|t| {
+                    let expected_bytes = expected.as_bytes();
+                    let provided_bytes = t.as_bytes();
+                    // Length check leaks length info, but the token length is not
+                    // secret and ct_eq requires equal-length slices.
+                    expected_bytes.len() == provided_bytes.len()
+                        && bool::from(expected_bytes.ct_eq(provided_bytes))
+                })
                 .unwrap_or(false);
 
             if !authorized {
@@ -310,6 +344,7 @@ fn build_router(
     manager: ClusterManager,
     auth_token: Option<String>,
     prometheus_handle: PrometheusHandle,
+    cache: ResponseCache,
 ) -> axum::Router {
     let state = Arc::new(manager);
     let auth_state = AuthState { token: auth_token };
@@ -325,6 +360,7 @@ fn build_router(
             auth_middleware,
         ))
         .layer(axum::Extension(prometheus_handle))
+        .layer(axum::Extension(cache))
         .layer(CorsLayer::permissive())
         .with_state(state)
 }
@@ -334,8 +370,9 @@ async fn run_http(
     listen: &str,
     auth_token: Option<String>,
     prometheus_handle: PrometheusHandle,
+    cache: ResponseCache,
 ) {
-    let app = build_router(manager, auth_token, prometheus_handle);
+    let app = build_router(manager, auth_token, prometheus_handle, cache);
 
     let listener = tokio::net::TcpListener::bind(listen)
         .await
@@ -353,8 +390,9 @@ async fn run_https(
     key_path: &str,
     auth_token: Option<String>,
     prometheus_handle: PrometheusHandle,
+    cache: ResponseCache,
 ) {
-    let app = build_router(manager, auth_token, prometheus_handle);
+    let app = build_router(manager, auth_token, prometheus_handle, cache);
 
     let config = axum_server::tls_rustls::RustlsConfig::from_pem_file(cert_path, key_path)
         .await
@@ -419,8 +457,15 @@ async fn handle_mcp_sse(
 ) -> Sse<impl futures::Stream<Item = Result<Event, std::convert::Infallible>>> {
     let response = dispatch(&manager, request).await;
     let json = serde_json::to_string(&response).unwrap_or_default();
-    let event = Event::default().data(json);
-    Sse::new(stream::once(async { Ok(event) }))
+
+    let events = vec![
+        Ok(Event::default().data(json).event("message")),
+        Ok(Event::default().data("").event("done")),
+    ];
+
+    Sse::new(stream::iter(events)).keep_alive(
+        axum::response::sse::KeepAlive::new().interval(std::time::Duration::from_secs(15)),
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -442,6 +487,7 @@ async fn dispatch(manager: &ClusterManager, request: JsonRpcRequest) -> JsonRpcR
         match request.method.as_str() {
             "initialize" => handle_initialize(&request),
             "notifications/initialized" => success_response(&request, serde_json::json!({})),
+            "ping" => success_response(&request, serde_json::json!({})),
             "tools/list" => handle_tools_list(manager, &request).await,
             "tools/call" => handle_tool_call(manager, &request).await,
             "resources/list" => handle_resources_list(&request),

@@ -15,6 +15,7 @@ Rust project with a library crate (`mcp_k8s`) and a binary crate (`mcp-k8s`).
 src/
 ├── lib.rs              # Public API re-exports
 ├── main.rs             # Binary: stdio/HTTP/HTTPS modes, auth middleware, metrics
+├── cache.rs            # Optional in-memory response cache with TTL
 ├── client.rs           # K8sClient — kube::Client wrapper with namespace allowlist + permissions
 ├── cluster.rs          # ClusterManager — multi-cluster support with named contexts
 ├── error.rs            # Error types (NamespaceNotAllowed, Kube, BadRequest, ActionNotAllowed)
@@ -102,14 +103,19 @@ and rejected in `tools/call`.
 structs. `types.rs` re-exports all per-resource module types for a unified
 import path.
 
+**Response cache** (`cache.rs`): Optional in-memory cache with configurable
+TTL for read operations. Disabled by default (`--cache-ttl 0`). When enabled,
+caches list operation responses to reduce K8s API load on large clusters.
+
 **Resource modules** (`resources/*.rs`): 49 modules, each with
 `tool_definitions()` and `handle_tool()`. CRD module uses `DynamicObject`
 + `kube::discovery::pinned_kind` for runtime GVK resolution. Watch module
-uses `Api::watch()` with timeout for event streaming.
+uses `Api::watch()` with timeout for event streaming (30s hard cap).
 
 **MCP protocol** (`mcp/`): JSON-RPC 2.0 with utoipa schemas. Supports
 `tools/list`, `tools/call`, `resources/list`, `resources/read`,
-`prompts/list`, `prompts/get`. SSE transport at `/mcp/sse`.
+`prompts/list`, `prompts/get`, and `ping` keepalive. SSE transport at
+`/mcp/sse`.
 
 **Observability**: Prometheus metrics (`mcp_tool_calls_total`,
 `mcp_tool_call_duration_seconds`, `mcp_tool_call_errors_total`,
@@ -161,7 +167,9 @@ mcp-k8s --http --tls-cert /path/cert.pem --tls-key /path/key.pem
 | `--auth-token` | `AUTH_TOKEN` | (none) | Bearer token for HTTP auth |
 | `--tls-cert` | `TLS_CERT` | (none) | TLS certificate PEM path |
 | `--tls-key` | `TLS_KEY` | (none) | TLS private key PEM path |
+| `--disable-apply-manifest` | `DISABLE_APPLY_MANIFEST` | `false` | Block the `apply_manifest` tool entirely |
 | `--disable-secret-decode` | `DISABLE_SECRET_DECODE` | `false` | Prevent secret value decoding |
+| `--cache-ttl` | `CACHE_TTL` | `0` | Response cache TTL in seconds (0 = disabled) |
 | `--log-format` | `LOG_FORMAT` | `text` | Log format: `text` or `json` |
 | — | `KUBECONFIG` | in-cluster | K8s config path |
 | — | `RUST_LOG` | `info` | Log level |

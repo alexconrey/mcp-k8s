@@ -9,11 +9,18 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
+      - name: Check for binary files
+        run: |
+          BINARIES=$(find . -not -path './target/*' -not -path './.git/*' -type f \( -name '*.tgz' -o -name '*.tar.gz' -o -name '*.zip' -o -name '*.exe' -o -name '*.bin' -o -name '*.whl' -o -name '*.jar' \))
+          if [ -n "$BINARIES" ]; then
+            echo "::error::Binary files found in repository: $BINARIES"
+            exit 1
+          fi
       - name: Check formatting
         run: cargo fmt --check
       - name: Clippy
@@ -31,13 +38,13 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/login-action@v3
+      - uses: actions/checkout@v7
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           push: true
           tags: |

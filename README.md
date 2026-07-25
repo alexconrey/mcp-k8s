@@ -94,7 +94,9 @@ Beyond standard CRUD, the server supports:
 | `--auth-token` | `AUTH_TOKEN` | (none) | Bearer token for HTTP endpoint authentication |
 | `--tls-cert` | `TLS_CERT` | (none) | Path to TLS certificate PEM file (enables HTTPS) |
 | `--tls-key` | `TLS_KEY` | (none) | Path to TLS private key PEM file (enables HTTPS) |
+| `--disable-apply-manifest` | `DISABLE_APPLY_MANIFEST` | `false` | Block the `apply_manifest` tool entirely |
 | `--disable-secret-decode` | `DISABLE_SECRET_DECODE` | `false` | Prevent secret value decoding |
+| `--cache-ttl` | `CACHE_TTL` | `0` | Response cache TTL in seconds (0 = disabled) |
 | `--log-format` | `LOG_FORMAT` | `text` | Log format: `text` or `json` |
 | — | `KUBECONFIG` | in-cluster | Kubernetes config path |
 

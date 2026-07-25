@@ -458,7 +458,7 @@ async fn test_delete_pod() {
 #[tokio::test]
 async fn test_permission_denied() {
     // Disable create actions globally
-    let perms = ActionPermissions::new(true, false, false, vec![], true);
+    let perms = ActionPermissions::new(true, false, false, vec![], true, true);
     let (client, _handle) = mock_client_with_permissions(perms);
 
     let args = serde_json::json!({

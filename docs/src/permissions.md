@@ -109,6 +109,32 @@ mcp-k8s --disable \
   clusterrolebinding-delete
 ```
 
+## `apply_manifest` Guardrails
+
+`apply_manifest` is the most powerful tool in mcp-k8s. It uses Kubernetes server-side apply to create or update **any** resource from raw YAML/JSON, making it capable of both create and update operations in a single tool. Because of this dual nature, it requires special consideration:
+
+- **`--disable-create`** removes `apply_manifest` (since it is classified as a Create action), but this also disables all other create tools.
+- **`--disable-apply-manifest`** / `DISABLE_APPLY_MANIFEST` is a dedicated kill-switch that blocks `apply_manifest` without affecting other create tools like `create_deployment` or `create_service`.
+
+For production environments, consider blocking `apply_manifest` entirely:
+
+```bash
+# Block apply_manifest but keep typed create tools available
+mcp-k8s --disable-apply-manifest
+```
+
+Or via environment variable:
+
+```bash
+DISABLE_APPLY_MANIFEST=true mcp-k8s
+```
+
+This is the recommended approach for production because:
+
+1. `apply_manifest` can create any resource type, including ClusterRoles, Namespaces, and other privileged objects
+2. It can also update existing resources, bypassing the `--disable-update` flag since it is classified as a Create action
+3. The typed create tools (e.g. `create_deployment`) are safer because they only operate on their specific resource type
+
 ## How It Works Internally
 
 The `ActionPermissions` struct maintains:
