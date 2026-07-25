@@ -70,6 +70,7 @@ mcp-k8s provides global and per-resource flags to restrict which CRUD actions ar
 | `--disable-create` | `DISABLE_CREATE` | `false` | Globally disable all create tools. When set, tools like `create_deployment`, `create_pod`, `create_service`, and `apply_manifest` are removed from the tool list. |
 | `--disable-update` | `DISABLE_UPDATE` | `false` | Globally disable all update tools. When set, tools like `update_deployment`, `scale_deployment`, `restart_deployment`, `cordon_node`, and `drain_node` are removed. |
 | `--disable-delete` | `DISABLE_DELETE` | `false` | Globally disable all delete tools. When set, tools like `delete_deployment`, `delete_pod`, and `evict_pod` are removed. |
+| `--disable-apply-manifest` | `DISABLE_APPLY_MANIFEST` | `false` | Completely disable the `apply_manifest` tool. Unlike `--disable-create`, this is a dedicated kill-switch for `apply_manifest` because it can both create and update arbitrary resources. See [Permissions](../permissions.md) for details. |
 
 ### Per-Resource Flags
 
@@ -172,6 +173,24 @@ RUST_LOG=mcp_k8s=info,kube=warn mcp-k8s
 mcp-k8s --http --log-format json
 ```
 
+## Response Cache
+
+| Flag | Env Var | Default | Description |
+|------|---------|---------|-------------|
+| `--cache-ttl` | `CACHE_TTL` | `0` | Response cache TTL in seconds. When set to a value greater than 0, read (list) operation responses are cached in memory to reduce Kubernetes API load. Set to `0` to disable caching entirely. |
+
+When enabled, the cache stores responses from list operations and serves them from memory for subsequent identical requests within the TTL window. This is useful for large clusters where repeated list calls are expensive. The cache is automatically invalidated when the TTL expires.
+
+Example:
+
+```bash
+# Enable caching with a 30-second TTL
+mcp-k8s --cache-ttl 30
+
+# Via environment variable
+CACHE_TTL=60 mcp-k8s
+```
+
 ## Complete Example
 
 ```bash
@@ -180,13 +199,15 @@ mcp-k8s \
   --listen 0.0.0.0:9090 \
   --namespaces default,production \
   --disable-delete \
+  --disable-apply-manifest \
   --disable deployment-create,secret-create \
   --auth-token my-secret-token \
   --tls-cert /etc/certs/tls.crt \
   --tls-key /etc/certs/tls.key \
   --disable-secret-decode \
   --log-format json \
+  --cache-ttl 30 \
   --contexts staging,production
 ```
 
-This starts mcp-k8s as an HTTPS server on port 9090 with bearer token authentication, restricted to the `default` and `production` namespaces, with all delete operations disabled globally, deployment/secret creation disabled individually, secret decoding disabled, structured JSON logging enabled, and two cluster contexts loaded (`staging` active by default).
+This starts mcp-k8s as an HTTPS server on port 9090 with bearer token authentication, restricted to the `default` and `production` namespaces, with all delete operations disabled globally, `apply_manifest` blocked entirely, deployment/secret creation disabled individually, secret decoding disabled, structured JSON logging enabled, a 30-second response cache, and two cluster contexts loaded (`staging` active by default).

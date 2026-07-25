@@ -41,7 +41,7 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
                 },
                 "duration_seconds": {
                     "type": "integer",
-                    "description": "How long to watch for events in seconds (default: 10, max: 60)"
+                    "description": "How long to watch for events in seconds (default: 10, max: 30)"
                 }
             },
             "required": ["api_version", "kind"],
@@ -69,7 +69,15 @@ async fn watch_resource(client: &K8sClient, args: &serde_json::Value) -> Result<
     let kind = args["kind"].as_str().ok_or("kind is required")?;
     let namespace = args["namespace"].as_str();
     let label_selector = args["label_selector"].as_str();
-    let duration_secs = args["duration_seconds"].as_u64().unwrap_or(10).min(60);
+    let requested = args["duration_seconds"].as_u64().unwrap_or(10);
+    let duration_secs = requested.min(30);
+    if requested > 30 {
+        tracing::warn!(
+            requested = requested,
+            capped = duration_secs,
+            "watch duration capped at 30s"
+        );
+    }
 
     // Check namespace access if present
     if let Some(ns) = namespace {

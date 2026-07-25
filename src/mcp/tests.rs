@@ -31,7 +31,7 @@ fn tool_names_are_unique() {
 
 #[test]
 fn disabled_create_filters_create_tools() {
-    let perms = ActionPermissions::new(true, false, false, vec![], true);
+    let perms = ActionPermissions::new(true, false, false, vec![], true, true);
     let tools = super::definitions::tool_definitions(&perms);
     for tool in &tools {
         let name = tool["name"].as_str().unwrap();
@@ -46,7 +46,7 @@ fn disabled_create_filters_create_tools() {
 
 #[test]
 fn disabled_delete_filters_delete_tools() {
-    let perms = ActionPermissions::new(false, false, true, vec![], true);
+    let perms = ActionPermissions::new(false, false, true, vec![], true, true);
     let tools = super::definitions::tool_definitions(&perms);
     for tool in &tools {
         let name = tool["name"].as_str().unwrap();
@@ -60,7 +60,7 @@ fn disabled_delete_filters_delete_tools() {
 
 #[test]
 fn disabled_update_filters_update_tools() {
-    let perms = ActionPermissions::new(false, true, false, vec![], true);
+    let perms = ActionPermissions::new(false, true, false, vec![], true, true);
     let tools = super::definitions::tool_definitions(&perms);
     for tool in &tools {
         let name = tool["name"].as_str().unwrap();
@@ -89,7 +89,7 @@ fn disabled_update_filters_update_tools() {
 
 #[test]
 fn read_only_mode_only_has_read_tools() {
-    let perms = ActionPermissions::new(true, true, true, vec![], true);
+    let perms = ActionPermissions::new(true, true, true, vec![], true, true);
     let tools = super::definitions::tool_definitions(&perms);
     // Should still have read tools
     assert!(!tools.is_empty(), "read-only mode should still have tools");
@@ -113,6 +113,7 @@ fn per_resource_disable_filters_specific_tool() {
         false,
         false,
         vec!["deployment-delete".to_string()],
+        true,
         true,
     );
     let tools = super::definitions::tool_definitions(&perms);
