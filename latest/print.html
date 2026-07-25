@@ -37,7 +37,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-414a075b.js";
+            window.path_to_searchindex_js = "searchindex-9e9ab823.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-caea04ac.js"></script>
@@ -451,6 +451,7 @@ MCP_K8S_NAMESPACES=default,production,staging mcp-k8s
 <tr><td><code>--disable-create</code></td><td><code>DISABLE_CREATE</code></td><td><code>false</code></td><td>Globally disable all create tools. When set, tools like <code>create_deployment</code>, <code>create_pod</code>, <code>create_service</code>, and <code>apply_manifest</code> are removed from the tool list.</td></tr>
 <tr><td><code>--disable-update</code></td><td><code>DISABLE_UPDATE</code></td><td><code>false</code></td><td>Globally disable all update tools. When set, tools like <code>update_deployment</code>, <code>scale_deployment</code>, <code>restart_deployment</code>, <code>cordon_node</code>, and <code>drain_node</code> are removed.</td></tr>
 <tr><td><code>--disable-delete</code></td><td><code>DISABLE_DELETE</code></td><td><code>false</code></td><td>Globally disable all delete tools. When set, tools like <code>delete_deployment</code>, <code>delete_pod</code>, and <code>evict_pod</code> are removed.</td></tr>
+<tr><td><code>--disable-apply-manifest</code></td><td><code>DISABLE_APPLY_MANIFEST</code></td><td><code>false</code></td><td>Completely disable the <code>apply_manifest</code> tool. Unlike <code>--disable-create</code>, this is a dedicated kill-switch for <code>apply_manifest</code> because it can both create and update arbitrary resources. See <a href="#permissions">Permissions</a> for details.</td></tr>
 </tbody>
 </table>
 </div>
@@ -571,21 +572,42 @@ RUST_LOG=mcp_k8s=info,kube=warn mcp-k8s
 # Structured JSON logging for production
 mcp-k8s --http --log-format json
 </code></pre>
+<h2 id="response-cache"><a class="header" href="#response-cache">Response Cache</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Env Var</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--cache-ttl</code></td><td><code>CACHE_TTL</code></td><td><code>0</code></td><td>Response cache TTL in seconds. When set to a value greater than 0, read (list) operation responses are cached in memory to reduce Kubernetes API load. Set to <code>0</code> to disable caching entirely.</td></tr>
+</tbody>
+</table>
+</div>
+<p>When enabled, the cache stores responses from list operations and serves them from memory for subsequent identical requests within the TTL window. This is useful for large clusters where repeated list calls are expensive. The cache is automatically invalidated when the TTL expires.</p>
+<p>Example:</p>
+<pre><code class="language-bash"># Enable caching with a 30-second TTL
+mcp-k8s --cache-ttl 30
+
+# Via environment variable
+CACHE_TTL=60 mcp-k8s
+</code></pre>
 <h2 id="complete-example"><a class="header" href="#complete-example">Complete Example</a></h2>
 <pre><code class="language-bash">mcp-k8s \
   --http \
   --listen 0.0.0.0:9090 \
   --namespaces default,production \
   --disable-delete \
+  --disable-apply-manifest \
   --disable deployment-create,secret-create \
   --auth-token my-secret-token \
   --tls-cert /etc/certs/tls.crt \
   --tls-key /etc/certs/tls.key \
   --disable-secret-decode \
   --log-format json \
+  --cache-ttl 30 \
   --contexts staging,production
 </code></pre>
-<p>This starts mcp-k8s as an HTTPS server on port 9090 with bearer token authentication, restricted to the <code>default</code> and <code>production</code> namespaces, with all delete operations disabled globally, deployment/secret creation disabled individually, secret decoding disabled, structured JSON logging enabled, and two cluster contexts loaded (<code>staging</code> active by default).</p>
+<p>This starts mcp-k8s as an HTTPS server on port 9090 with bearer token authentication, restricted to the <code>default</code> and <code>production</code> namespaces, with all delete operations disabled globally, <code>apply_manifest</code> blocked entirely, deployment/secret creation disabled individually, secret decoding disabled, structured JSON logging enabled, a 30-second response cache, and two cluster contexts loaded (<code>staging</code> active by default).</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h1>
 <p>This guide walks you through setting up mcp-k8s with Claude Code and using it to interact with a Kubernetes cluster.</p>
@@ -3706,6 +3728,25 @@ mcp-k8s --http --log-format json
   clusterrolebinding-create,\
   clusterrolebinding-delete
 </code></pre>
+<h2 id="apply_manifest-guardrails"><a class="header" href="#apply_manifest-guardrails"><code>apply_manifest</code> Guardrails</a></h2>
+<p><code>apply_manifest</code> is the most powerful tool in mcp-k8s. It uses Kubernetes server-side apply to create or update <strong>any</strong> resource from raw YAML/JSON, making it capable of both create and update operations in a single tool. Because of this dual nature, it requires special consideration:</p>
+<ul>
+<li><strong><code>--disable-create</code></strong> removes <code>apply_manifest</code> (since it is classified as a Create action), but this also disables all other create tools.</li>
+<li><strong><code>--disable-apply-manifest</code></strong> / <code>DISABLE_APPLY_MANIFEST</code> is a dedicated kill-switch that blocks <code>apply_manifest</code> without affecting other create tools like <code>create_deployment</code> or <code>create_service</code>.</li>
+</ul>
+<p>For production environments, consider blocking <code>apply_manifest</code> entirely:</p>
+<pre><code class="language-bash"># Block apply_manifest but keep typed create tools available
+mcp-k8s --disable-apply-manifest
+</code></pre>
+<p>Or via environment variable:</p>
+<pre><code class="language-bash">DISABLE_APPLY_MANIFEST=true mcp-k8s
+</code></pre>
+<p>This is the recommended approach for production because:</p>
+<ol>
+<li><code>apply_manifest</code> can create any resource type, including ClusterRoles, Namespaces, and other privileged objects</li>
+<li>It can also update existing resources, bypassing the <code>--disable-update</code> flag since it is classified as a Create action</li>
+<li>The typed create tools (e.g. <code>create_deployment</code>) are safer because they only operate on their specific resource type</li>
+</ol>
 <h2 id="how-it-works-internally"><a class="header" href="#how-it-works-internally">How It Works Internally</a></h2>
 <p>The <code>ActionPermissions</code> struct maintains:</p>
 <ul>

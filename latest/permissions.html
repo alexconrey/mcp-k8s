@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-414a075b.js";
+            window.path_to_searchindex_js = "searchindex-9e9ab823.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-caea04ac.js"></script>
@@ -263,6 +263,25 @@
   clusterrolebinding-create,\
   clusterrolebinding-delete
 </code></pre>
+<h2 id="apply_manifest-guardrails"><a class="header" href="#apply_manifest-guardrails"><code>apply_manifest</code> Guardrails</a></h2>
+<p><code>apply_manifest</code> is the most powerful tool in mcp-k8s. It uses Kubernetes server-side apply to create or update <strong>any</strong> resource from raw YAML/JSON, making it capable of both create and update operations in a single tool. Because of this dual nature, it requires special consideration:</p>
+<ul>
+<li><strong><code>--disable-create</code></strong> removes <code>apply_manifest</code> (since it is classified as a Create action), but this also disables all other create tools.</li>
+<li><strong><code>--disable-apply-manifest</code></strong> / <code>DISABLE_APPLY_MANIFEST</code> is a dedicated kill-switch that blocks <code>apply_manifest</code> without affecting other create tools like <code>create_deployment</code> or <code>create_service</code>.</li>
+</ul>
+<p>For production environments, consider blocking <code>apply_manifest</code> entirely:</p>
+<pre><code class="language-bash"># Block apply_manifest but keep typed create tools available
+mcp-k8s --disable-apply-manifest
+</code></pre>
+<p>Or via environment variable:</p>
+<pre><code class="language-bash">DISABLE_APPLY_MANIFEST=true mcp-k8s
+</code></pre>
+<p>This is the recommended approach for production because:</p>
+<ol>
+<li><code>apply_manifest</code> can create any resource type, including ClusterRoles, Namespaces, and other privileged objects</li>
+<li>It can also update existing resources, bypassing the <code>--disable-update</code> flag since it is classified as a Create action</li>
+<li>The typed create tools (e.g. <code>create_deployment</code>) are safer because they only operate on their specific resource type</li>
+</ol>
 <h2 id="how-it-works-internally"><a class="header" href="#how-it-works-internally">How It Works Internally</a></h2>
 <p>The <code>ActionPermissions</code> struct maintains:</p>
 <ul>
