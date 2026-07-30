@@ -90,6 +90,33 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
             }
         }),
         serde_json::json!({
+            "name": "update_storageclass",
+            "description": "Update an existing StorageClass. Fetches the current resource, applies changes, and replaces it.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "name": { "type": "string", "description": "StorageClass name" },
+                    "provisioner": { "type": "string", "description": "Provisioner name (e.g. kubernetes.io/aws-ebs, ebs.csi.aws.com)" },
+                    "reclaim_policy": { "type": "string", "description": "Reclaim policy: Delete or Retain" },
+                    "volume_binding_mode": { "type": "string", "description": "Volume binding mode: Immediate or WaitForFirstConsumer" },
+                    "allow_volume_expansion": { "type": "boolean", "description": "Whether volumes created with this StorageClass can be expanded" },
+                    "mount_options": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Mount options for volumes created with this StorageClass"
+                    },
+                    "parameters": {
+                        "type": "object",
+                        "description": "Provisioner-specific parameters as key-value string pairs",
+                        "additionalProperties": { "type": "string" }
+                    },
+                    "is_default": { "type": "boolean", "description": "Set as the default StorageClass in the cluster" }
+                },
+                "required": ["name"],
+                "additionalProperties": false
+            }
+        }),
+        serde_json::json!({
             "name": "delete_storageclass",
             "description": "Delete a StorageClass by name.",
             "inputSchema": {
@@ -113,6 +140,7 @@ pub async fn handle_tool(
         "list_storageclasses" => list_storageclasses(client).await,
         "get_storageclass" => get_storageclass(client, args).await,
         "create_storageclass" => create_storageclass(client, args).await,
+        "update_storageclass" => update_storageclass(client, args).await,
         "delete_storageclass" => delete_storageclass(client, args).await,
         _ => return None,
     };
@@ -208,6 +236,66 @@ async fn create_storageclass(
     serde_json::to_string_pretty(&summary).map_err(|e| e.to_string())
 }
 
+async fn update_storageclass(
+    client: &K8sClient,
+    args: &serde_json::Value,
+) -> Result<String, String> {
+    let name = args["name"].as_str().ok_or("name is required")?;
+
+    let sc_api = api(client);
+    let mut sc = sc_api.get(name).await.map_err(|e| e.to_string())?;
+
+    // Update provisioner if provided
+    if let Some(provisioner) = args.get("provisioner").and_then(|v| v.as_str()) {
+        sc.provisioner = provisioner.to_string();
+    }
+
+    // Update reclaim_policy if provided
+    if let Some(reclaim_policy) = args.get("reclaim_policy").and_then(|v| v.as_str()) {
+        sc.reclaim_policy = Some(reclaim_policy.to_string());
+    }
+
+    // Update volume_binding_mode if provided
+    if let Some(volume_binding_mode) = args.get("volume_binding_mode").and_then(|v| v.as_str()) {
+        sc.volume_binding_mode = Some(volume_binding_mode.to_string());
+    }
+
+    // Update allow_volume_expansion if provided
+    if let Some(allow_volume_expansion) =
+        args.get("allow_volume_expansion").and_then(|v| v.as_bool())
+    {
+        sc.allow_volume_expansion = Some(allow_volume_expansion);
+    }
+
+    // Update mount_options if provided
+    if let Some(mount_options) = args.get("mount_options") {
+        let opts: Vec<String> = serde_json::from_value(mount_options.clone())
+            .map_err(|e| format!("invalid mount_options: {}", e))?;
+        sc.mount_options = Some(opts);
+    }
+
+    // Update parameters if provided
+    if let Some(parameters) = args.get("parameters") {
+        let params: BTreeMap<String, String> = serde_json::from_value(parameters.clone())
+            .map_err(|e| format!("invalid parameters: {}", e))?;
+        sc.parameters = Some(params);
+    }
+
+    // Update is_default annotation if provided
+    if let Some(is_default) = args.get("is_default").and_then(|v| v.as_bool()) {
+        let annotations = sc.metadata.annotations.get_or_insert_with(BTreeMap::new);
+        annotations.insert(DEFAULT_SC_ANNOTATION.to_string(), is_default.to_string());
+    }
+
+    let updated = sc_api
+        .replace(name, &PostParams::default(), &sc)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let summary = extract_summary(&updated);
+    serde_json::to_string_pretty(&summary).map_err(|e| e.to_string())
+}
+
 async fn delete_storageclass(
     client: &K8sClient,
     args: &serde_json::Value,
@@ -233,9 +321,9 @@ mod tests {
     use std::collections::BTreeMap;
 
     #[test]
-    fn tool_definitions_returns_four_tools() {
+    fn tool_definitions_returns_five_tools() {
         let defs = tool_definitions();
-        assert_eq!(defs.len(), 4);
+        assert_eq!(defs.len(), 5);
 
         let names: Vec<&str> = defs.iter().map(|d| d["name"].as_str().unwrap()).collect();
 
@@ -247,6 +335,7 @@ mod tests {
         assert!(names.contains(&"list_storageclasses"));
         assert!(names.contains(&"get_storageclass"));
         assert!(names.contains(&"create_storageclass"));
+        assert!(names.contains(&"update_storageclass"));
         assert!(names.contains(&"delete_storageclass"));
     }
 

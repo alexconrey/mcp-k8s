@@ -1,8 +1,15 @@
-use k8s_openapi::api::networking::v1::IngressClass;
-use kube::api::ListParams;
+use std::collections::BTreeMap;
+
+use k8s_openapi::api::networking::v1::{
+    IngressClass, IngressClassParametersReference, IngressClassSpec,
+};
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
+use kube::api::{DeleteParams, ListParams, PostParams};
 use serde::Serialize;
 
 use crate::client::K8sClient;
+
+const DEFAULT_IC_ANNOTATION: &str = "ingressclass.kubernetes.io/is-default-class";
 
 fn api(client: &K8sClient) -> kube::Api<IngressClass> {
     kube::Api::all(client.inner().clone())
@@ -35,7 +42,7 @@ fn extract_summary(ic: &IngressClass) -> IngressClassSummary {
     let is_default = meta
         .annotations
         .as_ref()
-        .and_then(|a| a.get("ingressclass.kubernetes.io/is-default-class"))
+        .and_then(|a| a.get(DEFAULT_IC_ANNOTATION))
         .map(|v| v == "true")
         .unwrap_or(false);
 
@@ -84,6 +91,56 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
                 "additionalProperties": false
             }
         }),
+        serde_json::json!({
+            "name": "create_ingressclass",
+            "description": "Create an IngressClass with the given controller and optional settings.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "name": { "type": "string", "description": "IngressClass name" },
+                    "controller": { "type": "string", "description": "Controller that implements this IngressClass (e.g. k8s.io/ingress-nginx)" },
+                    "is_default": { "type": "boolean", "description": "Set as the default IngressClass in the cluster" },
+                    "parameters_api_group": { "type": "string", "description": "API group for IngressClass parameters resource" },
+                    "parameters_kind": { "type": "string", "description": "Kind of the IngressClass parameters resource" },
+                    "parameters_name": { "type": "string", "description": "Name of the IngressClass parameters resource" },
+                    "parameters_namespace": { "type": "string", "description": "Namespace of the IngressClass parameters resource" },
+                    "parameters_scope": { "type": "string", "description": "Scope of the IngressClass parameters (Cluster or Namespace)" }
+                },
+                "required": ["name", "controller"],
+                "additionalProperties": false
+            }
+        }),
+        serde_json::json!({
+            "name": "update_ingressclass",
+            "description": "Update an existing IngressClass. Fetches the current resource, applies changes, and replaces it.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "name": { "type": "string", "description": "IngressClass name" },
+                    "controller": { "type": "string", "description": "Controller that implements this IngressClass" },
+                    "is_default": { "type": "boolean", "description": "Set as the default IngressClass in the cluster" },
+                    "parameters_api_group": { "type": "string", "description": "API group for IngressClass parameters resource" },
+                    "parameters_kind": { "type": "string", "description": "Kind of the IngressClass parameters resource" },
+                    "parameters_name": { "type": "string", "description": "Name of the IngressClass parameters resource" },
+                    "parameters_namespace": { "type": "string", "description": "Namespace of the IngressClass parameters resource" },
+                    "parameters_scope": { "type": "string", "description": "Scope of the IngressClass parameters (Cluster or Namespace)" }
+                },
+                "required": ["name"],
+                "additionalProperties": false
+            }
+        }),
+        serde_json::json!({
+            "name": "delete_ingressclass",
+            "description": "Delete an IngressClass by name.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "name": { "type": "string", "description": "IngressClass name" }
+                },
+                "required": ["name"],
+                "additionalProperties": false
+            }
+        }),
     ]
 }
 
@@ -95,6 +152,9 @@ pub async fn handle_tool(
     let result = match name {
         "list_ingressclasses" => list_ingressclasses(client).await,
         "get_ingressclass" => get_ingressclass(client, args).await,
+        "create_ingressclass" => create_ingressclass(client, args).await,
+        "update_ingressclass" => update_ingressclass(client, args).await,
+        "delete_ingressclass" => delete_ingressclass(client, args).await,
         _ => return None,
     };
     Some(result)
@@ -140,6 +200,154 @@ async fn get_ingressclass(client: &K8sClient, args: &serde_json::Value) -> Resul
     serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
 }
 
+fn build_parameters_ref(args: &serde_json::Value) -> Option<IngressClassParametersReference> {
+    let kind = args
+        .get("parameters_kind")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    let name = args
+        .get("parameters_name")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+
+    // kind and name are required for a valid parameters reference
+    match (kind, name) {
+        (Some(k), Some(n)) => Some(IngressClassParametersReference {
+            api_group: args
+                .get("parameters_api_group")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            kind: k,
+            name: n,
+            namespace: args
+                .get("parameters_namespace")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            scope: args
+                .get("parameters_scope")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+        }),
+        _ => None,
+    }
+}
+
+async fn create_ingressclass(
+    client: &K8sClient,
+    args: &serde_json::Value,
+) -> Result<String, String> {
+    let name = args["name"].as_str().ok_or("name is required")?;
+    let controller = args["controller"]
+        .as_str()
+        .ok_or("controller is required")?;
+
+    let mut labels = BTreeMap::new();
+    labels.insert(
+        "app.kubernetes.io/managed-by".to_string(),
+        "mcp-k8s".to_string(),
+    );
+
+    let mut annotations = BTreeMap::new();
+    if let Some(is_default) = args.get("is_default").and_then(|v| v.as_bool()) {
+        annotations.insert(DEFAULT_IC_ANNOTATION.to_string(), is_default.to_string());
+    }
+
+    let parameters = build_parameters_ref(args);
+
+    let ic = IngressClass {
+        metadata: ObjectMeta {
+            name: Some(name.to_string()),
+            labels: Some(labels),
+            annotations: if annotations.is_empty() {
+                None
+            } else {
+                Some(annotations)
+            },
+            ..Default::default()
+        },
+        spec: Some(IngressClassSpec {
+            controller: Some(controller.to_string()),
+            parameters,
+        }),
+    };
+
+    let ic_api = api(client);
+    let created = ic_api
+        .create(&PostParams::default(), &ic)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let summary = extract_summary(&created);
+    serde_json::to_string_pretty(&summary).map_err(|e| e.to_string())
+}
+
+async fn update_ingressclass(
+    client: &K8sClient,
+    args: &serde_json::Value,
+) -> Result<String, String> {
+    let name = args["name"].as_str().ok_or("name is required")?;
+
+    let ic_api = api(client);
+    let mut ic = ic_api.get(name).await.map_err(|e| e.to_string())?;
+
+    // Update controller if provided
+    if let Some(controller) = args.get("controller").and_then(|v| v.as_str()) {
+        if let Some(ref mut spec) = ic.spec {
+            spec.controller = Some(controller.to_string());
+        } else {
+            ic.spec = Some(IngressClassSpec {
+                controller: Some(controller.to_string()),
+                parameters: None,
+            });
+        }
+    }
+
+    // Update is_default annotation if provided
+    if let Some(is_default) = args.get("is_default").and_then(|v| v.as_bool()) {
+        let annotations = ic.metadata.annotations.get_or_insert_with(BTreeMap::new);
+        annotations.insert(DEFAULT_IC_ANNOTATION.to_string(), is_default.to_string());
+    }
+
+    // Update parameters if any parameter field is provided
+    if args.get("parameters_kind").is_some() || args.get("parameters_name").is_some() {
+        let parameters = build_parameters_ref(args);
+        if let Some(ref mut spec) = ic.spec {
+            spec.parameters = parameters;
+        } else {
+            ic.spec = Some(IngressClassSpec {
+                controller: None,
+                parameters,
+            });
+        }
+    }
+
+    let updated = ic_api
+        .replace(name, &PostParams::default(), &ic)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let summary = extract_summary(&updated);
+    serde_json::to_string_pretty(&summary).map_err(|e| e.to_string())
+}
+
+async fn delete_ingressclass(
+    client: &K8sClient,
+    args: &serde_json::Value,
+) -> Result<String, String> {
+    let name = args["name"].as_str().ok_or("name is required")?;
+
+    let ic_api = api(client);
+    ic_api
+        .delete(name, &DeleteParams::default())
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let result = serde_json::json!({
+        "deleted": name,
+    });
+    serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -148,9 +356,9 @@ mod tests {
     use std::collections::BTreeMap;
 
     #[test]
-    fn tool_definitions_returns_two_tools() {
+    fn tool_definitions_returns_five_tools() {
         let defs = tool_definitions();
-        assert_eq!(defs.len(), 2);
+        assert_eq!(defs.len(), 5);
 
         let names: Vec<&str> = defs.iter().map(|d| d["name"].as_str().unwrap()).collect();
 
@@ -161,6 +369,9 @@ mod tests {
 
         assert!(names.contains(&"list_ingressclasses"));
         assert!(names.contains(&"get_ingressclass"));
+        assert!(names.contains(&"create_ingressclass"));
+        assert!(names.contains(&"update_ingressclass"));
+        assert!(names.contains(&"delete_ingressclass"));
     }
 
     #[test]
