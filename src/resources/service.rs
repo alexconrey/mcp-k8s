@@ -312,7 +312,7 @@ async fn update_service(client: &K8sClient, args: &serde_json::Value) -> Result<
 
     let svc_api = api(client, ns)?;
     let patched = svc_api
-        .patch(name, &PatchParams::apply("mcp-k8s"), &Patch::Merge(&patch))
+        .patch(name, &PatchParams::default(), &Patch::Strategic(patch))
         .await
         .map_err(|e| e.to_string())?;
 

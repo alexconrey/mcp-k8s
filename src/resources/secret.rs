@@ -281,7 +281,7 @@ async fn update_secret(client: &K8sClient, args: &serde_json::Value) -> Result<S
 
     let secrets_api = api(client, ns)?;
     let patched = secrets_api
-        .patch(name, &PatchParams::apply("mcp-k8s"), &Patch::Merge(&patch))
+        .patch(name, &PatchParams::default(), &Patch::Strategic(patch))
         .await
         .map_err(|e| e.to_string())?;
 

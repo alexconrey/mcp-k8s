@@ -380,7 +380,7 @@ async fn update_hpa(client: &K8sClient, args: &serde_json::Value) -> Result<Stri
 
     let hpa_api = api(client, ns)?;
     let patched = hpa_api
-        .patch(name, &PatchParams::apply("mcp-k8s"), &Patch::Merge(&patch))
+        .patch(name, &PatchParams::default(), &Patch::Strategic(patch))
         .await
         .map_err(|e| e.to_string())?;
 

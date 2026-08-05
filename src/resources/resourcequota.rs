@@ -291,7 +291,7 @@ async fn update_resourcequota(
 
     let rq_api = api(client, ns)?;
     let patched = rq_api
-        .patch(name, &PatchParams::apply("mcp-k8s"), &Patch::Merge(&patch))
+        .patch(name, &PatchParams::default(), &Patch::Strategic(patch))
         .await
         .map_err(|e| e.to_string())?;
 

@@ -290,7 +290,7 @@ async fn cordon_node(client: &K8sClient, args: &serde_json::Value) -> Result<Str
         }
     });
     let patched = node_api
-        .patch(name, &PatchParams::apply("mcp-k8s"), &Patch::Merge(&patch))
+        .patch(name, &PatchParams::default(), &Patch::Strategic(patch))
         .await
         .map_err(|e| e.to_string())?;
 
@@ -318,7 +318,7 @@ async fn uncordon_node(client: &K8sClient, args: &serde_json::Value) -> Result<S
         }
     });
     let patched = node_api
-        .patch(name, &PatchParams::apply("mcp-k8s"), &Patch::Merge(&patch))
+        .patch(name, &PatchParams::default(), &Patch::Strategic(patch))
         .await
         .map_err(|e| e.to_string())?;
 
@@ -350,8 +350,8 @@ async fn drain_node(client: &K8sClient, args: &serde_json::Value) -> Result<Stri
     node_api
         .patch(
             name,
-            &PatchParams::apply("mcp-k8s"),
-            &Patch::Merge(&cordon_patch),
+            &PatchParams::default(),
+            &Patch::Strategic(cordon_patch),
         )
         .await
         .map_err(|e| e.to_string())?;
