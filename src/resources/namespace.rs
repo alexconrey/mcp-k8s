@@ -186,7 +186,7 @@ async fn update_namespace(client: &K8sClient, args: &serde_json::Value) -> Resul
 
     let ns_api = api(client);
     let patched = ns_api
-        .patch(name, &PatchParams::apply("mcp-k8s"), &Patch::Merge(&patch))
+        .patch(name, &PatchParams::default(), &Patch::Strategic(patch))
         .await
         .map_err(|e| e.to_string())?;
 

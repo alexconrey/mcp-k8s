@@ -364,7 +364,7 @@ async fn update_daemonset(client: &K8sClient, args: &serde_json::Value) -> Resul
 
     let ds_api = api(client, ns)?;
     let patched = ds_api
-        .patch(name, &PatchParams::apply("mcp-k8s"), &Patch::Merge(&patch))
+        .patch(name, &PatchParams::default(), &Patch::Strategic(patch))
         .await
         .map_err(|e| e.to_string())?;
 

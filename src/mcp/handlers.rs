@@ -655,7 +655,7 @@ async fn update_ingress(client: &K8sClient, args: &serde_json::Value) -> Result<
 
     let ing_api = client.ingresses_api(ns).map_err(|e| e.to_string())?;
     let patched = ing_api
-        .patch(name, &PatchParams::apply("mcp-k8s"), &Patch::Merge(&patch))
+        .patch(name, &PatchParams::default(), &Patch::Strategic(patch))
         .await
         .map_err(|e| e.to_string())?;
 

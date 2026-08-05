@@ -328,7 +328,7 @@ async fn update_role(client: &K8sClient, args: &serde_json::Value) -> Result<Str
 
     let role_api = api(client, ns)?;
     let patched = role_api
-        .patch(name, &PatchParams::apply("mcp-k8s"), &Patch::Merge(&patch))
+        .patch(name, &PatchParams::default(), &Patch::Strategic(patch))
         .await
         .map_err(|e| e.to_string())?;
 
