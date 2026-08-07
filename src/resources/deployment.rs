@@ -716,8 +716,7 @@ async fn update_deployment_affinity(
         pod_spec_patch.insert("nodeSelector".to_string(), ns_obj.clone());
     }
 
-    if args.get("required_node_affinity").is_some()
-        || args.get("preferred_node_affinity").is_some()
+    if args.get("required_node_affinity").is_some() || args.get("preferred_node_affinity").is_some()
     {
         let mut node_affinity = serde_json::Map::new();
 
