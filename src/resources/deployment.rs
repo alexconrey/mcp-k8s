@@ -235,6 +235,105 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
                 "additionalProperties": false
             }
         }),
+        serde_json::json!({
+            "name": "update_deployment_labels",
+            "description": "Replace pod template labels on a deployment. The supplied labels replace the entire existing set — send the full desired label map. To clear all labels, send an empty object.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "namespace": { "type": "string", "description": "Kubernetes namespace" },
+                    "name": { "type": "string", "description": "Deployment name" },
+                    "labels": {
+                        "type": "object",
+                        "description": "Full desired set of pod template labels as key-value string pairs",
+                        "additionalProperties": { "type": "string" }
+                    }
+                },
+                "required": ["namespace", "name", "labels"],
+                "additionalProperties": false
+            }
+        }),
+        serde_json::json!({
+            "name": "update_deployment_annotations",
+            "description": "Replace pod template annotations on a deployment. The supplied annotations replace the entire existing set — send the full desired annotation map. To clear all annotations, send an empty object.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "namespace": { "type": "string", "description": "Kubernetes namespace" },
+                    "name": { "type": "string", "description": "Deployment name" },
+                    "annotations": {
+                        "type": "object",
+                        "description": "Full desired set of pod template annotations as key-value string pairs",
+                        "additionalProperties": { "type": "string" }
+                    }
+                },
+                "required": ["namespace", "name", "annotations"],
+                "additionalProperties": false
+            }
+        }),
+        serde_json::json!({
+            "name": "update_deployment_affinity",
+            "description": "Set node selector and node affinity rules on a deployment's pod template. All fields are optional — omit any field to leave it unchanged. Send an empty object for node_selector to clear it. Send arrays with zero elements for required/preferred to clear node affinity.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "namespace": { "type": "string", "description": "Kubernetes namespace" },
+                    "name": { "type": "string", "description": "Deployment name" },
+                    "node_selector": {
+                        "type": "object",
+                        "description": "Simple key=value node selector. Replaces the existing nodeSelector entirely.",
+                        "additionalProperties": { "type": "string" }
+                    },
+                    "required_node_affinity": {
+                        "type": "array",
+                        "description": "requiredDuringSchedulingIgnoredDuringExecution terms. Each term is an OR; expressions within a term are AND.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "match_expressions": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "key": { "type": "string" },
+                                            "operator": { "type": "string", "enum": ["In", "NotIn", "Exists", "DoesNotExist"] },
+                                            "values": { "type": "array", "items": { "type": "string" } }
+                                        },
+                                        "required": ["key", "operator"]
+                                    }
+                                }
+                            },
+                            "required": ["match_expressions"]
+                        }
+                    },
+                    "preferred_node_affinity": {
+                        "type": "array",
+                        "description": "preferredDuringSchedulingIgnoredDuringExecution terms. Higher weight = stronger preference (1–100).",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "weight": { "type": "integer", "minimum": 1, "maximum": 100 },
+                                "match_expressions": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "key": { "type": "string" },
+                                            "operator": { "type": "string", "enum": ["In", "NotIn", "Exists", "DoesNotExist"] },
+                                            "values": { "type": "array", "items": { "type": "string" } }
+                                        },
+                                        "required": ["key", "operator"]
+                                    }
+                                }
+                            },
+                            "required": ["weight", "match_expressions"]
+                        }
+                    }
+                },
+                "required": ["namespace", "name"],
+                "additionalProperties": false
+            }
+        }),
     ]
 }
 
@@ -254,6 +353,9 @@ pub async fn handle_tool(
         "restart_deployment" => restart_deployment(client, args).await,
         "scale_deployment" => scale_deployment(client, args).await,
         "rollback_deployment" => rollback_deployment(client, args).await,
+        "update_deployment_labels" => update_deployment_labels(client, args).await,
+        "update_deployment_annotations" => update_deployment_annotations(client, args).await,
+        "update_deployment_affinity" => update_deployment_affinity(client, args).await,
         _ => return None,
     };
     Some(result)
@@ -529,6 +631,155 @@ async fn rollback_deployment(
         "deployment": serde_json::to_value(summary).unwrap_or_default(),
     });
     serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
+}
+
+async fn update_deployment_labels(
+    client: &K8sClient,
+    args: &serde_json::Value,
+) -> Result<String, String> {
+    let ns = args["namespace"].as_str().ok_or("namespace is required")?;
+    let name = args["name"].as_str().ok_or("name is required")?;
+    let labels = args["labels"]
+        .as_object()
+        .ok_or("labels must be an object")?
+        .iter()
+        .map(|(k, v)| (k.clone(), v.as_str().unwrap_or("").to_string()))
+        .collect::<std::collections::HashMap<_, _>>();
+
+    let patch = serde_json::json!({
+        "spec": {
+            "template": {
+                "metadata": {
+                    "labels": labels
+                }
+            }
+        }
+    });
+
+    let dep_api = api(client, ns)?;
+    let patched = dep_api
+        .patch(name, &PatchParams::default(), &Patch::Strategic(patch))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let summary = extract_summary(&patched);
+    serde_json::to_string_pretty(&serde_json::to_value(summary).unwrap_or_default())
+        .map_err(|e| e.to_string())
+}
+
+async fn update_deployment_annotations(
+    client: &K8sClient,
+    args: &serde_json::Value,
+) -> Result<String, String> {
+    let ns = args["namespace"].as_str().ok_or("namespace is required")?;
+    let name = args["name"].as_str().ok_or("name is required")?;
+    let annotations = args["annotations"]
+        .as_object()
+        .ok_or("annotations must be an object")?
+        .iter()
+        .map(|(k, v)| (k.clone(), v.as_str().unwrap_or("").to_string()))
+        .collect::<std::collections::HashMap<_, _>>();
+
+    let patch = serde_json::json!({
+        "spec": {
+            "template": {
+                "metadata": {
+                    "annotations": annotations
+                }
+            }
+        }
+    });
+
+    let dep_api = api(client, ns)?;
+    let patched = dep_api
+        .patch(name, &PatchParams::default(), &Patch::Strategic(patch))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let summary = extract_summary(&patched);
+    serde_json::to_string_pretty(&serde_json::to_value(summary).unwrap_or_default())
+        .map_err(|e| e.to_string())
+}
+
+async fn update_deployment_affinity(
+    client: &K8sClient,
+    args: &serde_json::Value,
+) -> Result<String, String> {
+    let ns = args["namespace"].as_str().ok_or("namespace is required")?;
+    let name = args["name"].as_str().ok_or("name is required")?;
+
+    // Build the pod spec patch incrementally so that only provided fields
+    // are included — omitted fields are left untouched by strategic merge.
+    let mut pod_spec_patch = serde_json::Map::new();
+
+    if let Some(ns_obj) = args.get("node_selector") {
+        pod_spec_patch.insert("nodeSelector".to_string(), ns_obj.clone());
+    }
+
+    if args.get("required_node_affinity").is_some()
+        || args.get("preferred_node_affinity").is_some()
+    {
+        let mut node_affinity = serde_json::Map::new();
+
+        if let Some(required) = args.get("required_node_affinity") {
+            node_affinity.insert(
+                "requiredDuringSchedulingIgnoredDuringExecution".to_string(),
+                serde_json::json!({ "nodeSelectorTerms": required }),
+            );
+        }
+
+        if let Some(preferred) = args.get("preferred_node_affinity") {
+            // Convert our input shape {weight, match_expressions} →
+            // k8s shape {weight, preference: {matchExpressions}}
+            let terms: Vec<serde_json::Value> = preferred
+                .as_array()
+                .unwrap_or(&vec![])
+                .iter()
+                .map(|t| {
+                    serde_json::json!({
+                        "weight": t["weight"],
+                        "preference": {
+                            "matchExpressions": t["match_expressions"]
+                        }
+                    })
+                })
+                .collect();
+            node_affinity.insert(
+                "preferredDuringSchedulingIgnoredDuringExecution".to_string(),
+                serde_json::Value::Array(terms),
+            );
+        }
+
+        pod_spec_patch.insert(
+            "affinity".to_string(),
+            serde_json::json!({ "nodeAffinity": node_affinity }),
+        );
+    }
+
+    if pod_spec_patch.is_empty() {
+        return Err(
+            "At least one of node_selector, required_node_affinity, or preferred_node_affinity must be provided"
+                .to_string(),
+        );
+    }
+
+    let patch = serde_json::json!({
+        "spec": {
+            "template": {
+                "spec": serde_json::Value::Object(pod_spec_patch)
+            }
+        }
+    });
+
+    let dep_api = api(client, ns)?;
+    let patched = dep_api
+        .patch(name, &PatchParams::default(), &Patch::Strategic(patch))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let summary = extract_summary(&patched);
+    serde_json::to_string_pretty(&serde_json::to_value(summary).unwrap_or_default())
+        .map_err(|e| e.to_string())
 }
 
 // ---------------------------------------------------------------------------
