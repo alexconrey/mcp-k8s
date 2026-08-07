@@ -1,6 +1,5 @@
 use std::io::BufRead;
 use std::sync::Arc;
-use std::time::Instant;
 
 use axum::extract::{Request, State};
 use axum::http::{header, StatusCode};
@@ -526,8 +525,6 @@ async fn handle_tool_call(manager: &ClusterManager, request: &JsonRpcRequest) ->
     let tool_name = params["name"].as_str().unwrap_or("");
     let args = &params["arguments"];
 
-    let start = Instant::now();
-
     // Handle cluster management tools first (they operate on the manager, not a K8s client)
     let result = match tool_name {
         "list_clusters" | "switch_cluster" | "get_active_cluster" => {
@@ -544,8 +541,6 @@ async fn handle_tool_call(manager: &ClusterManager, request: &JsonRpcRequest) ->
             mcp_k8s::mcp::handle_tool(&client, tool_name, args).await
         }
     };
-
-    let duration = start.elapsed().as_secs_f64();
 
     match result {
         Some(Ok(text)) => success_response(

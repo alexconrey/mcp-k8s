@@ -716,8 +716,7 @@ async fn update_deployment_affinity(
         pod_spec_patch.insert("nodeSelector".to_string(), ns_obj.clone());
     }
 
-    if args.get("required_node_affinity").is_some()
-        || args.get("preferred_node_affinity").is_some()
+    if args.get("required_node_affinity").is_some() || args.get("preferred_node_affinity").is_some()
     {
         let mut node_affinity = serde_json::Map::new();
 
@@ -858,21 +857,24 @@ mod tests {
     #[test]
     fn tool_definitions_returns_six_unique_tools() {
         let defs = tool_definitions();
-        assert_eq!(defs.len(), 6);
+        assert_eq!(defs.len(), 9);
 
         let names: Vec<&str> = defs.iter().filter_map(|d| d["name"].as_str()).collect();
-        assert_eq!(names.len(), 6);
+        assert_eq!(names.len(), 9);
 
         let mut unique = names.clone();
         unique.sort();
         unique.dedup();
-        assert_eq!(unique.len(), 6, "tool names must be unique");
+        assert_eq!(unique.len(), 9, "tool names must be unique");
 
         assert!(names.contains(&"create_deployment"));
         assert!(names.contains(&"update_deployment"));
         assert!(names.contains(&"delete_deployment"));
         assert!(names.contains(&"restart_deployment"));
         assert!(names.contains(&"scale_deployment"));
+        assert!(names.contains(&"update_deployment_labels"));
+        assert!(names.contains(&"update_deployment_annotations"));
+        assert!(names.contains(&"update_deployment_affinity"));
         assert!(names.contains(&"rollback_deployment"));
     }
 
