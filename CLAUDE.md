@@ -231,6 +231,24 @@ mcp-k8s/
 └── README.md
 ```
 
+## Git Workflow
+
+The `main` branch is protected — direct pushes are blocked. All changes must
+go through a feature branch and PR, including tool additions, bug fixes, and
+documentation updates.
+
+```bash
+git checkout -b feature/my-change
+# make changes
+cargo check && cargo clippy -- -D warnings && cargo fmt
+git push -u origin feature/my-change
+gh pr create --title "..." --body "..."
+gh pr merge --squash --delete-branch
+```
+
+Do **not** push directly to `main`. Even one-liner changes need a PR so the
+CI workflow (build, test, clippy, fmt) runs against them before merge.
+
 ## Building and Testing
 
 ```bash

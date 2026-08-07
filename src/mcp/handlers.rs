@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use k8s_openapi::api::apps::v1::ReplicaSet;
 use k8s_openapi::api::core::v1::{Service, ServicePort, ServiceSpec};
 use k8s_openapi::api::networking::v1::{
@@ -8,6 +10,7 @@ use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use k8s_openapi::apimachinery::pkg::util::intstr::IntOrString;
 use kube::api::{ListParams, Patch, PatchParams, PostParams};
 use kube::Api;
+use metrics::{counter, histogram};
 use serde::Deserialize;
 
 use crate::client::K8sClient;
@@ -15,19 +18,44 @@ use crate::extract;
 
 /// Try to handle a tool call. Returns `Some(result)` if the tool name is
 /// recognized, `None` if the caller should handle it.
+///
+/// Emits `mcp_k8s_tool_calls_total{tool, status}` and
+/// `mcp_k8s_tool_call_duration_seconds{tool}` into the global `metrics`
+/// recorder for every recognized call. `status` is `ok`, `error`, or
+/// `denied` (for permission-blocked requests).
 pub async fn handle_tool(
     client: &K8sClient,
     name: &str,
     args: &serde_json::Value,
 ) -> Option<Result<String, String>> {
-    // Check permissions before dispatching
     if !client.permissions().is_tool_allowed(name) {
         let action = crate::permissions::ActionPermissions::action_for_tool(name);
+        counter!("mcp_k8s_tool_calls_total", "tool" => name.to_owned(), "status" => "denied")
+            .increment(1);
         return Some(Err(format!(
             "action '{action}' is not allowed on this tool: {name}"
         )));
     }
 
+    let start = Instant::now();
+    let result = handle_tool_inner(client, name, args).await;
+
+    if let Some(ref r) = result {
+        let status = if r.is_ok() { "ok" } else { "error" };
+        counter!("mcp_k8s_tool_calls_total", "tool" => name.to_owned(), "status" => status)
+            .increment(1);
+        histogram!("mcp_k8s_tool_call_duration_seconds", "tool" => name.to_owned())
+            .record(start.elapsed().as_secs_f64());
+    }
+
+    result
+}
+
+async fn handle_tool_inner(
+    client: &K8sClient,
+    name: &str,
+    args: &serde_json::Value,
+) -> Option<Result<String, String>> {
     // Try resource module handlers first
     if let result @ Some(_) = crate::resources::handle_tool(client, name, args).await {
         return result;
