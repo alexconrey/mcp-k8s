@@ -10,7 +10,7 @@ use axum::response::IntoResponse;
 use axum::Json;
 use clap::Parser;
 use futures::stream;
-use metrics::{counter, histogram};
+use metrics::counter;
 use metrics_exporter_prometheus::PrometheusHandle;
 use subtle::ConstantTimeEq;
 use tower_http::cors::CorsLayer;
@@ -547,9 +547,6 @@ async fn handle_tool_call(manager: &ClusterManager, request: &JsonRpcRequest) ->
 
     let duration = start.elapsed().as_secs_f64();
 
-    counter!("mcp_tool_calls_total", "tool" => tool_name.to_string()).increment(1);
-    histogram!("mcp_tool_call_duration_seconds", "tool" => tool_name.to_string()).record(duration);
-
     match result {
         Some(Ok(text)) => success_response(
             request,
@@ -557,14 +554,8 @@ async fn handle_tool_call(manager: &ClusterManager, request: &JsonRpcRequest) ->
                 "content": [{ "type": "text", "text": text }]
             }),
         ),
-        Some(Err(e)) => {
-            counter!("mcp_tool_call_errors_total", "tool" => tool_name.to_string()).increment(1);
-            error_response(request, -32000, &e)
-        }
-        None => {
-            counter!("mcp_tool_call_errors_total", "tool" => tool_name.to_string()).increment(1);
-            error_response(request, -32000, &format!("Unknown tool: {tool_name}"))
-        }
+        Some(Err(e)) => error_response(request, -32000, &e),
+        None => error_response(request, -32000, &format!("Unknown tool: {tool_name}")),
     }
 }
 
