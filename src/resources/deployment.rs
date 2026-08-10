@@ -1,7 +1,10 @@
 use std::collections::BTreeMap;
 
 use k8s_openapi::api::apps::v1::{Deployment, DeploymentSpec, ReplicaSet};
-use k8s_openapi::api::core::v1::{Container, ContainerPort, EnvVar, PodSpec, PodTemplateSpec};
+use k8s_openapi::api::core::v1::{
+    ConfigMapEnvSource, Container, ContainerPort, EnvFromSource, EnvVar, PodSpec, PodTemplateSpec,
+    SecretEnvSource,
+};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::{LabelSelector, ObjectMeta};
 use kube::api::{DeleteParams, ListParams, Patch, PatchParams, PostParams};
 use serde::Serialize;
@@ -93,6 +96,37 @@ fn env_from_args(args: &serde_json::Value) -> Option<Vec<EnvVar>> {
     })
 }
 
+/// Build envFrom sources from an optional JSON array of source references.
+/// Each item must have either `secret_ref` or `config_map_ref` set to the
+/// resource name.
+fn env_from_sources_from_args(args: &serde_json::Value) -> Option<Vec<EnvFromSource>> {
+    args.get("env_from").and_then(|v| v.as_array()).map(|arr| {
+        arr.iter()
+            .filter_map(|item| {
+                if let Some(secret_name) = item.get("secret_ref").and_then(|v| v.as_str()) {
+                    Some(EnvFromSource {
+                        secret_ref: Some(SecretEnvSource {
+                            name: secret_name.to_string(),
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    })
+                } else {
+                    item.get("config_map_ref")
+                        .and_then(|v| v.as_str())
+                        .map(|cm_name| EnvFromSource {
+                            config_map_ref: Some(ConfigMapEnvSource {
+                                name: cm_name.to_string(),
+                                ..Default::default()
+                            }),
+                            ..Default::default()
+                        })
+                }
+            })
+            .collect()
+    })
+}
+
 /// Format the current UTC time as an RFC 3339 string using only std.
 fn utc_now_rfc3339() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -155,6 +189,17 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
                         "type": "object",
                         "description": "Environment variables as key-value string pairs (optional)",
                         "additionalProperties": { "type": "string" }
+                    },
+                    "env_from": {
+                        "type": "array",
+                        "description": "List of sources to populate env vars in bulk. Each item must have either 'secret_ref' or 'config_map_ref' set to the resource name.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "secret_ref": { "type": "string", "description": "Name of a Secret to load all keys as env vars" },
+                                "config_map_ref": { "type": "string", "description": "Name of a ConfigMap to load all keys as env vars" }
+                            }
+                        }
                     }
                 },
                 "required": ["namespace", "name", "image"],
@@ -175,6 +220,17 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
                         "type": "object",
                         "description": "Environment variables as key-value string pairs (optional, replaces all env vars)",
                         "additionalProperties": { "type": "string" }
+                    },
+                    "env_from": {
+                        "type": "array",
+                        "description": "List of sources to populate env vars in bulk. Each item must have either 'secret_ref' or 'config_map_ref' set to the resource name.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "secret_ref": { "type": "string", "description": "Name of a Secret to load all keys as env vars" },
+                                "config_map_ref": { "type": "string", "description": "Name of a ConfigMap to load all keys as env vars" }
+                            }
+                        }
                     }
                 },
                 "required": ["namespace", "name"],
@@ -372,6 +428,7 @@ async fn create_deployment(client: &K8sClient, args: &serde_json::Value) -> Resu
     let replicas = args["replicas"].as_i64().unwrap_or(1) as i32;
     let port = args["port"].as_i64().map(|p| p as i32);
     let env = env_from_args(args);
+    let env_from = env_from_sources_from_args(args);
 
     let mut labels = BTreeMap::new();
     labels.insert("app".to_string(), name.to_string());
@@ -419,6 +476,7 @@ async fn create_deployment(client: &K8sClient, args: &serde_json::Value) -> Resu
                         image: Some(image.to_string()),
                         ports,
                         env,
+                        env_from,
                         ..Default::default()
                     }],
                     ..Default::default()
@@ -446,9 +504,13 @@ async fn update_deployment(client: &K8sClient, args: &serde_json::Value) -> Resu
     let image = args["image"].as_str();
     let replicas = args["replicas"].as_i64().map(|r| r as i32);
     let env = env_from_args(args);
+    let env_from = env_from_sources_from_args(args);
 
-    if image.is_none() && replicas.is_none() && env.is_none() {
-        return Err("At least one of 'image', 'replicas', or 'env' must be provided".to_string());
+    if image.is_none() && replicas.is_none() && env.is_none() && env_from.is_none() {
+        return Err(
+            "At least one of 'image', 'replicas', 'env', or 'env_from' must be provided"
+                .to_string(),
+        );
     }
 
     let mut patch = serde_json::json!({ "spec": {} });
@@ -457,7 +519,7 @@ async fn update_deployment(client: &K8sClient, args: &serde_json::Value) -> Resu
         patch["spec"]["replicas"] = serde_json::json!(r);
     }
 
-    if image.is_some() || env.is_some() {
+    if image.is_some() || env.is_some() || env_from.is_some() {
         let mut container = serde_json::json!({ "name": name });
         if let Some(img) = image {
             container["image"] = serde_json::json!(img);
@@ -473,6 +535,13 @@ async fn update_deployment(client: &K8sClient, args: &serde_json::Value) -> Resu
                 })
                 .collect();
             container["env"] = serde_json::json!(env_json);
+        }
+        if let Some(env_from_sources) = env_from {
+            let env_from_json: Vec<serde_json::Value> = env_from_sources
+                .iter()
+                .map(|ef| serde_json::to_value(ef).unwrap_or_default())
+                .collect();
+            container["envFrom"] = serde_json::json!(env_from_json);
         }
         patch["spec"]["template"] = serde_json::json!({
             "spec": {
