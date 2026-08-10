@@ -111,16 +111,16 @@ fn env_from_sources_from_args(args: &serde_json::Value) -> Option<Vec<EnvFromSou
                         }),
                         ..Default::default()
                     })
-                } else if let Some(cm_name) = item.get("config_map_ref").and_then(|v| v.as_str()) {
-                    Some(EnvFromSource {
-                        config_map_ref: Some(ConfigMapEnvSource {
-                            name: cm_name.to_string(),
-                            ..Default::default()
-                        }),
-                        ..Default::default()
-                    })
                 } else {
-                    None
+                    item.get("config_map_ref")
+                        .and_then(|v| v.as_str())
+                        .map(|cm_name| EnvFromSource {
+                            config_map_ref: Some(ConfigMapEnvSource {
+                                name: cm_name.to_string(),
+                                ..Default::default()
+                            }),
+                            ..Default::default()
+                        })
                 }
             })
             .collect()
