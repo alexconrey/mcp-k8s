@@ -127,6 +127,62 @@ fn env_from_sources_from_args(args: &serde_json::Value) -> Option<Vec<EnvFromSou
     })
 }
 
+/// Build a Kubernetes probe JSON value from probe args under the given key.
+///
+/// Returns `None` when the key is absent from `args` (probe left unchanged).
+/// The returned value is a JSON object ready to insert into a strategic merge
+/// patch container object (e.g. as `"livenessProbe"`).
+fn probe_from_args(args: &serde_json::Value, probe_key: &str) -> Option<serde_json::Value> {
+    let probe_args = args.get(probe_key)?;
+
+    let probe_type = probe_args.get("probe_type")?.as_str()?;
+    let mut probe = serde_json::Map::new();
+
+    // Timing / threshold fields — each is optional.
+    macro_rules! maybe_insert_int {
+        ($field:literal, $key:literal) => {
+            if let Some(v) = probe_args.get($key).and_then(|v| v.as_i64()) {
+                probe.insert($field.to_string(), serde_json::json!(v));
+            }
+        };
+    }
+    maybe_insert_int!("initialDelaySeconds", "initial_delay_seconds");
+    maybe_insert_int!("periodSeconds", "period_seconds");
+    maybe_insert_int!("timeoutSeconds", "timeout_seconds");
+    maybe_insert_int!("failureThreshold", "failure_threshold");
+    maybe_insert_int!("successThreshold", "success_threshold");
+
+    let port = probe_args
+        .get("port")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(80);
+
+    match probe_type {
+        "httpGet" => {
+            let mut http_get = serde_json::Map::new();
+            if let Some(path) = probe_args.get("path").and_then(|v| v.as_str()) {
+                http_get.insert("path".to_string(), serde_json::json!(path));
+            }
+            http_get.insert("port".to_string(), serde_json::json!(port));
+            probe.insert("httpGet".to_string(), serde_json::Value::Object(http_get));
+        }
+        "tcpSocket" => {
+            probe.insert(
+                "tcpSocket".to_string(),
+                serde_json::json!({ "port": port }),
+            );
+        }
+        "exec" => {
+            if let Some(cmd) = probe_args.get("command") {
+                probe.insert("exec".to_string(), serde_json::json!({ "command": cmd }));
+            }
+        }
+        _ => {}
+    }
+
+    Some(serde_json::Value::Object(probe))
+}
+
 /// Format the current UTC time as an RFC 3339 string using only std.
 fn utc_now_rfc3339() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -208,7 +264,7 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
         }),
         serde_json::json!({
             "name": "update_deployment",
-            "description": "Update (merge patch) an existing deployment. Supports changing image, replicas, and env vars.",
+            "description": "Update (merge patch) an existing deployment. Supports changing image, replicas, env vars, and readiness/liveness/startup probes.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -231,6 +287,57 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
                                 "config_map_ref": { "type": "string", "description": "Name of a ConfigMap to load all keys as env vars" }
                             }
                         }
+                    },
+                    "liveness_probe": {
+                        "type": "object",
+                        "description": "Liveness probe configuration (optional). If omitted, the existing probe is left unchanged.",
+                        "properties": {
+                            "probe_type": { "type": "string", "enum": ["httpGet", "exec", "tcpSocket"], "description": "Probe mechanism to use" },
+                            "path": { "type": "string", "description": "HTTP path for httpGet probes (e.g. \"/healthz\")" },
+                            "port": { "type": "integer", "description": "Port number for httpGet and tcpSocket probes (default: 80)" },
+                            "command": { "type": "array", "items": { "type": "string" }, "description": "Command and args for exec probes" },
+                            "initial_delay_seconds": { "type": "integer", "description": "Seconds to wait before the first probe (default: 0)" },
+                            "period_seconds": { "type": "integer", "description": "How often to perform the probe in seconds (default: 10)" },
+                            "timeout_seconds": { "type": "integer", "description": "Seconds after which the probe times out (default: 1)" },
+                            "failure_threshold": { "type": "integer", "description": "Consecutive failures before the container is restarted (default: 3)" },
+                            "success_threshold": { "type": "integer", "description": "Consecutive successes required after a failure (default: 1)" }
+                        },
+                        "required": ["probe_type"],
+                        "additionalProperties": false
+                    },
+                    "readiness_probe": {
+                        "type": "object",
+                        "description": "Readiness probe configuration (optional). If omitted, the existing probe is left unchanged.",
+                        "properties": {
+                            "probe_type": { "type": "string", "enum": ["httpGet", "exec", "tcpSocket"], "description": "Probe mechanism to use" },
+                            "path": { "type": "string", "description": "HTTP path for httpGet probes (e.g. \"/ready\")" },
+                            "port": { "type": "integer", "description": "Port number for httpGet and tcpSocket probes (default: 80)" },
+                            "command": { "type": "array", "items": { "type": "string" }, "description": "Command and args for exec probes" },
+                            "initial_delay_seconds": { "type": "integer", "description": "Seconds to wait before the first probe (default: 0)" },
+                            "period_seconds": { "type": "integer", "description": "How often to perform the probe in seconds (default: 10)" },
+                            "timeout_seconds": { "type": "integer", "description": "Seconds after which the probe times out (default: 1)" },
+                            "failure_threshold": { "type": "integer", "description": "Consecutive failures before the pod is removed from service (default: 3)" },
+                            "success_threshold": { "type": "integer", "description": "Consecutive successes required after a failure (default: 1)" }
+                        },
+                        "required": ["probe_type"],
+                        "additionalProperties": false
+                    },
+                    "startup_probe": {
+                        "type": "object",
+                        "description": "Startup probe configuration (optional). If omitted, the existing probe is left unchanged.",
+                        "properties": {
+                            "probe_type": { "type": "string", "enum": ["httpGet", "exec", "tcpSocket"], "description": "Probe mechanism to use" },
+                            "path": { "type": "string", "description": "HTTP path for httpGet probes" },
+                            "port": { "type": "integer", "description": "Port number for httpGet and tcpSocket probes (default: 80)" },
+                            "command": { "type": "array", "items": { "type": "string" }, "description": "Command and args for exec probes" },
+                            "initial_delay_seconds": { "type": "integer", "description": "Seconds to wait before the first probe (default: 0)" },
+                            "period_seconds": { "type": "integer", "description": "How often to perform the probe in seconds (default: 10)" },
+                            "timeout_seconds": { "type": "integer", "description": "Seconds after which the probe times out (default: 1)" },
+                            "failure_threshold": { "type": "integer", "description": "Consecutive failures before liveness kicks in (default: 3)" },
+                            "success_threshold": { "type": "integer", "description": "Consecutive successes required after a failure (default: 1)" }
+                        },
+                        "required": ["probe_type"],
+                        "additionalProperties": false
                     }
                 },
                 "required": ["namespace", "name"],
@@ -505,10 +612,21 @@ async fn update_deployment(client: &K8sClient, args: &serde_json::Value) -> Resu
     let replicas = args["replicas"].as_i64().map(|r| r as i32);
     let env = env_from_args(args);
     let env_from = env_from_sources_from_args(args);
+    let liveness_probe = probe_from_args(args, "liveness_probe");
+    let readiness_probe = probe_from_args(args, "readiness_probe");
+    let startup_probe = probe_from_args(args, "startup_probe");
 
-    if image.is_none() && replicas.is_none() && env.is_none() && env_from.is_none() {
+    if image.is_none()
+        && replicas.is_none()
+        && env.is_none()
+        && env_from.is_none()
+        && liveness_probe.is_none()
+        && readiness_probe.is_none()
+        && startup_probe.is_none()
+    {
         return Err(
-            "At least one of 'image', 'replicas', 'env', or 'env_from' must be provided"
+            "At least one of 'image', 'replicas', 'env', 'env_from', 'liveness_probe', \
+             'readiness_probe', or 'startup_probe' must be provided"
                 .to_string(),
         );
     }
@@ -519,7 +637,14 @@ async fn update_deployment(client: &K8sClient, args: &serde_json::Value) -> Resu
         patch["spec"]["replicas"] = serde_json::json!(r);
     }
 
-    if image.is_some() || env.is_some() || env_from.is_some() {
+    let needs_container_patch = image.is_some()
+        || env.is_some()
+        || env_from.is_some()
+        || liveness_probe.is_some()
+        || readiness_probe.is_some()
+        || startup_probe.is_some();
+
+    if needs_container_patch {
         let mut container = serde_json::json!({ "name": name });
         if let Some(img) = image {
             container["image"] = serde_json::json!(img);
@@ -542,6 +667,15 @@ async fn update_deployment(client: &K8sClient, args: &serde_json::Value) -> Resu
                 .map(|ef| serde_json::to_value(ef).unwrap_or_default())
                 .collect();
             container["envFrom"] = serde_json::json!(env_from_json);
+        }
+        if let Some(probe) = liveness_probe {
+            container["livenessProbe"] = probe;
+        }
+        if let Some(probe) = readiness_probe {
+            container["readinessProbe"] = probe;
+        }
+        if let Some(probe) = startup_probe {
+            container["startupProbe"] = probe;
         }
         patch["spec"]["template"] = serde_json::json!({
             "spec": {
@@ -1100,5 +1234,117 @@ mod tests {
         assert_eq!(counts.ready, 0);
         assert_eq!(counts.available, 0);
         assert_eq!(counts.updated, 0);
+    }
+
+    // -----------------------------------------------------------------------
+    // probe_from_args tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn probe_from_args_returns_none_when_key_absent() {
+        let args = serde_json::json!({});
+        assert!(probe_from_args(&args, "liveness_probe").is_none());
+    }
+
+    #[test]
+    fn probe_from_args_http_get_minimal() {
+        let args = serde_json::json!({
+            "liveness_probe": {
+                "probe_type": "httpGet",
+                "path": "/healthz",
+                "port": 8080
+            }
+        });
+        let probe = probe_from_args(&args, "liveness_probe").expect("should parse");
+        assert_eq!(probe["httpGet"]["path"], "/healthz");
+        assert_eq!(probe["httpGet"]["port"], 8080);
+        // Unset timing fields should be absent.
+        assert!(probe.get("initialDelaySeconds").is_none());
+    }
+
+    #[test]
+    fn probe_from_args_http_get_with_timing() {
+        let args = serde_json::json!({
+            "readiness_probe": {
+                "probe_type": "httpGet",
+                "path": "/ready",
+                "port": 9000,
+                "initial_delay_seconds": 5,
+                "period_seconds": 10,
+                "timeout_seconds": 2,
+                "failure_threshold": 3,
+                "success_threshold": 1
+            }
+        });
+        let probe = probe_from_args(&args, "readiness_probe").expect("should parse");
+        assert_eq!(probe["httpGet"]["path"], "/ready");
+        assert_eq!(probe["httpGet"]["port"], 9000);
+        assert_eq!(probe["initialDelaySeconds"], 5);
+        assert_eq!(probe["periodSeconds"], 10);
+        assert_eq!(probe["timeoutSeconds"], 2);
+        assert_eq!(probe["failureThreshold"], 3);
+        assert_eq!(probe["successThreshold"], 1);
+    }
+
+    #[test]
+    fn probe_from_args_http_get_default_port() {
+        let args = serde_json::json!({
+            "liveness_probe": {
+                "probe_type": "httpGet",
+                "path": "/healthz"
+                // no port — should default to 80
+            }
+        });
+        let probe = probe_from_args(&args, "liveness_probe").expect("should parse");
+        assert_eq!(probe["httpGet"]["port"], 80);
+    }
+
+    #[test]
+    fn probe_from_args_exec() {
+        let args = serde_json::json!({
+            "startup_probe": {
+                "probe_type": "exec",
+                "command": ["cat", "/tmp/healthy"],
+                "failure_threshold": 30,
+                "period_seconds": 10
+            }
+        });
+        let probe = probe_from_args(&args, "startup_probe").expect("should parse");
+        assert_eq!(probe["exec"]["command"][0], "cat");
+        assert_eq!(probe["exec"]["command"][1], "/tmp/healthy");
+        assert_eq!(probe["failureThreshold"], 30);
+        assert_eq!(probe["periodSeconds"], 10);
+    }
+
+    #[test]
+    fn probe_from_args_tcp_socket() {
+        let args = serde_json::json!({
+            "liveness_probe": {
+                "probe_type": "tcpSocket",
+                "port": 5432
+            }
+        });
+        let probe = probe_from_args(&args, "liveness_probe").expect("should parse");
+        assert_eq!(probe["tcpSocket"]["port"], 5432);
+        assert!(probe.get("httpGet").is_none());
+        assert!(probe.get("exec").is_none());
+    }
+
+    #[test]
+    fn probe_from_args_unknown_type_produces_empty_probe() {
+        // An unknown probe_type should produce a probe with only timing fields,
+        // no action field — callers decide whether to reject or pass through.
+        let args = serde_json::json!({
+            "liveness_probe": {
+                "probe_type": "grpc",
+                "port": 50051,
+                "period_seconds": 5
+            }
+        });
+        let probe = probe_from_args(&args, "liveness_probe").expect("should parse");
+        assert!(probe.get("httpGet").is_none());
+        assert!(probe.get("tcpSocket").is_none());
+        assert!(probe.get("exec").is_none());
+        assert_eq!(probe["periodSeconds"], 5);
     }
 }
