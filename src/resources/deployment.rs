@@ -167,10 +167,7 @@ fn probe_from_args(args: &serde_json::Value, probe_key: &str) -> Option<serde_js
             probe.insert("httpGet".to_string(), serde_json::Value::Object(http_get));
         }
         "tcpSocket" => {
-            probe.insert(
-                "tcpSocket".to_string(),
-                serde_json::json!({ "port": port }),
-            );
+            probe.insert("tcpSocket".to_string(), serde_json::json!({ "port": port }));
         }
         "exec" => {
             if let Some(cmd) = probe_args.get("command") {
