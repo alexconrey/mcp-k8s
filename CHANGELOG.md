@@ -30,6 +30,13 @@ release workflow refuses a tag that doesn't match `Cargo.toml`,
   - every action is pinned to a commit SHA;
   - `docs.yaml` installs a pinned, checksum-verified mdBook (v0.5.4) instead of
     resolving "latest" through the GitHub API.
+- CI runs the k3s integration tests on every PR (`k3s` job), and
+  `cargo semver-checks` of the library API against the last release (`semver`
+  job, warn-only).
+- The k3s tests wait for the API server to serve the `default` namespace and
+  ServiceAccount before running, which fixes intermittent failures under load.
+- The `cluster.rs` unit tests use a mock client and no longer need a
+  kubeconfig, so `cargo test -- --ignored` can't reach a real cluster.
 
 ## [0.5.1] - 2026-11-24
 

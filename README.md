@@ -212,7 +212,7 @@ if let Some(result) = mcp::handle_tool(&client, "list_deployments", &args).await
 ## Testing
 
 ```bash
-cargo test                                      # 426 unit + 2 router + 8 integration tests
+cargo test                                      # 430 unit + 2 router + 8 integration tests
 cargo test --no-default-features                # the same, as library consumers build it
 cargo test --test k3s_integration -- --ignored  # 13 k3s tests (needs Docker)
 ```
