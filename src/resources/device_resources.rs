@@ -1,4 +1,4 @@
-use k8s_openapi::api::resource::v1beta1::{
+use k8s_openapi::api::resource::v1beta2::{
     DeviceClass, ResourceClaim, ResourceClaimTemplate, ResourceSlice,
 };
 use kube::api::ListParams;
@@ -49,14 +49,25 @@ pub struct ResourceClaimSummary {
 fn extract_claim_summary(claim: &ResourceClaim) -> ResourceClaimSummary {
     let meta = &claim.metadata;
 
-    // Extract the first device_class_name from spec.devices.requests
+    // The device class of the first request in spec.devices.requests: either
+    // `exactly.deviceClassName`, or the first of its `firstAvailable` alternatives.
     let device_class_name = claim
         .spec
         .devices
         .as_ref()
         .and_then(|dc| dc.requests.as_ref())
         .and_then(|reqs| reqs.first())
-        .map(|req| req.device_class_name.clone());
+        .and_then(|req| {
+            req.exactly
+                .as_ref()
+                .map(|exact| exact.device_class_name.clone())
+                .or_else(|| {
+                    req.first_available
+                        .as_ref()
+                        .and_then(|subs| subs.first())
+                        .map(|sub| sub.device_class_name.clone())
+                })
+        });
 
     let allocated = claim
         .status
@@ -129,7 +140,7 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
     vec![
         serde_json::json!({
             "name": "list_resourceclaims",
-            "description": "List ResourceClaims in a namespace (resource.k8s.io/v1beta1). Returns name, namespace, device_class_name, allocation status, and created_at.",
+            "description": "List ResourceClaims in a namespace (resource.k8s.io/v1beta2). Returns name, namespace, device_class_name, allocation status, and created_at.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -141,7 +152,7 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
         }),
         serde_json::json!({
             "name": "get_resourceclaim",
-            "description": "Get a ResourceClaim by name (resource.k8s.io/v1beta1). Returns name, namespace, device_class_name, allocation status, spec details, status, labels, and annotations.",
+            "description": "Get a ResourceClaim by name (resource.k8s.io/v1beta2). Returns name, namespace, device_class_name, allocation status, spec details, status, labels, and annotations.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -154,7 +165,7 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
         }),
         serde_json::json!({
             "name": "list_resourceclaimtemplates",
-            "description": "List ResourceClaimTemplates in a namespace (resource.k8s.io/v1beta1). Returns name, namespace, and created_at.",
+            "description": "List ResourceClaimTemplates in a namespace (resource.k8s.io/v1beta2). Returns name, namespace, and created_at.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -166,7 +177,7 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
         }),
         serde_json::json!({
             "name": "list_resourceslices",
-            "description": "List ResourceSlices cluster-wide (resource.k8s.io/v1beta1). Returns name, driver_name, node_name, pool, and created_at.",
+            "description": "List ResourceSlices cluster-wide (resource.k8s.io/v1beta2). Returns name, driver_name, node_name, pool, and created_at.",
             "inputSchema": {
                 "type": "object",
                 "properties": {},
@@ -176,7 +187,7 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
         }),
         serde_json::json!({
             "name": "list_deviceclasses",
-            "description": "List DeviceClasses cluster-wide (resource.k8s.io/v1beta1). Returns name and created_at.",
+            "description": "List DeviceClasses cluster-wide (resource.k8s.io/v1beta2). Returns name and created_at.",
             "inputSchema": {
                 "type": "object",
                 "properties": {},
@@ -186,7 +197,7 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
         }),
         serde_json::json!({
             "name": "get_deviceclass",
-            "description": "Get a DeviceClass by name (resource.k8s.io/v1beta1). Returns spec details including selectors and config, plus labels and annotations.",
+            "description": "Get a DeviceClass by name (resource.k8s.io/v1beta2). Returns spec details including selectors and config, plus labels and annotations.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -462,8 +473,9 @@ mod tests {
 
     #[test]
     fn extract_claim_summary_from_resource_claim() {
-        use k8s_openapi::api::resource::v1beta1::{
-            AllocationResult, DeviceClaim, DeviceRequest, ResourceClaimSpec, ResourceClaimStatus,
+        use k8s_openapi::api::resource::v1beta2::{
+            AllocationResult, DeviceClaim, DeviceRequest, ExactDeviceRequest, ResourceClaimSpec,
+            ResourceClaimStatus,
         };
         use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 
@@ -476,7 +488,10 @@ mod tests {
             spec: ResourceClaimSpec {
                 devices: Some(DeviceClaim {
                     requests: Some(vec![DeviceRequest {
-                        device_class_name: "gpu.nvidia.com".to_string(),
+                        exactly: Some(ExactDeviceRequest {
+                            device_class_name: "gpu.nvidia.com".to_string(),
+                            ..Default::default()
+                        }),
                         name: "req1".to_string(),
                         ..Default::default()
                     }]),
@@ -500,7 +515,7 @@ mod tests {
 
     #[test]
     fn extract_claim_summary_no_allocation() {
-        use k8s_openapi::api::resource::v1beta1::ResourceClaimSpec;
+        use k8s_openapi::api::resource::v1beta2::ResourceClaimSpec;
         use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 
         let claim = ResourceClaim {
@@ -520,8 +535,55 @@ mod tests {
     }
 
     #[test]
+    fn extract_claim_summary_first_available_request() {
+        use k8s_openapi::api::resource::v1beta2::{
+            DeviceClaim, DeviceRequest, DeviceSubRequest, ResourceClaimSpec,
+        };
+        use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
+
+        // A request that lists prioritized alternatives instead of `exactly`
+        // reports the first alternative's device class.
+        let claim = ResourceClaim {
+            metadata: ObjectMeta {
+                name: Some("flexible-claim".to_string()),
+                namespace: Some("default".to_string()),
+                ..Default::default()
+            },
+            spec: ResourceClaimSpec {
+                devices: Some(DeviceClaim {
+                    requests: Some(vec![DeviceRequest {
+                        name: "gpu".to_string(),
+                        first_available: Some(vec![
+                            DeviceSubRequest {
+                                name: "large".to_string(),
+                                device_class_name: "large-gpu.example.com".to_string(),
+                                ..Default::default()
+                            },
+                            DeviceSubRequest {
+                                name: "small".to_string(),
+                                device_class_name: "small-gpu.example.com".to_string(),
+                                ..Default::default()
+                            },
+                        ]),
+                        ..Default::default()
+                    }]),
+                    ..Default::default()
+                }),
+            },
+            status: None,
+        };
+
+        let summary = extract_claim_summary(&claim);
+        assert_eq!(
+            summary.device_class_name.as_deref(),
+            Some("large-gpu.example.com")
+        );
+        assert!(!summary.allocated);
+    }
+
+    #[test]
     fn extract_slice_summary_from_resource_slice() {
-        use k8s_openapi::api::resource::v1beta1::{ResourcePool, ResourceSliceSpec};
+        use k8s_openapi::api::resource::v1beta2::{ResourcePool, ResourceSliceSpec};
         use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 
         let slice = ResourceSlice {
@@ -550,7 +612,7 @@ mod tests {
 
     #[test]
     fn extract_device_class_summary_from_device_class() {
-        use k8s_openapi::api::resource::v1beta1::DeviceClassSpec;
+        use k8s_openapi::api::resource::v1beta2::DeviceClassSpec;
         use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 
         let dc = DeviceClass {
@@ -570,7 +632,7 @@ mod tests {
 
     #[test]
     fn extract_claim_template_summary_from_template() {
-        use k8s_openapi::api::resource::v1beta1::{ResourceClaimSpec, ResourceClaimTemplateSpec};
+        use k8s_openapi::api::resource::v1beta2::{ResourceClaimSpec, ResourceClaimTemplateSpec};
         use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 
         let tpl = ResourceClaimTemplate {

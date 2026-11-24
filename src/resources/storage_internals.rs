@@ -709,11 +709,11 @@ mod tests {
                 attached: false,
                 attach_error: Some(VolumeError {
                     message: Some("attach timeout".to_string()),
-                    time: None,
+                    ..Default::default()
                 }),
                 detach_error: Some(VolumeError {
                     message: Some("detach failed".to_string()),
-                    time: None,
+                    ..Default::default()
                 }),
                 attachment_metadata: None,
             }),

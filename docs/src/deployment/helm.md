@@ -2,6 +2,8 @@
 
 mcp-k8s includes a Helm chart for deploying to Kubernetes clusters. The chart creates a Deployment, Service, ServiceAccount, and RBAC resources.
 
+The chart requires Kubernetes 1.33 or newer (`kubeVersion: ">=1.33.0-0"`, which also accepts pre-release server versions such as EKS's `v1.35.9-eks-…`).
+
 ## Installation
 
 ### Add the chart (from local source)

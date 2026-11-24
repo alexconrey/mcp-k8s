@@ -1,4 +1,4 @@
-use k8s_openapi::api::coordination::v1alpha2::LeaseCandidate;
+use k8s_openapi::api::coordination::v1beta1::LeaseCandidate;
 use kube::api::ListParams;
 
 use crate::client::K8sClient;
@@ -14,7 +14,7 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
     vec![
         serde_json::json!({
             "name": "list_leasecandidates",
-            "description": "List lease candidates in a namespace. Returns name, namespace, lease_name, strategy, renew_time, and created_at for each candidate.",
+            "description": "List lease candidates in a namespace (coordination.k8s.io/v1beta1). Returns name, namespace, lease_name, strategy, renew_time, and created_at for each candidate.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -27,7 +27,7 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
         }),
         serde_json::json!({
             "name": "get_leasecandidate",
-            "description": "Get a lease candidate by name. Returns name, namespace, lease_name, strategy, binary_version, emulation_version, ping_time, renew_time, created_at, labels, and annotations.",
+            "description": "Get a lease candidate by name (coordination.k8s.io/v1beta1). Returns name, namespace, lease_name, strategy, binary_version, emulation_version, ping_time, renew_time, created_at, labels, and annotations.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
