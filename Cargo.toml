@@ -29,7 +29,7 @@ thiserror = "2"
 http = "1"
 axum = { version = "0.8", optional = true }
 futures = "0.3"
-tower-http = { version = "0.6", features = ["cors"], optional = true }
+tower-http = { version = "0.7", features = ["cors"], optional = true }
 clap = { version = "4", features = ["derive", "env"], optional = true }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"], optional = true }
@@ -38,7 +38,7 @@ metrics-exporter-prometheus = { version = "0.17", default-features = false, opti
 uuid = { version = "1", features = ["v4"], optional = true }
 utoipa = { version = "6", features = ["axum_extras"], optional = true }
 utoipa-swagger-ui = { version = "10", features = ["axum"], optional = true }
-axum-server = { version = "0.7", features = ["tls-rustls"], optional = true }
+axum-server = { version = "0.9", features = ["tls-rustls"], optional = true }
 rustls = { version = "0.23", features = ["ring"], optional = true }
 subtle = { version = "2", optional = true }
 
