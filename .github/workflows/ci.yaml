@@ -25,6 +25,10 @@ jobs:
         run: cargo fmt --check
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings
+      # Library consumers (e.g. deckwatch) build without the `server` feature;
+      # make sure that configuration stays warning-free.
+      - name: Clippy (library only, no default features)
+        run: cargo clippy --lib --no-default-features -- -D warnings
       - name: Build
         run: cargo build --release
       - name: Test
