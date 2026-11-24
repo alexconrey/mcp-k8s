@@ -397,7 +397,7 @@ CI workflow (build, test, clippy, fmt) runs against them before merge.
 
 ```bash
 cargo build --release       # Build
-cargo test                  # 521 unit + 2 binary (router) + 8 integration + 30 guardrail tests
+cargo test                  # 522 unit + 2 binary (router) + 8 integration + 30 guardrail tests
 cargo test --no-default-features  # Same tests without `server` (what deckwatch compiles)
 cargo test --test k3s_integration -- --ignored  # k3s integration tests (needs Docker)
 cargo test --test k3s_workloads -- --ignored --test-threads=1  # k3s workload/guardrail tests
