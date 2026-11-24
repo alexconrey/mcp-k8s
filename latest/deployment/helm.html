@@ -36,10 +36,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-4e6edd76.js";
+            window.path_to_searchindex_js = "../searchindex-399caea2.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-caea04ac.js"></script>
+        <script src="../toc-8f6ebf8b.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -360,6 +360,35 @@ cd mcp-k8s
 </table>
 </div>
 <p>When enabled, the NetworkPolicy restricts ingress to the service port (<code>service.port</code>) and only from the specified CIDRs and/or namespaces. If neither <code>allowedCIDRs</code> nor <code>allowedNamespaces</code> is set, all ingress traffic on the service port is allowed.</p>
+<h3 id="opentelemetry"><a class="header" href="#opentelemetry">OpenTelemetry</a></h3>
+<p>OTLP export of traces, the <code>mcp.server.operation.duration</code> metric and logs
+(see <a href="../telemetry.html">Telemetry</a>). Nothing is exported while <code>otel.endpoint</code>
+is empty.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>otel.endpoint</code></td><td><code>""</code></td><td><code>OTEL_EXPORTER_OTLP_ENDPOINT</code>: the collector’s OTLP http/protobuf URL, e.g. <code>http://otel-collector.observability:4318</code> (gRPC is not supported)</td></tr>
+<tr><td><code>otel.serviceName</code></td><td><code>""</code></td><td><code>OTEL_SERVICE_NAME</code> (the binary defaults to <code>mcp-k8s</code>)</td></tr>
+<tr><td><code>otel.clusterName</code></td><td><code>""</code></td><td>Added to <code>OTEL_RESOURCE_ATTRIBUTES</code> as <code>k8s.cluster.name</code></td></tr>
+<tr><td><code>otel.resourceAttributes</code></td><td><code>{}</code></td><td>More <code>OTEL_RESOURCE_ATTRIBUTES</code>, e.g. <code>{deployment.environment.name: prod}</code></td></tr>
+<tr><td><code>otel.sampler</code></td><td><code>""</code></td><td><code>OTEL_TRACES_SAMPLER</code>, e.g. <code>parentbased_traceidratio</code></td></tr>
+<tr><td><code>otel.samplerArg</code></td><td><code>""</code></td><td><code>OTEL_TRACES_SAMPLER_ARG</code>, e.g. <code>"0.25"</code></td></tr>
+<tr><td><code>otel.traces</code> / <code>otel.metrics</code> / <code>otel.logs</code></td><td><code>true</code></td><td><code>false</code> stops exporting that signal</td></tr>
+<tr><td><code>otel.headersSecret.name</code> / <code>.key</code></td><td><code>""</code></td><td>A Secret key holding <code>OTEL_EXPORTER_OTLP_HEADERS</code> (e.g. <code>authorization=Bearer ...</code>)</td></tr>
+<tr><td><code>otel.filter</code></td><td><code>""</code></td><td><code>MCP_K8S_OTEL_FILTER</code>: tracing filter for exported spans and logs (default <code>info</code>)</td></tr>
+<tr><td><code>otel.extraEnv</code></td><td><code>[]</code></td><td>More environment variables (rendered even without <code>endpoint</code>), e.g. <code>OTEL_EXPORTER_OTLP_TIMEOUT</code></td></tr>
+</tbody>
+</table>
+</div>
+<pre><code class="language-yaml">otel:
+  endpoint: http://otel-collector.observability:4318
+  clusterName: prod-east
+  sampler: parentbased_traceidratio
+  samplerArg: "0.25"
+</code></pre>
 <h2 id="example-values-files"><a class="header" href="#example-values-files">Example Values Files</a></h2>
 <h3 id="read-only-deployment"><a class="header" href="#read-only-deployment">Read-only deployment</a></h3>
 <pre><code class="language-yaml"># values-readonly.yaml

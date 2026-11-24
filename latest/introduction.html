@@ -36,10 +36,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-4e6edd76.js";
+            window.path_to_searchindex_js = "searchindex-399caea2.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-caea04ac.js"></script>
+        <script src="toc-8f6ebf8b.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -203,7 +203,8 @@
 <li><strong>Auth introspection</strong> – <code>whoami</code>, <code>can_i</code>, and <code>list_my_permissions</code> tools let the AI understand its own access level.</li>
 <li><strong>TLS and bearer token auth</strong> – Optional <code>--tls-cert</code>/<code>--tls-key</code> for HTTPS and <code>--auth-token</code> for bearer token authentication on the HTTP server.</li>
 <li><strong>Swagger UI</strong> – Interactive API documentation at <code>GET /swagger-ui</code> with OpenAPI spec at <code>GET /openapi.json</code>.</li>
-<li><strong>Structured JSON logging</strong> – <code>--log-format json</code> for production log aggregation.</li>
+<li><strong>Structured JSON logging</strong> – <code>--log-format json</code> for production log aggregation, with one searchable line per request (tool, outcome, duration, decision, target).</li>
+<li><strong>OpenTelemetry</strong> – one SERVER span per MCP request, the <code>mcp.server.operation.duration</code> metric and logs over OTLP, named after the OpenTelemetry MCP conventions and with tool arguments redacted to an allowlist. See <a href="./telemetry.html">Telemetry</a>.</li>
 </ul>
 <h2 id="architecture"><a class="header" href="#architecture">Architecture</a></h2>
 <pre><code>┌─────────────────┐     ┌──────────────────────────────────────────┐

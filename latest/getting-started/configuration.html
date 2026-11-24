@@ -36,10 +36,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-4e6edd76.js";
+            window.path_to_searchindex_js = "../searchindex-399caea2.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-caea04ac.js"></script>
+        <script src="../toc-8f6ebf8b.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -363,7 +363,7 @@ MCP_K8S_DISABLE=deployment-delete,pod-create mcp-k8s
 <tr><th>Env Var</th><th>Default</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>RUST_LOG</code></td><td><code>info</code></td><td>Controls log verbosity using the <code>tracing</code> crate’s <code>EnvFilter</code> syntax.</td></tr>
+<tr><td><code>RUST_LOG</code></td><td><code>info</code></td><td>Controls console log verbosity using the <code>tracing</code> crate’s <code>EnvFilter</code> syntax. It doesn’t affect what is exported over OTLP (see <a href="#telemetry">Telemetry</a>).</td></tr>
 </tbody>
 </table>
 </div>
@@ -378,6 +378,10 @@ MCP_K8S_DISABLE=deployment-delete,pod-create mcp-k8s
 </tbody>
 </table>
 </div>
+<p>Every request ends with one <code>INFO</code> line: <code>tool call finished</code> (tool, outcome,
+<code>duration_ms</code>, decision, target) or <code>request finished</code>. With <code>json</code>, each line
+also carries the request span’s fields. In stdio mode logs go to stderr,
+because stdout carries the JSON-RPC stream; in HTTP mode they go to stdout.</p>
 <p>Examples:</p>
 <pre><code class="language-bash"># Debug logging for mcp-k8s only
 RUST_LOG=mcp_k8s=debug mcp-k8s
@@ -391,6 +395,27 @@ RUST_LOG=mcp_k8s=info,kube=warn mcp-k8s
 # Structured JSON logging for production
 mcp-k8s --http --log-format json
 </code></pre>
+<h2 id="telemetry"><a class="header" href="#telemetry">Telemetry</a></h2>
+<p>OTLP export of traces, the <code>mcp.server.operation.duration</code> metric and logs is
+configured with the standard OpenTelemetry variables and is off unless an
+endpoint is set:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Env Var</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>OTEL_EXPORTER_OTLP_ENDPOINT</code></td><td><em>(none: off)</em></td><td>Collector URL for OTLP over http/protobuf, e.g. <code>http://otel-collector:4318</code>. Per-signal <code>OTEL_EXPORTER_OTLP_{TRACES,METRICS,LOGS}_ENDPOINT</code> work too.</td></tr>
+<tr><td><code>OTEL_EXPORTER_OTLP_PROTOCOL</code></td><td><code>http/protobuf</code></td><td>Only <code>http/protobuf</code> is supported; other values turn export off with a warning.</td></tr>
+<tr><td><code>OTEL_SERVICE_NAME</code></td><td><code>mcp-k8s</code></td><td><code>service.name</code> of the exported data.</td></tr>
+<tr><td><code>OTEL_RESOURCE_ATTRIBUTES</code></td><td><em>(none)</em></td><td>Extra resource attributes, e.g. <code>k8s.cluster.name=prod</code>.</td></tr>
+<tr><td><code>OTEL_TRACES_SAMPLER</code> / <code>OTEL_TRACES_SAMPLER_ARG</code></td><td><code>parentbased_always_on</code></td><td>Trace sampling.</td></tr>
+<tr><td><code>MCP_K8S_OTEL_FILTER</code></td><td><code>info</code></td><td><code>EnvFilter</code> for exported spans and logs.</td></tr>
+</tbody>
+</table>
+</div>
+<p>See <a href="../telemetry.html">Telemetry</a> for every variable, the span, metric and log
+names, and the redaction guarantee.</p>
 <h2 id="response-cache"><a class="header" href="#response-cache">Response Cache</a></h2>
 <div class="table-wrapper">
 <table>

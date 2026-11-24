@@ -36,10 +36,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-4e6edd76.js";
+            window.path_to_searchindex_js = "../searchindex-399caea2.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-caea04ac.js"></script>
+        <script src="../toc-8f6ebf8b.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -258,6 +258,16 @@ docker build -t mcp-k8s .
   ghcr.io/alexconrey/mcp-k8s:latest
 </code></pre>
 <p>Set <code>LOG_FORMAT=json</code> for structured JSON log output, suitable for log aggregation pipelines such as Loki, Datadog, or CloudWatch.</p>
+<h3 id="opentelemetry-export"><a class="header" href="#opentelemetry-export">OpenTelemetry export</a></h3>
+<pre><code class="language-bash">docker run --rm \
+  -v ~/.kube/config:/home/nonroot/.kube/config:ro \
+  -p 8080:8080 \
+  -e OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318 \
+  -e OTEL_RESOURCE_ATTRIBUTES=k8s.cluster.name=dev \
+  ghcr.io/alexconrey/mcp-k8s:latest
+</code></pre>
+<p>Exports traces, the <code>mcp.server.operation.duration</code> metric and logs over OTLP
+http/protobuf. See <a href="../telemetry.html">Telemetry</a>.</p>
 <h3 id="multi-cluster"><a class="header" href="#multi-cluster">Multi-cluster</a></h3>
 <pre><code class="language-bash">docker run --rm \
   -v ~/.kube/config:/home/nonroot/.kube/config:ro \
@@ -285,7 +295,12 @@ docker build -t mcp-k8s .
 <tr><td><code>DISABLE_SECRET_DECODE</code></td><td>Prevent secret value decoding</td><td><code>false</code></td></tr>
 <tr><td><code>LOG_FORMAT</code></td><td>Log output format (<code>text</code> or <code>json</code>)</td><td><code>text</code></td></tr>
 <tr><td><code>KUBECONFIG</code></td><td>Path to kubeconfig file</td><td><em>(auto-detected)</em></td></tr>
-<tr><td><code>RUST_LOG</code></td><td>Log level filter</td><td><code>info</code></td></tr>
+<tr><td><code>RUST_LOG</code></td><td>Console log level filter</td><td><code>info</code></td></tr>
+<tr><td><code>OTEL_EXPORTER_OTLP_ENDPOINT</code></td><td>OTLP http/protobuf collector URL; export is off without it</td><td><em>(none)</em></td></tr>
+<tr><td><code>OTEL_SERVICE_NAME</code></td><td><code>service.name</code> for exported telemetry</td><td><code>mcp-k8s</code></td></tr>
+<tr><td><code>OTEL_RESOURCE_ATTRIBUTES</code></td><td>Extra resource attributes</td><td><em>(none)</em></td></tr>
+<tr><td><code>OTEL_TRACES_SAMPLER</code></td><td>Trace sampler</td><td><code>parentbased_always_on</code></td></tr>
+<tr><td><code>MCP_K8S_OTEL_FILTER</code></td><td>Filter for exported spans and logs</td><td><code>info</code></td></tr>
 </tbody>
 </table>
 </div>
@@ -327,6 +342,9 @@ scrape_configs:
 </tbody>
 </table>
 </div>
+<p>These names will be deprecated in a later release in favour of the
+OpenTelemetry metric <code>mcp.server.operation.duration</code>, exported over OTLP (see
+<a href="../telemetry.html#old-metric-names">Telemetry</a>).</p>
 <h2 id="health-checks"><a class="header" href="#health-checks">Health Checks</a></h2>
 <p>The <code>/healthz</code> endpoint returns <code>ok</code> with a 200 status code when the server is running. Use this for Docker health checks:</p>
 <pre><code class="language-dockerfile">HEALTHCHECK --interval=30s --timeout=3s \
@@ -354,7 +372,7 @@ scrape_configs:
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../permissions.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../telemetry.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
@@ -368,7 +386,7 @@ scrape_configs:
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../permissions.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../telemetry.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
