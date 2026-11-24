@@ -12,6 +12,8 @@ release workflow refuses a tag that doesn't match `Cargo.toml`,
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-11-24
+
 ### Added
 - **Native OpenTelemetry telemetry.** Every MCP request produces one SERVER
   span named `{mcp.method.name} {target}` (e.g. `tools/call apply_manifest`),
