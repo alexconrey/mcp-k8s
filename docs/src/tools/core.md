@@ -34,16 +34,27 @@ List revision history (ReplicaSets) for a deployment.
 
 ### create_deployment
 
-Create a new deployment in the specified namespace.
+Create a Deployment whose pods are selected by `app=<name>` (or a custom `selector`). Preferred over `apply_manifest`.
+
+It takes every [pod template argument](./pod-template.md): the single-container shorthand (`image`, `command`, `args`, `env`, `env_from`, `ports`, `resources`, `volume_mounts`, probes, `lifecycle`) or `containers`; `init_containers` (native sidecars); volumes; scheduling; and `security_context`. Plus:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `namespace` | string | Yes | Kubernetes namespace |
 | `name` | string | Yes | Deployment name |
-| `image` | string | Yes | Container image |
+| `image` | string | Yes* | Container image (*or `containers`) |
 | `replicas` | integer | No | Number of replicas (default: 1) |
-| `port` | integer | No | Container port to expose |
-| `env` | object | No | Environment variables as key-value string pairs |
+| `port` | integer | No | Container port to expose (shorthand for `ports`) |
+| `env` | object/array | No | Environment variables, including secret/configMap/field references |
+| `env_from` | array | No | Load all keys of Secrets/ConfigMaps |
+| `strategy` | object | No | `{type: RollingUpdate, max_surge, max_unavailable}` or `{type: Recreate}` |
+| `min_ready_seconds` | integer | No | |
+| `revision_history_limit` | integer | No | |
+| `progress_deadline_seconds` | integer | No | |
+| `selector` | object | No | Pod selector labels (default `{app: <name>}`) |
+| `pod_annotations` | object | No | Pod template annotations |
+
+Pods get the secure defaults (non-root, seccomp RuntimeDefault, no privilege escalation, drop ALL capabilities, no service account token). For images that must run as root, set `security_context: {"run_as_non_root": false}`. Privileged mode, host namespaces/paths/ports and extra capabilities are rejected unless the server allows them.
 
 Example:
 
@@ -56,14 +67,17 @@ Example:
   "port": 80,
   "env": {
     "ENV": "production",
-    "LOG_LEVEL": "info"
-  }
+    "API_KEY": { "secret_key_ref": { "name": "my-app", "key": "api-key" } }
+  },
+  "readiness_probe": { "probe_type": "httpGet", "path": "/", "port": 80 },
+  "resources": { "requests": { "cpu": "100m", "memory": "128Mi" } },
+  "security_context": { "run_as_non_root": false }
 }
 ```
 
 ### update_deployment
 
-Update (merge patch) an existing deployment. Supports changing image, replicas, and env vars.
+Update (strategic merge patch) an existing Deployment. Preferred over `apply_manifest`. It takes the same fields as `create_deployment`, all optional, plus `container` (which container the single-container fields change). Only the given fields change. See [Updates](./pod-template.md#updates).
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -71,9 +85,14 @@ Update (merge patch) an existing deployment. Supports changing image, replicas, 
 | `name` | string | Yes | Deployment name |
 | `image` | string | No | New container image |
 | `replicas` | integer | No | New replica count |
-| `env` | object | No | Environment variables (replaces all env vars) |
+| `env` | object/array | No | Environment variables (merged by name) |
+| `env_from` | array | No | envFrom sources |
+| `liveness_probe` / `readiness_probe` / `startup_probe` | object | No | Probes |
+| `container` | string | No | Target container (default: the one named after the Deployment, or the only one) |
+| *any pod template field* | | No | `resources`, `volumes`, `volume_mounts`, `security_context`, `tolerations`, `affinity`, `init_containers`, … |
+| `strategy`, `min_ready_seconds`, `revision_history_limit`, `progress_deadline_seconds` | | No | Rollout settings |
 
-At least one of `image`, `replicas`, or `env` must be provided.
+The patch is dry-run and its result checked against the guardrails before it is written. That means an update also can't modify a Deployment that already breaks the policy.
 
 ### delete_deployment
 
@@ -105,7 +124,7 @@ Scale a deployment to the specified number of replicas.
 
 ### rollback_deployment
 
-Rollback a deployment to a specific revision by restoring the pod template from the matching ReplicaSet.
+Rollback a deployment to a specific revision by restoring the pod template from the matching ReplicaSet. The restored template is checked against the guardrails like any update, so rolling back to a revision that predates them can be refused.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -149,15 +168,16 @@ Fetch logs from a pod. Optionally scope to a container and limit line count.
 
 ### create_pod
 
-Create a standalone pod. Useful for debugging, one-shot tasks, or running a quick container.
+Create a standalone pod: debugging, one-shot tasks, or a quick container. Preferred over `apply_manifest`. It takes every [pod template argument](./pod-template.md). `restart_policy` is `Never` (default), `OnFailure` or `Always`.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `namespace` | string | Yes | Kubernetes namespace |
 | `name` | string | Yes | Pod name |
-| `image` | string | Yes | Container image |
+| `image` | string | Yes* | Container image (*or `containers`) |
 | `command` | string[] | No | Command to run |
 | `restart_policy` | string | No | Restart policy: `Never` (default), `Always`, `OnFailure` |
+| *any pod template field* | | No | `args`, `env`, `ports`, `resources`, probes, `volumes`, `service_account_name`, `security_context`, `init_containers`, … |
 
 ### delete_pod
 
@@ -192,6 +212,8 @@ Execute a command in a pod container and return the output.
 
 Returns `stdout`, `stderr`, and `exit_code`.
 
+`exec_pod` runs arbitrary commands, so it counts as an **update** (`pod-update`): read-only mode and `--disable-update` turn it off.
+
 ---
 
 ## Services
@@ -217,26 +239,39 @@ Get detailed info for a single service including selector, session affinity, and
 
 ### create_service
 
-Create a Kubernetes ClusterIP Service pointing to pods with a matching app label.
+Create a Service. Preferred over `apply_manifest`. ClusterIP by default, selecting pods labelled `app=<name>`.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `namespace` | string | Yes | Kubernetes namespace |
-| `name` | string | Yes | Service name (also used as the app label selector) |
-| `port` | integer | No | Service port (default: 80) |
-| `target_port` | integer | No | Container port to forward to (defaults to same as port) |
+| `name` | string | Yes | Service name (also the default `app` selector) |
+| `port` | integer | No | Shorthand for a single port (default: 80) |
+| `target_port` | integer/string | No | Target for the shorthand (default: `port`) |
+| `ports` | array | No | `{port, target_port (number or container port name), name, protocol, app_protocol, node_port}` |
+| `selector` | object | No | Pod selector (default `{app: <name>}`) |
+| `type` | string | No | `ClusterIP` (default); `NodePort`, `LoadBalancer`, `ExternalName` are gated |
+| `headless` / `cluster_ip` | boolean / string | No | `headless: true` = `clusterIP: None` |
+| `session_affinity`, `session_affinity_timeout_seconds` | | No | `None` or `ClientIP` |
+| `external_traffic_policy`, `internal_traffic_policy` | string | No | `Cluster` or `Local` |
+| `traffic_distribution` | string | No | e.g. `PreferClose` |
+| `ip_families`, `ip_family_policy` | | No | Dual-stack settings |
+| `publish_not_ready_addresses` | boolean | No | |
+| `load_balancer_source_ranges`, `load_balancer_class`, `allocate_load_balancer_node_ports` | | No | Need `--allow-loadbalancer` |
+| `external_name`, `external_ips` | | No | Need `--allow-external-services` |
+| `labels`, `annotations` | object | No | Cloud load-balancer annotations need `--allow-loadbalancer` |
 
 ### update_service
 
-Patch a service. Accepts optional fields: ports, selector, type.
+Patch a Service. Preferred over `apply_manifest`. It takes the same fields as `create_service` except the immutable ones (`headless`, `cluster_ip`, IP families). `ports` merge by port number. The result is dry-run and checked against the guardrails, so an update can't switch a Service to a disallowed type.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `namespace` | string | Yes | Kubernetes namespace |
 | `name` | string | Yes | Service name |
-| `ports` | array | No | Array of port definitions (`{port, target_port, protocol}`) |
+| `ports` | array | No | Port definitions (`{port, target_port, name, protocol, app_protocol, node_port}`) |
 | `selector` | object | No | Label selector for pods |
-| `type` | string | No | Service type: `ClusterIP`, `NodePort`, `LoadBalancer`, `ExternalName` |
+| `type` | string | No | `ClusterIP`, `NodePort`, `LoadBalancer`, `ExternalName` (gated as on create) |
+| *other create_service fields* | | No | Traffic policies, affinity, annotations, labels, … |
 
 ### delete_service
 
@@ -280,7 +315,7 @@ Get a namespace by name. Returns name, status (Active/Terminating), labels, anno
 
 ### create_namespace
 
-Create a new Kubernetes namespace.
+Create a new Kubernetes namespace. Labelling it `pod-security.kubernetes.io/{enforce,audit,warn}=privileged` turns off Pod Security Admission for the namespace and needs `--allow-privileged`.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -289,7 +324,7 @@ Create a new Kubernetes namespace.
 
 ### update_namespace
 
-Update a namespace's labels and/or annotations.
+Update a namespace's labels and/or annotations. The result is dry-run and checked: the pod-security labels can't be set to `privileged` without `--allow-privileged`.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -385,7 +420,7 @@ Get a secret by name. Returns metadata and data keys only by default.
 
 ### create_secret
 
-Create a Kubernetes Secret. Accepts string_data as key-value pairs.
+Create a Kubernetes Secret. Accepts string_data as key-value pairs. `type: kubernetes.io/service-account-token` mints a long-lived token for a service account and needs `--allow-rbac-escalation`.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|

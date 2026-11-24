@@ -1,13 +1,15 @@
 # mcp-k8s
 
-A Kubernetes MCP (Model Context Protocol) server that exposes **210 tools**
+A Kubernetes MCP (Model Context Protocol) server that exposes **211 tools**
 covering all GA Kubernetes API resources, CRDs, multi-cluster management, and
 resource watching. Works as a stdio server for Claude Code or as an HTTP
 endpoint for in-cluster deployment.
 
 ## Features
 
-- **210 MCP tools** across 49 resource modules covering every GA Kubernetes API group
+- **211 MCP tools** across 49 resource modules covering every GA Kubernetes API group
+- **Typed workload tools that cover the pod template**: containers, init containers and native sidecars, env from secrets/configmaps/fields, probes, lifecycle hooks, resources, volumes, scheduling, security context, rollout strategies, Services and Ingresses (see [coverage](docs/src/tools/coverage.md)), so agents don't need `apply_manifest` for everyday work
+- **Workload guardrails on every write path**: privileged containers, host namespaces, hostPath, host ports, extra capabilities, NodePort/LoadBalancer Services, ingress snippet annotations and RBAC escalation are rejected unless an operator opts in, and `apply_manifest` enforces the same rules
 - **Two runtime modes**: stdio (for Claude Code) and HTTP (for in-cluster deployment)
 - **SSE transport**: `POST /mcp/sse` endpoint for Server-Sent Events streaming
 - **Multi-cluster support**: load multiple kubeconfig contexts and switch between clusters at runtime
@@ -95,6 +97,27 @@ otherwise the tool returns the API server's 404.
 | **Watch** | `watch_resource` (observe ADDED/MODIFIED/DELETED events over a time window) |
 | **Cluster Mgmt** | `list_clusters`, `switch_cluster`, `get_active_cluster` (multi-context switching) |
 
+## Guardrails
+
+Every write tool runs the same workload policy: the typed `create_*`/`update_*` tools, `apply_manifest`, and the custom resource tools. The defaults are restrictive and every rejection names the flag that relaxes it. Typed creates also default to a restricted securityContext (runAsNonRoot, seccomp `RuntimeDefault`, no privilege escalation, drop ALL capabilities) and don't mount a service account token unless asked.
+
+| Rejected by default | Opt-in flag |
+|---------------------|-------------|
+| Privileged containers | `--allow-privileged` |
+| `allowPrivilegeEscalation: true` | `--allow-privilege-escalation` |
+| Capabilities beyond the runtime's defaults | `--allow-capabilities NET_ADMIN,...` |
+| `hostNetwork` / `hostPID` / `hostIPC` | `--allow-host-namespaces` |
+| `hostPath` volumes / `hostPort` | `--allow-host-path` / `--allow-host-ports` |
+| nfs, inline csi and other risky volume types | `--allow-volume-types nfs,csi` |
+| Unconfined seccomp/AppArmor, unsafe sysctls | `--allow-unconfined` |
+| NodePort / LoadBalancer / ExternalName Services | `--allow-nodeport` / `--allow-loadbalancer` / `--allow-external-services` |
+| Ingress `*-snippet` annotations and nginx config injection | `--allow-ingress-snippets` |
+| RBAC escalation (escalate/bind/impersonate, wildcards, binding cluster-admin) | `--allow-rbac-escalation` |
+| RBAC, webhook, CRD and cluster-scoped kinds in `apply_manifest` | `--allow-manifest-kinds Kind,...` |
+| Custom resource writes | `--allow-custom-resource-groups group,...` |
+
+Each flag has an `MCP_K8S_*` environment variable. Optional tightening: `--allowed-registries`, `--ingress-annotation-allowlist`, `--ingress-annotation-denylist`. See [Permissions](docs/src/permissions.md#workload-guardrails).
+
 ### Special Actions
 
 Beyond standard CRUD, the server supports:
@@ -117,7 +140,8 @@ Beyond standard CRUD, the server supports:
 | `--auth-token` | `AUTH_TOKEN` | (none) | Bearer token for HTTP endpoint authentication |
 | `--tls-cert` | `TLS_CERT` | (none) | Path to TLS certificate PEM file (enables HTTPS) |
 | `--tls-key` | `TLS_KEY` | (none) | Path to TLS private key PEM file (enables HTTPS) |
-| `--disable-apply-manifest` | `DISABLE_APPLY_MANIFEST` | `false` | Block the `apply_manifest` tool entirely |
+| `--disable-apply-manifest` | `DISABLE_APPLY_MANIFEST` | `false` | Block the `apply_manifest` tool entirely (it already enforces the same guardrails as the typed tools) |
+| `--allow-*`, `--allowed-registries`, `--ingress-annotation-*`, `--no-secure-defaults` | `MCP_K8S_ALLOW_*` etc. | restrictive | Workload guardrails, see [Guardrails](#guardrails) |
 | `--disable-secret-decode` | `DISABLE_SECRET_DECODE` | `false` | Prevent secret value decoding |
 | `--cache-ttl` | `CACHE_TTL` | `0` | Response cache TTL in seconds (0 = disabled) |
 | `--log-format` | `LOG_FORMAT` | `text` | Log format: `text` or `json` |
@@ -208,6 +232,18 @@ if let Some(result) = mcp::handle_tool(&client, "list_deployments", &args).await
     // result: Result<String, String>
 }
 ```
+
+The workload guardrails live on `ActionPermissions`. `ActionPermissions::default()` uses the restrictive `WorkloadPolicy::default()`; relax individual rules with `with_workload_policy`:
+
+```rust
+use mcp_k8s::policy::WorkloadPolicy;
+
+let mut policy = WorkloadPolicy::default();
+policy.allow_load_balancer = true;
+let permissions = ActionPermissions::default().with_workload_policy(policy);
+```
+
+`mcp_k8s::mcp::SERVER_INSTRUCTIONS` is the MCP `instructions` text the server sends. It steers agents to the typed tools, and embedding applications can include it in their own instructions.
 
 ## Testing
 

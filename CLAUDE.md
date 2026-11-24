@@ -1,7 +1,7 @@
 # mcp-k8s
 
 Kubernetes MCP (Model Context Protocol) server and library. Exposes
-210 Kubernetes cluster operations as MCP tools consumable by Claude Code
+211 Kubernetes cluster operations as MCP tools consumable by Claude Code
 and other MCP clients. Supports multi-cluster management, CRD discovery,
 watch/subscribe, and all GA + alpha/beta K8s API groups.
 
@@ -25,7 +25,15 @@ src/
 ├── client.rs           # K8sClient — kube::Client wrapper with namespace allowlist + permissions
 ├── cluster.rs          # ClusterManager — multi-cluster support with named contexts
 ├── error.rs            # Error types (NamespaceNotAllowed, Kube, BadRequest, ActionNotAllowed)
-├── permissions.rs      # ActionPermissions — global/per-resource action controls + secret decode gating
+├── permissions.rs      # ActionPermissions — global/per-resource action controls + secret decode gating + WorkloadPolicy
+├── policy/             # Workload guardrails, enforced on every write path
+│   ├── mod.rs          # WorkloadPolicy (restrictive default, permissive()), flags table, Violation/PolicyError
+│   ├── pod.rs          # Pod spec rules (privileged, escalation, capabilities, host namespaces/paths/ports, volumes, profiles, registries)
+│   ├── network.rs      # Service rules (NodePort/LoadBalancer/ExternalName/externalIPs) and Ingress rules (snippets, nginx injection)
+│   ├── rbac.rs         # RBAC escalation rules, service-account token Secrets, pod-security namespace labels
+│   ├── manifest.rs     # check_object: kind dispatch, raw-manifest kind gates, custom resource group allowlist + deep scan
+│   ├── admission.rs    # admit_manifest (apply_manifest/custom resources), patch_checked (dry-run updates), check_typed, bound role lookup
+│   └── tests.rs        # One test per rule: rejection and opt-in acceptance
 ├── types.rs            # Core summary/detail structs + re-exports from resource modules
 ├── extract.rs          # K8s API objects → summary/detail extraction functions
 ├── mcp/
@@ -33,9 +41,10 @@ src/
 │   ├── protocol.rs     # JSON-RPC 2.0 types (with utoipa schemas)
 │   ├── definitions.rs  # Tool inputSchema definitions (filtered by permissions)
 │   ├── handlers.rs     # Tool dispatch with permission checks + metrics recording
-│   └── tests.rs        # MCP dispatch and permission filtering tests
-└── resources/          # 49 resource modules
-    ├── mod.rs           # Aggregates all modules
+│   └── tests.rs        # MCP dispatch, permission filtering, tool count and steering tests
+└── resources/          # 49 resource modules + the shared pod template builder
+    ├── mod.rs           # Aggregates all modules; adds "Preferred over apply_manifest" to every write tool
+    ├── podspec.rs       # Shared container/pod argument schema, parser and builder (+ podspec/tests.rs)
     ├── admission.rs     # MutatingWebhookConfig, ValidatingWebhookConfig, ValidatingAdmissionPolicy
     ├── admission_alpha.rs # MutatingAdmissionPolicy/Binding (v1alpha1)
     ├── auth.rs          # can_i, whoami, list_my_permissions
@@ -44,21 +53,21 @@ src/
     ├── clusterrole.rs   # ClusterRole CRUD
     ├── clusterrolebinding.rs  # ClusterRoleBinding CRUD
     ├── configmap.rs     # ConfigMap CRUD
-    ├── crd.rs           # CRD discovery + custom resource CRUD (7 tools)
-    ├── cronjob.rs       # CronJob CRUD
+    ├── crd.rs           # CRD discovery + custom resource CRUD (7 tools); writes go through admit_manifest/patch_checked
+    ├── cronjob.rs       # CronJob CRUD (pod template + CronJob/Job settings)
     ├── csr.rs           # CertificateSigningRequest (list, get, approve, deny)
-    ├── daemonset.rs     # DaemonSet CRUD
-    ├── deployment.rs    # Deployment create/update/delete/restart/scale/rollback
+    ├── daemonset.rs     # DaemonSet CRUD (pod template + update strategy)
+    ├── deployment.rs    # Deployment create/update/delete/restart/scale/rollback (+ labels/annotations/affinity)
     ├── device_resources.rs # ResourceClaim, ResourceSlice, DeviceClass (v1beta2)
     ├── endpoints.rs     # Endpoints (read-only, legacy)
     ├── endpointslice.rs # EndpointSlice (read-only)
     ├── flowcontrol.rs   # FlowSchema + PriorityLevelConfiguration (read-only)
-    ├── generic.rs       # apply_manifest (server-side apply, last resort), get_resource_json (+ deprecated get_resource_yaml alias)
+    ├── generic.rs       # apply_manifest (server-side apply, last resort, same guardrails via admit_manifest), get_resource_json (+ deprecated get_resource_yaml alias)
     ├── hpa.rs           # HorizontalPodAutoscaler CRUD
-    ├── ingress.rs       # Ingress get + delete
+    ├── ingress.rs       # Ingress get/create/update/delete (rules, TLS, default backend)
     ├── ingressclass.rs  # IngressClass (read-only, cluster-scoped)
     ├── ip_networking.rs # IPAddress, ServiceCIDR (v1, GA)
-    ├── job.rs           # Job list/get/create/delete
+    ├── job.rs           # Job list/get/create/delete + create_job_from_cronjob
     ├── lease.rs         # Lease (read-only)
     ├── lease_candidate.rs # LeaseCandidate (v1beta1)
     ├── limitrange.rs    # LimitRange CRUD
@@ -76,9 +85,9 @@ src/
     ├── rolebinding.rs   # RoleBinding CRUD
     ├── runtimeclass.rs  # RuntimeClass (read-only, cluster-scoped)
     ├── secret.rs        # Secret CRUD (values redacted by default, decode gated by permissions)
-    ├── service.rs       # Service list/get/update/delete
+    ├── service.rs       # Service list/get/create/update/delete
     ├── serviceaccount.rs # ServiceAccount list/get/create/delete
-    ├── statefulset.rs   # StatefulSet CRUD
+    ├── statefulset.rs   # StatefulSet CRUD (pod template + volume claim templates, update strategy)
     ├── storage_internals.rs  # CSIDriver, CSINode, VolumeAttachment, CSIStorageCapacity
     ├── storage_migration.rs  # StorageVersionMigration (v1alpha1)
     ├── storage_version.rs    # StorageVersion (v1alpha1)
@@ -101,9 +110,32 @@ behind `Arc<RwLock<HashMap>>` with an active cluster tracker. Supports
 context at runtime.
 
 **Permissions** (`permissions.rs`): `ActionPermissions` struct with global
-create/update/delete disable flags, per-resource overrides, and
-`secret_decode_enabled`. Disabled tools are filtered from `tools/list`
-and rejected in `tools/call`.
+create/update/delete disable flags, per-resource overrides,
+`secret_decode_enabled`, `apply_manifest_enabled`, and the `WorkloadPolicy`
+(`with_workload_policy`, `workload_policy()`). Disabled tools are filtered
+from `tools/list` and rejected in `tools/call`. `exec_pod` counts as an
+update (`pod-update`).
+
+**Workload policy** (`policy/`): the guardrails. `check_object(policy, json,
+Source)` is the single rule engine; it works on the Kubernetes JSON form, so
+typed tools and raw manifests get the same verdict. Every write path must go
+through it:
+- typed creates: build the object, then `policy::check_typed(client, &obj)`;
+- updates that can change pod templates, Service/Ingress specs or namespace
+  labels: `policy::patch_checked` (server-side dry run, check, then write
+  with the dry run's `resourceVersion`);
+- raw manifests: `policy::admit_manifest` (static checks, kind gates,
+  discovery, namespace allowlist, create/update permission parity, bound
+  roles).
+A new write tool that skips these is a guardrail bypass. Rejections name the
+flag that allows them (`policy::flags`); keep CLI flags in `main.rs`, the
+flags table and the docs in sync.
+
+**Pod template builder** (`resources/podspec.rs`): one schema and parser for
+container and pod arguments, shared by every workload create/update tool.
+snake_case arguments with camelCase aliases, unknown fields rejected
+(`normalize_args` for top-level arguments, `deny_unknown_fields` for nested
+ones), secure defaults applied when `WorkloadPolicy::secure_defaults` is on.
 
 **Types and extraction** (`types.rs`, `extract.rs`): Core summary/detail
 structs. `types.rs` re-exports all per-resource module types for a unified
@@ -113,7 +145,7 @@ import path.
 TTL for read operations. Disabled by default (`--cache-ttl 0`). When enabled,
 caches list operation responses to reduce K8s API load on large clusters.
 
-**Resource modules** (`resources/*.rs`): 49 modules, each with
+**Resource modules** (`resources/*.rs`): 49 modules (plus `podspec.rs`), each with
 `tool_definitions()` and `handle_tool()`. CRD module uses `DynamicObject`
 + `kube::discovery::pinned_kind` for runtime GVK resolution. Watch module
 uses `Api::watch()` with timeout for event streaming (30s hard cap).
@@ -214,6 +246,24 @@ mcp-k8s --http --tls-cert /path/cert.pem --tls-key /path/key.pem
 | `--tls-cert` | `TLS_CERT` | (none) | TLS certificate PEM path |
 | `--tls-key` | `TLS_KEY` | (none) | TLS private key PEM path |
 | `--disable-apply-manifest` | `DISABLE_APPLY_MANIFEST` | `false` | Block the `apply_manifest` tool entirely |
+| `--allow-privileged` | `MCP_K8S_ALLOW_PRIVILEGED` | `false` | Guardrail opt-in: privileged containers |
+| `--allow-privilege-escalation` | `MCP_K8S_ALLOW_PRIVILEGE_ESCALATION` | `false` | Guardrail opt-in |
+| `--allow-capabilities` | `MCP_K8S_ALLOW_CAPABILITIES` | (none) | Extra capabilities (`ALL` = any) |
+| `--allow-host-namespaces` | `MCP_K8S_ALLOW_HOST_NAMESPACES` | `false` | hostNetwork/hostPID/hostIPC |
+| `--allow-host-path` | `MCP_K8S_ALLOW_HOST_PATH` | `false` | hostPath volumes |
+| `--allow-host-ports` | `MCP_K8S_ALLOW_HOST_PORTS` | `false` | hostPort |
+| `--allow-volume-types` | `MCP_K8S_ALLOW_VOLUME_TYPES` | (none) | Extra volume types (`nfs,csi`; `*` = any but hostPath) |
+| `--allow-unconfined` | `MCP_K8S_ALLOW_UNCONFINED` | `false` | Unconfined profiles, unsafe sysctls, probe hosts |
+| `--allowed-registries` | `MCP_K8S_ALLOWED_REGISTRIES` | (any) | Image registry allowlist |
+| `--allow-nodeport` | `MCP_K8S_ALLOW_NODEPORT` | `false` | NodePort Services |
+| `--allow-loadbalancer` | `MCP_K8S_ALLOW_LOADBALANCER` | `false` | LoadBalancer Services + LB fields/annotations |
+| `--allow-external-services` | `MCP_K8S_ALLOW_EXTERNAL_SERVICES` | `false` | ExternalName, externalIPs |
+| `--allow-ingress-snippets` | `MCP_K8S_ALLOW_INGRESS_SNIPPETS` | `false` | Snippet annotations, nginx config syntax |
+| `--ingress-annotation-allowlist` / `--ingress-annotation-denylist` | `MCP_K8S_INGRESS_ANNOTATION_ALLOWLIST` / `_DENYLIST` | (none) | Ingress annotation filters |
+| `--allow-manifest-kinds` | `MCP_K8S_ALLOW_MANIFEST_KINDS` | (none) | Kinds apply_manifest may write despite the kind gates |
+| `--allow-custom-resource-groups` | `MCP_K8S_ALLOW_CUSTOM_RESOURCE_GROUPS` | (none) | Custom resource groups that may be written |
+| `--allow-rbac-escalation` | `MCP_K8S_ALLOW_RBAC_ESCALATION` | `false` | RBAC escalation primitives, SA token Secrets |
+| `--no-secure-defaults` | `MCP_K8S_NO_SECURE_DEFAULTS` | `false` | Skip the restricted securityContext defaults |
 | `--disable-secret-decode` | `DISABLE_SECRET_DECODE` | `false` | Prevent secret value decoding |
 | `--cache-ttl` | `CACHE_TTL` | `0` | Response cache TTL in seconds (0 = disabled) |
 | `--log-format` | `LOG_FORMAT` | `text` | Log format: `text` or `json` |
@@ -229,7 +279,9 @@ weaknesses as security issues. The current defaults are permissive:
   Without a token the HTTP API is unauthenticated.
 - The router uses `CorsLayer::permissive()` and doesn't validate `Origin`.
 - Secret decoding and `apply_manifest` are on by default
-  (`ActionPermissions::default()`, which deckwatch also uses).
+  (`ActionPermissions::default()`, which deckwatch also uses). apply_manifest
+  enforces the same workload guardrails as the typed tools, which are
+  restrictive by default (`WorkloadPolicy::default()`).
 - An empty namespace allowlist means every namespace.
 
 Rules:
@@ -238,6 +290,10 @@ Rules:
   does). Never log tokens or secret values.
 - Every namespaced tool must check the namespace allowlist and
   `ActionPermissions`. New tools need tests that prove both.
+- Every write tool must run the workload policy (see Key Components,
+  "Workload policy"). apply_manifest and the custom resource tools must never
+  be a way around a rule a typed tool enforces; add a parity test
+  (`tests/guardrails.rs`) for each new rule.
 - Don't loosen defaults. Tightening a default is a breaking change: record it
   in `CHANGELOG.md` and ship it in a minor release, coordinated with
   deckwatch.
@@ -270,6 +326,8 @@ pub async fn handle_tool(
 
 List operations support `label_selector` and `field_selector` parameters.
 Write operations add `app.kubernetes.io/managed-by: mcp-k8s` labels.
+Workload create/update tools build their pod template with
+`resources::podspec` and pass the result through the policy before writing.
 All output uses `serde_json::to_string_pretty`.
 
 ## Project Layout
@@ -279,10 +337,12 @@ mcp-k8s/
 ├── src/                    # Rust source (lib + bin)
 ├── tests/
 │   ├── integration.rs      # Tower-test mock integration tests (8 tests)
-│   └── k3s_integration.rs  # Testcontainers k3s tests (13 tests, #[ignore]; k3s v1.35, MCP_K8S_K3S_TAG overrides)
+│   ├── guardrails.rs       # Mock-API guardrail/parity tests for typed tools and apply_manifest (GUARDRAILS_COUNT tests)
+│   ├── k3s_integration.rs  # Testcontainers k3s tests (13 tests, #[ignore]; k3s v1.35, MCP_K8S_K3S_TAG overrides)
+│   └── k3s_workloads.rs    # k3s tests for the typed workload tools and guardrails (2 tests, #[ignore])
 ├── docs/                   # mdBook documentation (GitHub Pages)
 │   ├── book.toml
-│   ├── src/                # 20 documentation pages
+│   ├── src/                # 22 documentation pages
 │   └── theme/              # Version switcher (JS + CSS)
 ├── helm/
 │   ├── mcp-k8s/            # Helm chart (with PDB, HPA, NetworkPolicy, Ingress)
@@ -334,9 +394,10 @@ CI workflow (build, test, clippy, fmt) runs against them before merge.
 
 ```bash
 cargo build --release       # Build
-cargo test                  # 426 unit + 8 integration tests
+cargo test                  # UNIT_COUNT unit + 8 integration + GUARDRAILS_COUNT guardrail tests
 cargo test --no-default-features  # Same tests without `server` (what deckwatch compiles)
 cargo test --test k3s_integration -- --ignored  # k3s integration tests (needs Docker)
+cargo test --test k3s_workloads -- --ignored --test-threads=1  # k3s workload/guardrail tests
 cargo clippy --all-targets -- -D warnings  # Lint
 cargo clippy --lib --no-default-features --features k8s-openapi/v1_33 -- -D warnings  # Library-only build (what deckwatch compiles)
 cargo fmt --check           # Format check
@@ -354,9 +415,11 @@ features on every PR. Gaps to cover yourself:
 
 - **The k3s integration tests are `#[ignore]`d and never run in CI.** Run
   `cargo test --test k3s_integration -- --ignored` (needs Docker) when you
-  change kube API paths, API versions or the namespace allowlist. Plain
+  change kube API paths, API versions or the namespace allowlist, and
+  `cargo test --test k3s_workloads -- --ignored --test-threads=1` when you
+  change the typed workload tools or the policy. Plain
   `cargo test -- --ignored` also runs the `cluster.rs` tests, which load your
-  kubeconfig.
+  kubeconfig: never run it.
 - **`cargo deny` doesn't run in CI.** Run `make deny` when you change
   dependencies. There's no Dependabot yet.
 - **The Dockerfile is only built on pushes to `main`**, not on PRs. Run

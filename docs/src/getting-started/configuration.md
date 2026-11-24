@@ -70,7 +70,7 @@ mcp-k8s provides global and per-resource flags to restrict which CRUD actions ar
 | `--disable-create` | `DISABLE_CREATE` | `false` | Globally disable all create tools. When set, tools like `create_deployment`, `create_pod`, `create_service`, and `apply_manifest` are removed from the tool list. |
 | `--disable-update` | `DISABLE_UPDATE` | `false` | Globally disable all update tools. When set, tools like `update_deployment`, `scale_deployment`, `restart_deployment`, `cordon_node`, and `drain_node` are removed. |
 | `--disable-delete` | `DISABLE_DELETE` | `false` | Globally disable all delete tools. When set, tools like `delete_deployment`, `delete_pod`, and `evict_pod` are removed. |
-| `--disable-apply-manifest` | `DISABLE_APPLY_MANIFEST` | `false` | Completely disable the `apply_manifest` tool. Unlike `--disable-create`, this is a dedicated kill-switch for `apply_manifest` because it can both create and update arbitrary resources. See [Permissions](../permissions.md) for details. |
+| `--disable-apply-manifest` | `DISABLE_APPLY_MANIFEST` | `false` | Completely disable the `apply_manifest` tool. Unlike `--disable-create`, this is a dedicated kill-switch for `apply_manifest`. apply_manifest already enforces the same guardrails and per-resource create/update switches as the typed tools; disable it to restrict agents to the typed tools. See [Permissions](../permissions.md#apply_manifest) for details. |
 
 ### Per-Resource Flags
 
@@ -91,6 +91,41 @@ MCP_K8S_DISABLE=deployment-delete,pod-create mcp-k8s
 ```
 
 See the [Permissions](../permissions.md) page for full details on the permission resolution logic and example configurations.
+
+## Workload Guardrails
+
+Every write tool, including `apply_manifest` and the custom resource tools, enforces a workload policy. The defaults are restrictive; each flag relaxes one rule. Errors name the flag that would allow the rejected setting. See [Permissions: Workload Guardrails](../permissions.md#workload-guardrails) for the full rules.
+
+| Flag | Env Var | Default | Allows |
+|------|---------|---------|--------|
+| `--allow-privileged` | `MCP_K8S_ALLOW_PRIVILEGED` | `false` | Privileged containers, Windows hostProcess, `pod-security.kubernetes.io/*=privileged` namespace labels |
+| `--allow-privilege-escalation` | `MCP_K8S_ALLOW_PRIVILEGE_ESCALATION` | `false` | `allowPrivilegeEscalation: true` |
+| `--allow-capabilities` | `MCP_K8S_ALLOW_CAPABILITIES` | *(none)* | Comma-separated capabilities beyond the runtime's default set (`ALL` for any) |
+| `--allow-host-namespaces` | `MCP_K8S_ALLOW_HOST_NAMESPACES` | `false` | `hostNetwork`, `hostPID`, `hostIPC` |
+| `--allow-host-path` | `MCP_K8S_ALLOW_HOST_PATH` | `false` | `hostPath` volumes |
+| `--allow-host-ports` | `MCP_K8S_ALLOW_HOST_PORTS` | `false` | `hostPort` |
+| `--allow-volume-types` | `MCP_K8S_ALLOW_VOLUME_TYPES` | *(none)* | Comma-separated volume types beyond the safe set, e.g. `nfs,csi` (`*` for any except hostPath) |
+| `--allow-unconfined` | `MCP_K8S_ALLOW_UNCONFINED` | `false` | Unconfined seccomp/AppArmor, custom SELinux options, `procMount: Unmasked`, unsafe sysctls, probe/hook hosts other than localhost |
+| `--allowed-registries` | `MCP_K8S_ALLOWED_REGISTRIES` | *(any)* | Restricts images to these registry prefixes, e.g. `ghcr.io/myorg,docker.io/library` |
+| `--allow-nodeport` | `MCP_K8S_ALLOW_NODEPORT` | `false` | NodePort Services |
+| `--allow-loadbalancer` | `MCP_K8S_ALLOW_LOADBALANCER` | `false` | LoadBalancer Services, `loadBalancer*` fields, cloud LB annotations |
+| `--allow-external-services` | `MCP_K8S_ALLOW_EXTERNAL_SERVICES` | `false` | ExternalName Services and `externalIPs` |
+| `--allow-ingress-snippets` | `MCP_K8S_ALLOW_INGRESS_SNIPPETS` | `false` | `*-snippet` annotations and nginx config syntax in ingress-nginx annotation values |
+| `--ingress-annotation-allowlist` | `MCP_K8S_INGRESS_ANNOTATION_ALLOWLIST` | *(none)* | When set, only these Ingress annotation keys (trailing `*` = prefix) |
+| `--ingress-annotation-denylist` | `MCP_K8S_INGRESS_ANNOTATION_DENYLIST` | *(none)* | Ingress annotation keys that are always rejected |
+| `--allow-manifest-kinds` | `MCP_K8S_ALLOW_MANIFEST_KINDS` | *(none)* | Kinds `apply_manifest` and the custom resource tools may write although rejected by default (RBAC, webhooks, CRDs, Endpoints, cluster-scoped kinds); `Kind` or `group/Kind`, `*` for all |
+| `--allow-custom-resource-groups` | `MCP_K8S_ALLOW_CUSTOM_RESOURCE_GROUPS` | *(none)* | Custom resource API groups that may be written (`*` for any) |
+| `--allow-rbac-escalation` | `MCP_K8S_ALLOW_RBAC_ESCALATION` | `false` | escalate/bind/impersonate verbs, wildcards, aggregation, binding cluster-admin or anonymous subjects, service-account token Secrets |
+| `--no-secure-defaults` | `MCP_K8S_NO_SECURE_DEFAULTS` | `false` | Don't fill in the restricted securityContext and `automountServiceAccountToken: false` defaults |
+
+```bash
+# A cluster where agents may expose services through cloud load balancers and
+# manage cert-manager certificates, with images restricted to the org registry:
+mcp-k8s --http \
+  --allow-loadbalancer \
+  --allow-custom-resource-groups cert-manager.io \
+  --allowed-registries ghcr.io/acme
+```
 
 ## Kubernetes Authentication
 

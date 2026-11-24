@@ -8,7 +8,7 @@ mcp-k8s bridges the gap between AI assistants and Kubernetes clusters. It transl
 
 ## Key Features
 
-- **210 tools** across 49 resource modules covering every GA Kubernetes resource type -- Deployments, Pods, Services, Ingresses, ConfigMaps, Secrets, StatefulSets, DaemonSets, CronJobs, Jobs, RBAC resources, Nodes, PVs, PVCs, HPAs, PDBs, NetworkPolicies, admission controllers, CSI resources, and more.
+- **211 tools** across 49 resource modules covering every GA Kubernetes resource type -- Deployments, Pods, Services, Ingresses, ConfigMaps, Secrets, StatefulSets, DaemonSets, CronJobs, Jobs, RBAC resources, Nodes, PVs, PVCs, HPAs, PDBs, NetworkPolicies, admission controllers, CSI resources, and more.
 - **Two runtime modes** -- stdio for local use with Claude Code, and HTTP for in-cluster deployment as a Kubernetes pod.
 - **SSE transport** -- `POST /mcp/sse` endpoint for Server-Sent Events streaming alongside the standard `POST /mcp` JSON-RPC endpoint.
 - **MCP resources** -- `resources/list` and `resources/read` support for direct resource access via `k8s://` URIs (pods, deployments, services, configmaps, secrets, statefulsets, daemonsets, jobs, cronjobs, ingresses, nodes, namespaces).
@@ -101,4 +101,4 @@ mcp-k8s implements [MCP specification version 2025-11-25](https://spec.modelcont
 - [Installation](./getting-started/installation.md) -- Build from source or pull the Docker image
 - [Configuration](./getting-started/configuration.md) -- CLI args, environment variables, and permission flags
 - [Quick Start](./getting-started/quickstart.md) -- Get up and running in minutes
-- [Tools Reference](./tools/overview.md) -- Complete reference for all 210 tools
+- [Tools Reference](./tools/overview.md) -- Complete reference for all 211 tools

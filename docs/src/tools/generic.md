@@ -6,7 +6,18 @@ mcp-k8s provides generic tools that work with any Kubernetes resource type, incl
 
 **Last resort.** Apply an arbitrary Kubernetes manifest, given as **JSON**, using server-side apply. Accepts any resource type.
 
-> Prefer the typed tools (`create_deployment`, `create_job`, `create_pod`, `update_*`, …). They validate their input and enforce mcp-k8s's guardrails, whereas `apply_manifest` sends the raw object to the API server. Use it only for resource types that have no typed tool, and consider disabling it with `--disable-apply-manifest` (see [Permissions](../permissions.md)).
+> Prefer the typed tools (`create_deployment`, `create_job`, `create_pod`, `create_service`, `create_ingress`, `update_*`, …). They validate their input and cover the common fields (see [Typed Tool Coverage](./coverage.md)). Use `apply_manifest` only for kinds or fields they don't cover.
+
+`apply_manifest` enforces the **same guardrails** as the typed tools (see [Workload Guardrails](../permissions.md#workload-guardrails)):
+
+- the pod rules on every pod template: Pod, PodTemplate, ReplicationController, ReplicaSet, Deployment, StatefulSet, DaemonSet, Job, CronJob;
+- the Service, Ingress, RBAC, Secret and Namespace rules;
+- the namespace allowlist;
+- the same per-resource create/update switches. It looks the object up first: creating needs `<resource>-create`, updating needs `<resource>-update`.
+
+RBAC objects, admission webhooks and policies, CRDs, APIServices, Endpoints/EndpointSlices, ControllerRevisions and every cluster-scoped kind are rejected unless the operator lists them in `--allow-manifest-kinds`. Custom resources need `--allow-custom-resource-groups`.
+
+A manifest without a managed-by label gets `app.kubernetes.io/managed-by: mcp-k8s`. The tool can be removed entirely with `--disable-apply-manifest`.
 
 It returns the applied object's metadata (name, namespace, kind, resource_version).
 
@@ -36,6 +47,8 @@ The manifest string is parsed, the resource type is resolved via API discovery, 
 
 ### Example: Apply a CRD Instance
 
+Needs `--allow-custom-resource-groups monitoring.coreos.com`.
+
 ```json
 {
   "manifest": "{\"apiVersion\":\"monitoring.coreos.com/v1\",\"kind\":\"ServiceMonitor\",\"metadata\":{\"name\":\"my-app\",\"namespace\":\"monitoring\"},\"spec\":{\"selector\":{\"matchLabels\":{\"app\":\"my-app\"}},\"endpoints\":[{\"port\":\"metrics\",\"interval\":\"30s\"}]}}"
@@ -44,7 +57,7 @@ The manifest string is parsed, the resource type is resolved via API discovery, 
 
 ### Notes
 
-- `apply_manifest` is classified as a **create** action. It is disabled when `--disable-create` is set.
+- `apply_manifest` is classified as a **create** action. It is disabled when `--disable-create` is set. Updating an existing object additionally needs update permission for its kind.
 - The manifest must be a single JSON object. YAML (including multi-document `---` files) is rejected with a parse error; convert it to JSON and apply one resource per call.
 - If the resource already exists, it is updated (server-side apply merges fields).
 - For CRDs, the API group must be installed in the cluster for discovery to succeed.

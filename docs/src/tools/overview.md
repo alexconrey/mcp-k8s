@@ -1,10 +1,10 @@
 # Tools Overview
 
-mcp-k8s exposes 210 tools (including one deprecated alias) covering every GA Kubernetes resource type plus CRDs, multi-cluster management, and resource watching. Each tool corresponds to a specific Kubernetes API operation. Tools are categorized by action type:
+mcp-k8s exposes 211 tools (including one deprecated alias) covering every GA Kubernetes resource type plus CRDs, multi-cluster management, and resource watching. Each tool corresponds to a specific Kubernetes API operation. The typed create/update tools are preferred over `apply_manifest`; see [Typed Tool Coverage](./coverage.md). Every write tool enforces the [workload guardrails](../permissions.md#workload-guardrails). Tools are categorized by action type:
 
 - **Read** -- List, get, and inspect resources. Always available regardless of permission configuration.
 - **Create** -- Create new resources. Disabled by `--disable-create`.
-- **Update** -- Modify existing resources (patch, scale, restart, rollback, cordon, drain). Disabled by `--disable-update`.
+- **Update** -- Modify existing resources (patch, scale, restart, rollback, cordon, drain, exec). Disabled by `--disable-update`.
 - **Delete** -- Remove resources (delete, evict). Disabled by `--disable-delete`.
 
 ## Tools by Resource Category
@@ -21,8 +21,8 @@ mcp-k8s exposes 210 tools (including one deprecated alias) covering every GA Kub
 | `list_deployments` | Read | List deployments in a namespace |
 | `get_deployment` | Read | Get deployment detail with pods and ingresses |
 | `get_deployment_history` | Read | List ReplicaSet revision history |
-| `create_deployment` | Create | Create a new deployment |
-| `update_deployment` | Update | Patch a deployment (image, replicas, env) |
+| `create_deployment` | Create | Create a deployment (full pod template, rollout strategy) |
+| `update_deployment` | Update | Patch a deployment (any pod template field, replicas, strategy; dry-run checked) |
 | `delete_deployment` | Delete | Delete a deployment |
 | `restart_deployment` | Update | Trigger a rolling restart |
 | `scale_deployment` | Update | Scale replica count |
@@ -30,14 +30,14 @@ mcp-k8s exposes 210 tools (including one deprecated alias) covering every GA Kub
 | `list_pods` | Read | List pods in a namespace |
 | `get_pod` | Read | Get pod detail |
 | `get_pod_logs` | Read | Fetch pod logs |
-| `create_pod` | Create | Create a standalone pod |
+| `create_pod` | Create | Create a standalone pod (full pod template) |
 | `delete_pod` | Delete | Delete a pod |
 | `evict_pod` | Delete | Evict a pod respecting PDBs |
-| `exec_pod` | Read | Execute a command in a pod |
+| `exec_pod` | Update | Execute a command in a pod |
 | `list_services` | Read | List services in a namespace |
 | `get_service` | Read | Get service detail |
-| `create_service` | Create | Create a ClusterIP Service |
-| `update_service` | Update | Patch a service |
+| `create_service` | Create | Create a Service (ClusterIP by default; ports, headless, affinity, traffic policies) |
+| `update_service` | Update | Patch a service (dry-run checked) |
 | `delete_service` | Delete | Delete a service |
 | `get_events` | Read | List events in a namespace |
 | `get_build_logs` | Read | Fetch logs from a Job's pod |
@@ -74,28 +74,29 @@ mcp-k8s exposes 210 tools (including one deprecated alias) covering every GA Kub
 
 See [Core Resources](./core.md) for full parameter details.
 
-### Workloads (25 tools)
+### Workloads (26 tools)
 
 | Tool | Action | Description |
 |------|--------|-------------|
 | `list_statefulsets` | Read | List StatefulSets |
 | `get_statefulset` | Read | Get StatefulSet detail |
-| `create_statefulset` | Create | Create a StatefulSet |
-| `update_statefulset` | Update | Patch a StatefulSet |
+| `create_statefulset` | Create | Create a StatefulSet (pod template, volume claim templates, update strategy) |
+| `update_statefulset` | Update | Patch a StatefulSet (any pod template field; dry-run checked) |
 | `delete_statefulset` | Delete | Delete a StatefulSet |
 | `list_daemonsets` | Read | List DaemonSets |
 | `get_daemonset` | Read | Get DaemonSet detail |
-| `create_daemonset` | Create | Create a DaemonSet |
-| `update_daemonset` | Update | Patch a DaemonSet |
+| `create_daemonset` | Create | Create a DaemonSet (pod template, update strategy) |
+| `update_daemonset` | Update | Patch a DaemonSet (any pod template field; dry-run checked) |
 | `delete_daemonset` | Delete | Delete a DaemonSet |
 | `list_cronjobs` | Read | List CronJobs |
 | `get_cronjob` | Read | Get CronJob detail |
-| `create_cronjob` | Create | Create a CronJob |
-| `update_cronjob` | Update | Patch a CronJob |
+| `create_cronjob` | Create | Create a CronJob (pod template, schedule, time zone, concurrency, job settings) |
+| `update_cronjob` | Update | Patch a CronJob (schedule, job settings, pod template; dry-run checked) |
 | `delete_cronjob` | Delete | Delete a CronJob |
 | `list_jobs` | Read | List Jobs |
 | `get_job` | Read | Get Job detail |
-| `create_job` | Create | Create a Job |
+| `create_job` | Create | Create a Job (pod template, completions, indexed mode, failure policy, TTL) |
+| `create_job_from_cronjob` | Create | Run a CronJob now (like `kubectl create job --from=cronjob/x`) |
 | `delete_job` | Delete | Delete a Job |
 | `list_hpas` | Read | List HPAs |
 | `get_hpa` | Read | Get HPA detail |
@@ -113,8 +114,8 @@ See [Workloads](./workloads.md) for full parameter details.
 |------|--------|-------------|
 | `list_ingresses` | Read | List Ingresses |
 | `get_ingress` | Read | Get Ingress detail |
-| `create_ingress` | Create | Create an Ingress (auto-creates backing Service) |
-| `update_ingress` | Update | Patch an Ingress |
+| `create_ingress` | Create | Create an Ingress (rules, TLS, default backend; auto-creates backing Services) |
+| `update_ingress` | Update | Patch an Ingress (dry-run checked) |
 | `delete_ingress` | Delete | Delete an Ingress |
 | `list_ingressclasses` | Read | List IngressClasses |
 | `get_ingressclass` | Read | Get IngressClass detail |
@@ -276,7 +277,7 @@ See [Cluster Resources](./cluster.md) for full parameter details.
 
 | Tool | Action | Description |
 |------|--------|-------------|
-| `apply_manifest` | Create | Last resort: apply any JSON manifest via server-side apply (prefer the typed tools) |
+| `apply_manifest` | Create | Last resort: apply a JSON manifest via server-side apply, with the same guardrails as the typed tools (prefer the typed tools) |
 | `get_resource_json` | Read | Get any resource as JSON via API discovery |
 | `get_resource_yaml` | Read | Deprecated alias for `get_resource_json` (returns JSON) |
 

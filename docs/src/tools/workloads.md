@@ -1,6 +1,8 @@
 # Workloads
 
-This page documents tools for workload resources: StatefulSets, DaemonSets, CronJobs, Jobs, HorizontalPodAutoscalers, and ReplicaSets.
+This page documents tools for workload resources: StatefulSets, DaemonSets, CronJobs, Jobs, HorizontalPodAutoscalers, and ReplicaSets. Deployments and Pods are on [Core Resources](./core.md).
+
+Every workload create/update tool takes the shared [pod template arguments](./pod-template.md): containers, init containers and native sidecars, env with secret/configMap/field references, probes, resources, volumes, scheduling and security settings. Each section below lists only the tool's own fields. Prefer these tools over `apply_manifest`; both enforce the same [guardrails](../permissions.md#workload-guardrails).
 
 ## StatefulSets
 
@@ -24,16 +26,22 @@ Get detailed info for a single StatefulSet including conditions, service name, u
 
 ### create_statefulset
 
-Create a new StatefulSet in the specified namespace.
+Create a StatefulSet (pods selected by `app=<name>` or a custom `selector`). It takes the [pod template arguments](./pod-template.md) plus:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `namespace` | string | Yes | Kubernetes namespace |
 | `name` | string | Yes | StatefulSet name |
-| `image` | string | Yes | Container image |
+| `image` | string | Yes* | Container image (*or `containers`) |
 | `service_name` | string | Yes | Governing headless service name |
 | `replicas` | integer | No | Number of replicas (default: 1) |
 | `port` | integer | No | Container port to expose |
+| `volume_claim_templates` | array | No | Per-pod PVCs: `{name, storage, storage_class_name, access_modes (default [ReadWriteOnce]), volume_mode, labels, annotations}`. Mount them by name in `volume_mounts`. |
+| `pod_management_policy` | string | No | `OrderedReady` (default) or `Parallel` |
+| `update_strategy` | object | No | `{type: RollingUpdate, partition, max_unavailable}` or `{type: OnDelete}` |
+| `persistent_volume_claim_retention_policy` | object | No | `{when_deleted, when_scaled}`: `Retain` or `Delete` |
+| `min_ready_seconds`, `revision_history_limit` | integer | No | |
+| `selector`, `pod_annotations` | object | No | |
 
 Example:
 
@@ -44,13 +52,17 @@ Example:
   "image": "postgres:16",
   "service_name": "postgres-headless",
   "replicas": 3,
-  "port": 5432
+  "port": 5432,
+  "env": { "POSTGRES_PASSWORD": { "secret_key_ref": { "name": "pg", "key": "password" } } },
+  "volume_claim_templates": [{ "name": "data", "storage": "10Gi" }],
+  "volume_mounts": [{ "name": "data", "mount_path": "/var/lib/postgresql/data" }],
+  "security_context": { "run_as_non_root": false, "fs_group": 999 }
 }
 ```
 
 ### update_statefulset
 
-Update (patch) an existing StatefulSet. Supports changing image and replica count.
+Update (patch) an existing StatefulSet: `replicas`, `update_strategy`, `persistent_volume_claim_retention_policy`, `min_ready_seconds`, `revision_history_limit`, and any pod template field (`image`, `env`, `resources`, probes, …). `container` picks the target container. The result is dry-run and checked against the guardrails before it is written (see [Updates](./pod-template.md#updates)).
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -58,8 +70,7 @@ Update (patch) an existing StatefulSet. Supports changing image and replica coun
 | `name` | string | Yes | StatefulSet name |
 | `image` | string | No | New container image |
 | `replicas` | integer | No | New replica count |
-
-At least one of `image` or `replicas` must be provided.
+| *other fields* | | No | As above |
 
 ### delete_statefulset
 
@@ -94,24 +105,30 @@ Get detailed info for a single DaemonSet including conditions, update strategy, 
 
 ### create_daemonset
 
-Create a DaemonSet that runs a pod on all (or selected) nodes.
+Create a DaemonSet that runs a pod on all (or selected) nodes. It takes the [pod template arguments](./pod-template.md); use `node_selector`, `affinity` and `tolerations` to pick nodes. Plus:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `namespace` | string | Yes | Kubernetes namespace |
 | `name` | string | Yes | DaemonSet name |
-| `image` | string | Yes | Container image |
+| `image` | string | Yes* | Container image (*or `containers`) |
 | `port` | integer | No | Container port |
+| `update_strategy` | object | No | `{type: RollingUpdate, max_unavailable, max_surge}` or `{type: OnDelete}` |
+| `min_ready_seconds`, `revision_history_limit` | integer | No | |
+| `selector`, `pod_annotations` | object | No | |
+
+Node agents often need `hostPath`, `hostNetwork` or privileged mode. Those are rejected unless the operator enables `--allow-host-path`, `--allow-host-namespaces` or `--allow-privileged`. With the flag set, this tool can express them.
 
 ### update_daemonset
 
-Patch a DaemonSet. Supports updating the container image.
+Patch a DaemonSet: `update_strategy`, `min_ready_seconds`, `revision_history_limit`, and any pod template field. The result is dry-run and checked against the guardrails, so an image change on an existing privileged DaemonSet is refused unless the operator allows privileged workloads.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `namespace` | string | Yes | Kubernetes namespace |
 | `name` | string | Yes | DaemonSet name |
 | `image` | string | No | New container image |
+| *other fields* | | No | As above |
 
 ### delete_daemonset
 
@@ -146,27 +163,34 @@ Get detailed info for a single CronJob including schedule, last schedule time, a
 
 ### create_cronjob
 
-Create a CronJob.
+Create a CronJob. It takes the [pod template arguments](./pod-template.md) (`restart_policy` defaults to `OnFailure`), every Job setting from [`create_job`](#create_job) for the job template, plus:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `namespace` | string | Yes | Kubernetes namespace |
 | `name` | string | Yes | CronJob name |
-| `image` | string | Yes | Container image |
 | `schedule` | string | Yes | Cron schedule expression (e.g. `*/5 * * * *`) |
+| `image` | string | Yes* | Container image (*or `containers`) |
 | `command` | string[] | No | Command to run |
+| `restart_policy` | string | No | `OnFailure` (default) or `Never` |
+| `time_zone` | string | No | IANA time zone, e.g. `Europe/Berlin` |
+| `concurrency_policy` | string | No | `Allow` (default), `Forbid`, `Replace` |
+| `suspend` | boolean | No | Suspend future runs |
+| `starting_deadline_seconds` | integer | No | |
+| `successful_jobs_history_limit`, `failed_jobs_history_limit` | integer | No | |
 
 ### update_cronjob
 
-Patch a CronJob. Supports updating image, schedule, and suspend state.
+Update (patch) an existing CronJob: `schedule`, `suspend`, `time_zone`, `concurrency_policy`, history limits, job settings, and any pod template field (`image`, `env`, …). The result is dry-run and checked against the guardrails before it is written.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `namespace` | string | Yes | Kubernetes namespace |
 | `name` | string | Yes | CronJob name |
+| `schedule` | string | No | New cron schedule expression |
+| `suspend` | boolean | No | Whether to suspend the cronjob |
 | `image` | string | No | New container image |
-| `schedule` | string | No | New cron schedule |
-| `suspend` | boolean | No | Suspend or resume the CronJob |
+| *other fields* | | No | As above |
 
 ### delete_cronjob
 
@@ -201,14 +225,35 @@ Get detailed info for a single Job including status, completions, and conditions
 
 ### create_job
 
-Create a Job.
+Create a Job. It takes the [pod template arguments](./pod-template.md) (`restart_policy`: `Never` by default, or `OnFailure`) plus:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `namespace` | string | Yes | Kubernetes namespace |
 | `name` | string | Yes | Job name |
-| `image` | string | Yes | Container image |
+| `image` | string | Yes* | Container image (*or `containers`) |
 | `command` | string[] | No | Command to run |
+| `restart_policy` | string | No | `Never` (default) or `OnFailure` |
+| `backoff_limit` | integer | No | Retries before failure (default: 6) |
+| `ttl_seconds_after_finished` | integer | No | Delete the Job this long after it finishes |
+| `active_deadline_seconds` | integer | No | Fail the Job after this long |
+| `completions`, `parallelism` | integer | No | |
+| `completion_mode` | string | No | `NonIndexed` or `Indexed` |
+| `backoff_limit_per_index`, `max_failed_indexes` | integer | No | Indexed Jobs |
+| `pod_failure_policy` | object | No | Kubernetes PodFailurePolicy (`{rules: [{action, onExitCodes \| onPodConditions}]}`) |
+| `success_policy` | object | No | Kubernetes SuccessPolicy for Indexed Jobs |
+| `pod_replacement_policy` | string | No | `TerminatingOrFailed` or `Failed` |
+| `suspend` | boolean | No | Create the Job suspended |
+
+### create_job_from_cronjob
+
+Run a CronJob now: create a Job from its job template, like `kubectl create job --from=cronjob/NAME`. The Job is owned by the CronJob and annotated `cronjob.kubernetes.io/instantiate: manual`. The template is checked against the guardrails like any workload.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `namespace` | string | Yes | Kubernetes namespace |
+| `cronjob` | string | Yes | CronJob name |
+| `name` | string | No | Job name (default: `<cronjob>-manual-<timestamp>`) |
 
 ### delete_job
 

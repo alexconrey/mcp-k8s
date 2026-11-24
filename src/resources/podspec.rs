@@ -93,6 +93,10 @@ pub const POD_KEYS: &[&str] = &[
     "dns_config",
     "host_aliases",
     "runtime_class_name",
+    "hostname",
+    "subdomain",
+    "share_process_namespace",
+    "enable_service_links",
     "host_network",
     "host_pid",
     "host_ipc",
@@ -780,6 +784,9 @@ fn env_source(src: EnvSourceArgs, what: &str) -> Result<EnvVarSource, String> {
             "{what}: set exactly one of secret_key_ref, config_map_key_ref, field_ref, resource_field_ref"
         ));
     }
+    // `..Default::default()` is redundant with k8s-openapi v1_33 but needed
+    // with v1_34+, which adds `file_key_ref`; the library supports both.
+    #[allow(clippy::needless_update)]
     Ok(EnvVarSource {
         secret_key_ref: src.secret_key_ref.map(|r| SecretKeySelector {
             name: r.name,
@@ -1572,6 +1579,16 @@ fn pod_fields(args: &Value, kind: WorkloadKind) -> Result<PodFields, String> {
             .get("runtime_class_name")
             .and_then(Value::as_str)
             .map(str::to_string),
+        hostname: args
+            .get("hostname")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        subdomain: args
+            .get("subdomain")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        share_process_namespace: args.get("share_process_namespace").and_then(Value::as_bool),
+        enable_service_links: args.get("enable_service_links").and_then(Value::as_bool),
         host_network: args.get("host_network").and_then(Value::as_bool),
         host_pid: args.get("host_pid").and_then(Value::as_bool),
         host_ipc: args.get("host_ipc").and_then(Value::as_bool),
@@ -1780,14 +1797,48 @@ pub struct TemplateMeta {
 /// `app`, the caller can't change that label.
 pub fn build_meta(args: &Value, name: &str, kind: WorkloadKind) -> Result<TemplateMeta, String> {
     let mut labels = string_map(args, "labels")?.unwrap_or_default();
-    match labels.get(APP_LABEL) {
-        Some(v) if v != name && kind.has_app_selector() => return Err(format!(
-            "labels.{APP_LABEL} is the selector label and must equal the workload name ({name:?})"
-        )),
-        Some(_) => {}
-        None => {
-            labels.insert(APP_LABEL.to_string(), name.to_string());
+    let custom_selector = if kind.has_app_selector() {
+        string_map(args, "selector")?.filter(|s| !s.is_empty())
+    } else {
+        None
+    };
+    let selector = match custom_selector {
+        Some(selector) => {
+            // The pods must carry every selector label.
+            for (k, v) in &selector {
+                match labels.get(k) {
+                    Some(existing) if existing != v => {
+                        return Err(format!(
+                            "labels.{k} is {existing:?} but the selector needs {v:?}"
+                        ))
+                    }
+                    _ => {
+                        labels.insert(k.clone(), v.clone());
+                    }
+                }
+            }
+            labels
+                .entry(APP_LABEL.to_string())
+                .or_insert_with(|| name.to_string());
+            selector
         }
+        None => {
+            match labels.get(APP_LABEL) {
+                Some(v) if v != name && kind.has_app_selector() => {
+                    return Err(format!(
+                        "labels.{APP_LABEL} is the selector label and must equal the workload name ({name:?}); set selector to select pods by other labels"
+                    ))
+                }
+                Some(_) => {}
+                None => {
+                    labels.insert(APP_LABEL.to_string(), name.to_string());
+                }
+            }
+            BTreeMap::from([(APP_LABEL.to_string(), name.to_string())])
+        }
+    };
+    if selector.contains_key(MANAGED_BY_LABEL) {
+        return Err(format!("{MANAGED_BY_LABEL} can't be part of the selector"));
     }
     labels.insert(MANAGED_BY_LABEL.to_string(), MANAGED_BY_VALUE.to_string());
     let annotations = string_map(args, "annotations")?;
@@ -1795,7 +1846,6 @@ pub fn build_meta(args: &Value, name: &str, kind: WorkloadKind) -> Result<Templa
     if kind == WorkloadKind::Pod && pod_annotations.is_some() {
         return Err("create_pod takes annotations, not pod_annotations".to_string());
     }
-    let selector = BTreeMap::from([(APP_LABEL.to_string(), name.to_string())]);
     Ok(TemplateMeta {
         template: ObjectMeta {
             labels: Some(labels.clone()),
@@ -2370,6 +2420,10 @@ fn pod_properties(kind: WorkloadKind) -> Map<String, Value> {
         "dns_config": { "type": "object", "description": "{nameservers, searches, options: [{name, value}]}" },
         "host_aliases": { "type": "array", "description": "Extra /etc/hosts entries", "items": { "type": "object", "properties": { "ip": { "type": "string" }, "hostnames": { "type": "array", "items": { "type": "string" } } }, "required": ["ip", "hostnames"], "additionalProperties": false } },
         "runtime_class_name": { "type": "string", "description": "RuntimeClass, e.g. a sandboxed runtime such as gvisor or kata" },
+        "hostname": { "type": "string", "description": "Pod hostname (default: the pod name)" },
+        "subdomain": { "type": "string", "description": "Subdomain for <hostname>.<subdomain>.<namespace>.svc DNS records (a headless Service of that name)" },
+        "share_process_namespace": { "type": "boolean", "description": "Containers share one process namespace (e.g. for debugging sidecars)" },
+        "enable_service_links": { "type": "boolean", "description": "Inject environment variables for every Service in the namespace (Kubernetes default: true)" },
         "host_network": { "type": "boolean", "description": "Gated: needs --allow-host-namespaces" },
         "host_pid": { "type": "boolean", "description": "Gated: needs --allow-host-namespaces" },
         "host_ipc": { "type": "boolean", "description": "Gated: needs --allow-host-namespaces" },
@@ -2385,6 +2439,12 @@ fn pod_properties(kind: WorkloadKind) -> Map<String, Value> {
         props.insert(
             "pod_annotations".into(),
             string_map_schema("Annotations for the pod template (e.g. prometheus.io/scrape)"),
+        );
+    }
+    if kind.has_app_selector() {
+        props.insert(
+            "selector".into(),
+            string_map_schema("Pod selector labels (default: {app: <name>}); added to the pod labels. Immutable after creation"),
         );
     }
     props
@@ -2421,7 +2481,13 @@ pub fn workload_schema(kind: WorkloadKind, extra: Value, required: &[&str]) -> V
 pub fn workload_update_schema(kind: WorkloadKind, extra: Value) -> Value {
     let mut schema = workload_schema(kind, extra, &["namespace", "name"]);
     if let Some(props) = schema["properties"].as_object_mut() {
-        for key in ["labels", "annotations", "restart_policy", "container_name"] {
+        for key in [
+            "labels",
+            "annotations",
+            "restart_policy",
+            "container_name",
+            "selector",
+        ] {
             props.remove(key);
         }
         props.insert(

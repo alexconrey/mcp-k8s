@@ -207,7 +207,8 @@ fn service_properties(create: bool) -> Map<String, Value> {
         "allocate_load_balancer_node_ports": { "type": "boolean", "description": "Needs --allow-loadbalancer" },
         "external_name": { "type": "string", "description": "DNS name for ExternalName services (needs --allow-external-services)" },
         "external_ips": { "type": "array", "items": { "type": "string" }, "description": "Needs --allow-external-services (CVE-2020-8554)" },
-        "publish_not_ready_addresses": { "type": "boolean" }
+        "publish_not_ready_addresses": { "type": "boolean", "description": "Publish endpoints for pods that aren't ready (e.g. for peer discovery)" },
+        "traffic_distribution": { "type": "string", "description": "Traffic distribution preference, e.g. PreferClose (topology-aware routing)" }
     });
     if create {
         props["port"] = json!({ "type": "integer", "description": "Shorthand for a single port (default: 80)" });
@@ -335,6 +336,7 @@ fn service_spec_fields(args: &Value) -> Result<ServiceSpec, String> {
         publish_not_ready_addresses: args
             .get("publish_not_ready_addresses")
             .and_then(Value::as_bool),
+        traffic_distribution: opt_str(args, "traffic_distribution", None)?,
         ..Default::default()
     })
 }
@@ -744,8 +746,10 @@ mod tests {
             "{v:?}"
         );
         assert_eq!(v.len(), 3, "type, source ranges and annotation: {v:?}");
-        let mut allow = crate::policy::WorkloadPolicy::default();
-        allow.allow_load_balancer = true;
+        let mut allow = crate::policy::WorkloadPolicy {
+            allow_load_balancer: true,
+            ..Default::default()
+        };
         assert!(service_violations(&lb, &allow).is_empty());
 
         let np = service_from_args(&json!({ "namespace": "w", "name": "x", "type": "NodePort", "ports": [{ "port": 80, "node_port": 30080 }] })).unwrap();

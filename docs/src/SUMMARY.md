@@ -11,6 +11,8 @@
 # Tools Reference
 
 - [Overview](./tools/overview.md)
+- [Typed Tool Coverage](./tools/coverage.md)
+- [Pod Template Arguments](./tools/pod-template.md)
 - [Core Resources](./tools/core.md)
 - [Workloads](./tools/workloads.md)
 - [Networking](./tools/networking.md)

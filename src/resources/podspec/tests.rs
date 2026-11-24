@@ -720,6 +720,7 @@ fn scheduling_and_pod_settings() {
             "dns_config": { "nameservers": ["1.1.1.1"], "searches": ["svc.cluster.local"], "options": [{ "name": "ndots", "value": "2" }] },
             "host_aliases": [{ "ip": "10.0.0.1", "hostnames": ["db.local"] }],
             "runtime_class_name": "gvisor",
+            "hostname": "db-0", "subdomain": "db", "share_process_namespace": true, "enable_service_links": false,
             "security_context": { "supplemental_groups": [5], "fs_group_change_policy": "OnRootMismatch", "sysctls": [{ "name": "net.ipv4.tcp_syncookies", "value": "1" }] }
         }),
         WorkloadKind::Deployment,
@@ -779,6 +780,14 @@ fn scheduling_and_pod_settings() {
         "db.local"
     );
     assert_eq!(s.runtime_class_name.as_deref(), Some("gvisor"));
+    assert_eq!(
+        (s.hostname.as_deref(), s.subdomain.as_deref()),
+        (Some("db-0"), Some("db"))
+    );
+    assert_eq!(
+        (s.share_process_namespace, s.enable_service_links),
+        (Some(true), Some(false))
+    );
     let sc = s.security_context.as_ref().unwrap();
     assert_eq!(sc.supplemental_groups.as_deref(), Some(&[5][..]));
     assert_eq!(
@@ -841,6 +850,50 @@ fn labels_and_annotations() {
     .err()
     .unwrap();
     assert!(e.contains("selector"), "{e}");
+    // A custom selector: its labels are added to the pods.
+    let meta = build_meta(
+        &json!({ "selector": { "app.kubernetes.io/name": "shop" }, "labels": { "app": "legacy" } }),
+        "web",
+        WorkloadKind::Deployment,
+    )
+    .unwrap();
+    assert_eq!(
+        meta.selector,
+        BTreeMap::from([("app.kubernetes.io/name".to_string(), "shop".to_string())])
+    );
+    assert_eq!(
+        meta.template.labels.as_ref().unwrap()["app.kubernetes.io/name"],
+        "shop"
+    );
+    assert_eq!(
+        meta.labels["app"], "legacy",
+        "app is an ordinary label then"
+    );
+    let e = build_meta(
+        &json!({ "selector": { "tier": "a" }, "labels": { "tier": "b" } }),
+        "web",
+        WorkloadKind::StatefulSet,
+    )
+    .err()
+    .unwrap();
+    assert!(e.contains("selector needs"), "{e}");
+    assert!(build_meta(
+        &json!({ "selector": { "app.kubernetes.io/managed-by": "x" } }),
+        "web",
+        WorkloadKind::DaemonSet
+    )
+    .is_err());
+    // Pods, Jobs and CronJobs have no selector argument.
+    let meta = build_meta(
+        &json!({ "selector": { "x": "y" } }),
+        "web",
+        WorkloadKind::Job,
+    )
+    .unwrap();
+    assert_eq!(
+        meta.selector,
+        BTreeMap::from([("app".to_string(), "web".to_string())])
+    );
     // Pods have no selector: the app label may differ.
     let meta = build_meta(
         &json!({ "labels": { "app": "debug" } }),
@@ -1065,10 +1118,20 @@ fn update_schemas_drop_creation_only_fields() {
     let schema = workload_update_schema(WorkloadKind::Deployment, json!({}));
     let props = schema["properties"].as_object().unwrap();
     assert!(props.contains_key("container"));
-    for key in ["labels", "annotations", "restart_policy", "container_name"] {
+    for key in [
+        "labels",
+        "annotations",
+        "restart_policy",
+        "container_name",
+        "selector",
+    ] {
         assert!(!props.contains_key(key), "{key}");
     }
     assert_eq!(schema["required"], json!(["namespace", "name"]));
+    let create = workload_schema(WorkloadKind::StatefulSet, json!({}), &["namespace", "name"]);
+    assert!(create["properties"].get("selector").is_some());
+    let pod = workload_schema(WorkloadKind::Pod, json!({}), &["namespace", "name"]);
+    assert!(pod["properties"].get("selector").is_none());
 }
 
 #[test]
