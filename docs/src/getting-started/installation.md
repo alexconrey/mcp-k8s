@@ -6,7 +6,7 @@ mcp-k8s can be installed by building from source, using the pre-built Docker ima
 
 ### Prerequisites
 
-- [Rust](https://rustup.rs/) 1.95 or newer (stable toolchain)
+- [Rust](https://rustup.rs/) 1.95 or newer to use the library (the `rust-version` MSRV). Building from a checkout uses the toolchain pinned in `rust-toolchain.toml`, which rustup installs automatically
 - Access to a Kubernetes **1.33 or newer** cluster (via `KUBECONFIG` or in-cluster config)
 
 mcp-k8s compiles against the Kubernetes 1.33 API types (k8s-openapi `v1_33`).

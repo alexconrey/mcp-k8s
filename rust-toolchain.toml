@@ -1,0 +1,13 @@
+# Pinned Rust toolchain for local builds and CI (ci.yaml installs exactly what
+# this file pins, via `rustup toolchain install`).
+#
+# KEEP IN SYNC with the `rust:<version>` image tag in the Dockerfile, which
+# builds the release image. CI fails if they differ, so bump both in the same
+# PR (Dependabot's docker updates bump only the Dockerfile).
+#
+# This is the toolchain we build with, not the minimum: Cargo.toml's
+# `rust-version` is the MSRV library consumers may use, and CI checks it too.
+[toolchain]
+channel = "1.99"
+components = ["clippy", "rustfmt"]
+profile = "minimal"

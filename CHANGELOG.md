@@ -83,11 +83,27 @@ release workflow refuses a tag that doesn't match `Cargo.toml`,
   flushed first.
 - `RUST_LOG` now filters console logs only.
 
+- The crate declares `rust-version = "1.95"` (the MSRV, kube 5's minimum).
+  Builds from a checkout use the toolchain in `rust-toolchain.toml` (1.99,
+  the same as the release image).
+
 ### Fixed
 - In stdio mode, logs went to stdout and mixed with the JSON-RPC stream. They
   go to stderr now; HTTP mode still logs to stdout.
 
 ### Internal
+- CI hardening:
+  - `rust-toolchain.toml` pins the toolchain, and CI fails if the Dockerfile's
+    `rust:` tag drifts from it;
+  - a new `msrv` job checks the library build on 1.95;
+  - the release image is now built on every PR (`docker-build`, not pushed);
+  - superseded PR runs are cancelled;
+  - jobs default to `contents: read`;
+  - Cargo commands use `--locked` and the dev profile has no debug info;
+  - the rust cache is saved only from `main`;
+  - every action is pinned to a commit SHA;
+  - `docs.yaml` installs a pinned, checksum-verified mdBook (v0.5.4) instead of
+    resolving "latest" through the GitHub API.
 - Dependabot groups the OpenTelemetry crates (`otel-stack`), which have to
   move together.
 - New dependencies, all behind `server` (via the new `otel` feature):
