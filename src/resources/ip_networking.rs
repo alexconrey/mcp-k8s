@@ -1,4 +1,4 @@
-use k8s_openapi::api::networking::v1beta1::{IPAddress, ServiceCIDR};
+use k8s_openapi::api::networking::v1::{IPAddress, ServiceCIDR};
 use kube::api::ListParams;
 use serde::Serialize;
 
@@ -78,7 +78,7 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
     vec![
         serde_json::json!({
             "name": "list_ipaddresses",
-            "description": "List all IPAddress resources (networking.k8s.io/v1beta1). Returns name, parent_ref (group, resource, name, namespace), and created_at.",
+            "description": "List all IPAddress resources (networking.k8s.io/v1). Returns name, parent_ref (group, resource, name, namespace), and created_at.",
             "inputSchema": {
                 "type": "object",
                 "properties": {},
@@ -88,7 +88,7 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
         }),
         serde_json::json!({
             "name": "get_ipaddress",
-            "description": "Get an IPAddress by name (networking.k8s.io/v1beta1). Returns name, parent_ref (group, resource, name, namespace), created_at, labels, and annotations.",
+            "description": "Get an IPAddress by name (networking.k8s.io/v1). Returns name, parent_ref (group, resource, name, namespace), created_at, labels, and annotations.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -100,7 +100,7 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
         }),
         serde_json::json!({
             "name": "list_servicecidrs",
-            "description": "List all ServiceCIDR resources (networking.k8s.io/v1beta1). Returns name, cidrs (from spec), and created_at.",
+            "description": "List all ServiceCIDR resources (networking.k8s.io/v1). Returns name, cidrs (from spec), and created_at.",
             "inputSchema": {
                 "type": "object",
                 "properties": {},
@@ -110,7 +110,7 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
         }),
         serde_json::json!({
             "name": "get_servicecidr",
-            "description": "Get a ServiceCIDR by name (networking.k8s.io/v1beta1). Returns name, cidrs, created_at, status conditions, labels, and annotations.",
+            "description": "Get a ServiceCIDR by name (networking.k8s.io/v1). Returns name, cidrs, created_at, status conditions, labels, and annotations.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -236,7 +236,7 @@ async fn get_servicecidr(client: &K8sClient, args: &serde_json::Value) -> Result
 #[cfg(test)]
 mod tests {
     use super::*;
-    use k8s_openapi::api::networking::v1beta1::{
+    use k8s_openapi::api::networking::v1::{
         IPAddressSpec, ParentReference, ServiceCIDRSpec, ServiceCIDRStatus,
     };
     use k8s_openapi::apimachinery::pkg::apis::meta::v1::{Condition, ObjectMeta, Time};

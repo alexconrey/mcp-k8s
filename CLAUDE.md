@@ -40,7 +40,7 @@ src/
     ├── admission_alpha.rs # MutatingAdmissionPolicy/Binding (v1alpha1)
     ├── auth.rs          # can_i, whoami, list_my_permissions
     ├── cluster_mgmt.rs  # list_clusters, switch_cluster, get_active_cluster
-    ├── cluster_trust_bundle.rs # ClusterTrustBundle (v1alpha1)
+    ├── cluster_trust_bundle.rs # ClusterTrustBundle (v1beta1)
     ├── clusterrole.rs   # ClusterRole CRUD
     ├── clusterrolebinding.rs  # ClusterRoleBinding CRUD
     ├── configmap.rs     # ConfigMap CRUD
@@ -49,7 +49,7 @@ src/
     ├── csr.rs           # CertificateSigningRequest (list, get, approve, deny)
     ├── daemonset.rs     # DaemonSet CRUD
     ├── deployment.rs    # Deployment create/update/delete/restart/scale/rollback
-    ├── device_resources.rs # ResourceClaim, ResourceSlice, DeviceClass (v1beta1)
+    ├── device_resources.rs # ResourceClaim, ResourceSlice, DeviceClass (v1beta2)
     ├── endpoints.rs     # Endpoints (read-only, legacy)
     ├── endpointslice.rs # EndpointSlice (read-only)
     ├── flowcontrol.rs   # FlowSchema + PriorityLevelConfiguration (read-only)
@@ -57,10 +57,10 @@ src/
     ├── hpa.rs           # HorizontalPodAutoscaler CRUD
     ├── ingress.rs       # Ingress get + delete
     ├── ingressclass.rs  # IngressClass (read-only, cluster-scoped)
-    ├── ip_networking.rs # IPAddress, ServiceCIDR (v1beta1)
+    ├── ip_networking.rs # IPAddress, ServiceCIDR (v1, GA)
     ├── job.rs           # Job list/get/create/delete
     ├── lease.rs         # Lease (read-only)
-    ├── lease_candidate.rs # LeaseCandidate (v1alpha2)
+    ├── lease_candidate.rs # LeaseCandidate (v1beta1)
     ├── limitrange.rs    # LimitRange CRUD
     ├── namespace.rs     # Namespace get/create/update/delete
     ├── networkpolicy.rs # NetworkPolicy CRUD
@@ -138,7 +138,20 @@ deckwatch vendors the `mcp_k8s` library as a git dependency with
 behind the default-on `server` feature, which the `mcp-k8s` binary requires.
 
 - The library must keep building, linting and testing **without** `server`.
-  CI runs `cargo clippy --lib --no-default-features -- -D warnings`.
+  CI runs `cargo clippy --lib --no-default-features --features
+  k8s-openapi/v1_33 -- -D warnings` and `cargo test --no-default-features`.
+- **Consumers choose the k8s-openapi version feature.** k8s-openapi allows
+  one `v1_*` feature per build, so never enable one on the `[dependencies]`
+  entry (CI fails if you do). The `server` feature enables
+  `k8s-openapi/v1_33` for our binary, `[dev-dependencies]` enables it for
+  tests, and deckwatch enables its own. Library-only commands that don't build
+  dev-dependencies (`cargo check`/`clippy`/`doc` with `--no-default-features`)
+  need `--features k8s-openapi/v1_33` (or `K8S_OPENAPI_ENABLED_VERSION=1.33`).
+- **Kubernetes floor: 1.33** (`v1_33`, the oldest k8s-openapi 0.29 offers;
+  production runs 1.35). Alpha/beta modules use the newest API version in
+  `v1_33`; README "Kubernetes version support" lists them. Moving one to
+  another API version changes tool behaviour: note it in the changelog. The
+  library also compiles with `v1_34`, not yet with `v1_35`+.
 - Don't add server-only dependencies to library code. Gate them with
   `#[cfg(feature = "server")]` or `#[cfg_attr(feature = "server", ...)]`.
 - Changes to the public library API, such as `K8sClient::new(client,
@@ -147,12 +160,13 @@ behind the default-on `server` feature, which the `mcp-k8s` binary requires.
   (see [Releasing](#releasing)).
 - deckwatch relies on the namespace allowlist and `ActionPermissions` being
   enforced by every tool.
-- The `kube` and `k8s-openapi` versions (currently kube 4, k8s-openapi 0.28
-  with `v1_32`) are part of the public API, because `K8sClient::new` takes a
-  `kube::Client`. deckwatch must use the same majors, so bumping them is a
-  breaking change: coordinate it with a deckwatch PR and ship it in a minor
-  release. Raising the `k8s-openapi` feature also raises the minimum supported
-  Kubernetes version.
+- The `kube` and `k8s-openapi` versions (currently kube 5, k8s-openapi 0.29;
+  the library enables no `v1_*` feature, see above) are part of the public
+  API, because `K8sClient::new` takes a `kube::Client`. deckwatch must use the
+  same majors, so bumping them is a breaking change: coordinate it with a
+  deckwatch PR and ship it in a minor release. Raising the `k8s-openapi`
+  feature in `server` and `[dev-dependencies]` also raises the minimum
+  supported Kubernetes version.
 
 ## Runtime Modes
 
@@ -265,7 +279,7 @@ mcp-k8s/
 ├── src/                    # Rust source (lib + bin)
 ├── tests/
 │   ├── integration.rs      # Tower-test mock integration tests (8 tests)
-│   └── k3s_integration.rs  # Testcontainers k3s tests (10 tests, #[ignore])
+│   └── k3s_integration.rs  # Testcontainers k3s tests (13 tests, #[ignore]; k3s v1.35, MCP_K8S_K3S_TAG overrides)
 ├── docs/                   # mdBook documentation (GitHub Pages)
 │   ├── book.toml
 │   ├── src/                # 20 documentation pages
@@ -278,7 +292,7 @@ mcp-k8s/
 │   ├── release.yaml        # Docker + Helm OCI + GitHub Release on tag
 │   └── docs.yaml           # Versioned mdBook deploy to GitHub Pages
 ├── Dockerfile              # Static musl binary in scratch container
-├── Makefile                # 16 targets (build, test, fmt, clippy, docker, deploy, etc.)
+├── Makefile                # 18 targets (build, test, test-lib, fmt, clippy, clippy-lib, docker, deploy, etc.)
 ├── CHANGELOG.md            # Keep a Changelog; checked by the release workflow
 ├── deny.toml               # cargo-deny license/vulnerability audit config
 ├── .pre-commit-config.yaml # fmt + clippy pre-commit hooks
@@ -313,36 +327,41 @@ CI workflow (build, test, clippy, fmt) runs against them before merge.
 - **Never run the server against a real cluster by accident.** The local
   kube context may point at a production cluster, and the binary connects to
   the current context at startup. Use the
-  testcontainers k3s tests (`cargo test -- --ignored`) for end-to-end checks.
+  testcontainers k3s tests (`cargo test --test k3s_integration -- --ignored`)
+  for end-to-end checks.
 
 ## Building and Testing
 
 ```bash
 cargo build --release       # Build
-cargo test                  # 425 unit + 8 integration tests
-cargo test -- --ignored     # Run k3s integration tests (needs Docker)
+cargo test                  # 426 unit + 8 integration tests
+cargo test --no-default-features  # Same tests without `server` (what deckwatch compiles)
+cargo test --test k3s_integration -- --ignored  # k3s integration tests (needs Docker)
 cargo clippy --all-targets -- -D warnings  # Lint
-cargo clippy --lib --no-default-features -- -D warnings  # Library-only build (what deckwatch compiles)
+cargo clippy --lib --no-default-features --features k8s-openapi/v1_33 -- -D warnings  # Library-only build (what deckwatch compiles)
 cargo fmt --check           # Format check
-make check                  # cargo fmt (rewrites) + clippy --all-targets + test. Not the
-                            # library-only clippy or k3s tests, so it's not quite CI
+make check                  # cargo fmt (rewrites) + both clippy and both test configs.
+                            # Not the k8s-openapi feature check or k3s tests, so not quite CI
 make deny                   # cargo deny check (licenses + advisories)
 ```
 
 ### What CI does and doesn't cover
 
 `ci.yaml` runs the binary-file check, `fmt --check`, both clippy
-configurations, `build --release` and `cargo test` on every PR. Gaps to cover
-yourself:
+configurations, a check that the library's k8s-openapi dependency enables no
+version feature, `build --release`, and `cargo test` with and without default
+features on every PR. Gaps to cover yourself:
 
 - **The k3s integration tests are `#[ignore]`d and never run in CI.** Run
-  `cargo test -- --ignored` (needs Docker) when you change kube API paths or
-  the namespace allowlist.
+  `cargo test --test k3s_integration -- --ignored` (needs Docker) when you
+  change kube API paths, API versions or the namespace allowlist. Plain
+  `cargo test -- --ignored` also runs the `cluster.rs` tests, which load your
+  kubeconfig.
 - **`cargo deny` doesn't run in CI.** Run `make deny` when you change
   dependencies. There's no Dependabot yet.
 - **The Dockerfile is only built on pushes to `main`**, not on PRs. Run
   `docker build .` when you change it or bump the toolchain. CI uses floating
-  `stable`, but the Dockerfile pins `rust:1.89`.
+  `stable`, but the Dockerfile pins `rust:1.95` (kube 5's minimum).
 - **The `default` ruleset has no required status checks**, so red CI doesn't
   block a merge. Check `gh pr checks` is green before handing a PR over.
 

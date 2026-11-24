@@ -52,6 +52,29 @@ Or deploy with Helm:
 helm install mcp-k8s ./helm/mcp-k8s
 ```
 
+## Kubernetes version support
+
+mcp-k8s 0.5 uses kube 5 and k8s-openapi 0.29 and supports **Kubernetes 1.33
+and newer**. The binary and the Helm chart (`kubeVersion: ">=1.33.0-0"`) are
+built against the `v1_33` API types. The k3s integration tests run against
+Kubernetes 1.35.
+
+Most tools use GA APIs, which every supported cluster serves. The tools for
+newer APIs below use the newest version that k8s-openapi `v1_33` has. Clusters
+serve alpha and beta versions only when they are enabled (`--runtime-config`);
+otherwise the tool returns the API server's 404.
+
+| Tools for | API version |
+|-----------|-------------|
+| IPAddress, ServiceCIDR | `networking.k8s.io/v1` (GA) |
+| ClusterTrustBundle | `certificates.k8s.io/v1beta1` |
+| LeaseCandidate | `coordination.k8s.io/v1beta1` |
+| ResourceClaim, ResourceClaimTemplate, ResourceSlice, DeviceClass | `resource.k8s.io/v1beta2` (GA `v1` since 1.34 needs a `v1_34` floor) |
+| VolumeAttributesClass | `storage.k8s.io/v1beta1` (GA `v1` since 1.34 needs a `v1_34` floor) |
+| MutatingAdmissionPolicy, MutatingAdmissionPolicyBinding | `admissionregistration.k8s.io/v1alpha1` |
+| StorageVersion | `internal.apiserver.k8s.io/v1alpha1` |
+| StorageVersionMigration | `storagemigration.k8s.io/v1alpha1` (removed in Kubernetes 1.35) |
+
 ## Supported Resources
 
 | Category | Resources |
@@ -153,7 +176,23 @@ and per-namespace ClusterRole examples.
 
 ## Library Usage
 
-The `mcp_k8s` crate can be embedded in other applications:
+The `mcp_k8s` crate can be embedded in other applications. Turn off the
+default `server` feature, and choose the k8s-openapi version feature in your
+own binary:
+
+```toml
+[dependencies]
+mcp-k8s = { git = "https://github.com/alexconrey/mcp-k8s.git", tag = "v0.5.0", default-features = false }
+kube = "5"
+k8s-openapi = { version = "0.29", features = ["v1_33"] }
+```
+
+**Consumers choose the k8s-openapi version feature.** k8s-openapi allows only
+one `v1_*` feature per build, so the library doesn't enable one: a second
+choice would fail to compile. The `server` feature picks `v1_33` for the
+`mcp-k8s` binary, which is another reason to disable it. The library is
+tested with `v1_33` and also compiles with `v1_34`; `v1_35` and newer don't
+compile yet.
 
 ```rust
 use mcp_k8s::{K8sClient, mcp};
@@ -173,11 +212,14 @@ if let Some(result) = mcp::handle_tool(&client, "list_deployments", &args).await
 ## Testing
 
 ```bash
-cargo test
+cargo test                                      # 424 unit + 8 integration tests
+cargo test --no-default-features                # the same, as library consumers build it
+cargo test --test k3s_integration -- --ignored  # 13 k3s tests (needs Docker)
 ```
 
-325 unit tests covering type extraction, serialization, tool definitions,
-and permission filtering.
+The unit tests cover type extraction, serialization, tool definitions, and
+permission filtering. The k3s tests run against `rancher/k3s:v1.35.10-k3s1`;
+set `MCP_K8S_K3S_TAG` to use another k3s release.
 
 ## License
 
