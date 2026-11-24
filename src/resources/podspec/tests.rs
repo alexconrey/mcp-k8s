@@ -188,6 +188,40 @@ fn root_images_keep_the_runtime_capabilities() {
 }
 
 #[test]
+fn a_root_container_overrides_the_defaulted_pod_setting() {
+    let s = spec(
+        json!({ "containers": [
+            { "name": "root", "image": "x", "security_context": { "run_as_user": 0 } },
+            { "name": "app", "image": "y" }
+        ] }),
+        WorkloadKind::Pod,
+    );
+    assert_eq!(
+        s.security_context.as_ref().unwrap().run_as_non_root,
+        Some(true)
+    );
+    let root = s.containers[0].security_context.as_ref().unwrap();
+    assert_eq!(root.run_as_non_root, Some(false));
+    assert!(
+        root.capabilities.is_none(),
+        "root keeps the runtime capabilities"
+    );
+    let app = s.containers[1].security_context.as_ref().unwrap();
+    assert!(app.run_as_non_root.is_none(), "inherits the pod setting");
+    // An explicit pod-level runAsNonRoot is the caller's choice: no override.
+    let s = spec(
+        json!({ "security_context": { "run_as_non_root": true }, "containers": [{ "name": "root", "image": "x", "security_context": { "run_as_user": 0 } }] }),
+        WorkloadKind::Pod,
+    );
+    assert!(s.containers[0]
+        .security_context
+        .as_ref()
+        .unwrap()
+        .run_as_non_root
+        .is_none());
+}
+
+#[test]
 fn explicit_settings_win_over_defaults() {
     let s = spec(
         json!({

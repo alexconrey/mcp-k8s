@@ -18,6 +18,18 @@ permissions:
   disableDelete: false
   # List of "resource-action" strings to disable (e.g. ["pods-delete", "secrets-create"])
   disableActions: []
+  # Remove the apply_manifest tool (it enforces the same guardrails as the
+  # typed tools either way).
+  disableApplyManifest: false
+
+# Extra environment variables for the mcp-k8s container, e.g. to relax a
+# workload guardrail (see docs/src/permissions.md):
+#   extraEnv:
+#     - name: MCP_K8S_ALLOW_LOADBALANCER
+#       value: "true"
+#     - name: MCP_K8S_ALLOW_CUSTOM_RESOURCE_GROUPS
+#       value: "cert-manager.io"
+extraEnv: []
 
 resources:
   requests:

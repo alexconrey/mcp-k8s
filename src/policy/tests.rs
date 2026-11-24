@@ -864,8 +864,14 @@ fn bound_role_rules_are_checked() {
     rbac::check_bound_role(&strict(), "ClusterRole", "edit", &edit_like, &mut out);
     assert_flags(&out, &["--allow-rbac-escalation"]);
     assert!(out[0].reason.contains("\"edit\""), "{}", out[0].reason);
+    // The built-in view role is aggregated and labelled aggregate-to-edit;
+    // only its materialized rules count for a binding.
     let mut out = Vec::new();
-    let view_like = json!({ "rules": [{ "apiGroups": [""], "resources": ["pods"], "verbs": ["get", "list"] }] });
+    let view_like = json!({
+        "metadata": { "labels": { "rbac.authorization.k8s.io/aggregate-to-edit": "true" } },
+        "aggregationRule": { "clusterRoleSelectors": [{ "matchLabels": { "rbac.authorization.k8s.io/aggregate-to-view": "true" } }] },
+        "rules": [{ "apiGroups": [""], "resources": ["pods"], "verbs": ["get", "list"] }]
+    });
     rbac::check_bound_role(&strict(), "ClusterRole", "view", &view_like, &mut out);
     assert!(out.is_empty());
     let mut out = Vec::new();

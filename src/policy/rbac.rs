@@ -152,6 +152,10 @@ pub(crate) fn check_bound_role(
     if policy.allow_rbac_escalation {
         return;
     }
+    // Only the effective rules matter here. For an aggregated ClusterRole the
+    // controller has already copied the aggregated rules into `rules` (that's
+    // how the built-in admin/edit/view roles work), and its `aggregate-to-*`
+    // labels affect other roles, not this binding.
     let mut inner = Vec::new();
     let rules = role
         .get("rules")
@@ -159,9 +163,6 @@ pub(crate) fn check_bound_role(
         .cloned()
         .unwrap_or_default();
     check_rules(policy, &rules, "rules", &mut inner);
-    if role_kind == "ClusterRole" {
-        check_cluster_role_extras(policy, role, &mut inner);
-    }
     for v in inner {
         out.push(Violation::new(
             "roleRef",

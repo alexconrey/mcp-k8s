@@ -248,13 +248,18 @@ let permissions = ActionPermissions::default().with_workload_policy(policy);
 ## Testing
 
 ```bash
-cargo test                                      # 424 unit + 8 integration tests
+cargo test                                      # 521 unit + 8 integration + 30 guardrail tests
 cargo test --no-default-features                # the same, as library consumers build it
 cargo test --test k3s_integration -- --ignored  # 13 k3s tests (needs Docker)
+cargo test --test k3s_workloads -- --ignored --test-threads=1  # 2 k3s tests for the typed workload tools and guardrails
 ```
 
-The unit tests cover type extraction, serialization, tool definitions, and
-permission filtering. The k3s tests run against `rancher/k3s:v1.35.10-k3s1`;
+The unit tests cover type extraction, serialization, tool definitions,
+permission filtering, the pod template builder and every guardrail rule.
+`tests/guardrails.rs` drives the tools against a mock API server to check that
+the typed tools and `apply_manifest` reject the same things before anything
+reaches the cluster. Never run a bare `cargo test -- --ignored`: other ignored
+tests load your kubeconfig. The k3s tests run against `rancher/k3s:v1.35.10-k3s1`;
 set `MCP_K8S_K3S_TAG` to use another k3s release.
 
 ## License

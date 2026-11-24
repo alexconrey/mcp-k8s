@@ -259,21 +259,37 @@ where
         dry_run: true,
         ..PatchParams::default()
     };
-    let preview = api
-        .patch(name, &dry_run, &to_patch(&patch))
-        .await
-        .map_err(|e| e.to_string())?;
-    let value = serde_json::to_value(&preview).map_err(|e| e.to_string())?;
-    policy_error(check_object(client.policy(), &value, source))?;
+    let mut attempt = 0;
+    loop {
+        attempt += 1;
+        let preview = api
+            .patch(name, &dry_run, &to_patch(&patch))
+            .await
+            .map_err(|e| e.to_string())?;
+        let value = serde_json::to_value(&preview).map_err(|e| e.to_string())?;
+        policy_error(check_object(client.policy(), &value, source))?;
 
-    let mut patch = patch;
-    if let Some(rv) = preview.resource_version() {
-        patch["metadata"]["resourceVersion"] = Value::String(rv);
+        let mut guarded = patch.clone();
+        if let Some(rv) = preview.resource_version() {
+            guarded["metadata"]["resourceVersion"] = Value::String(rv);
+        }
+        match api
+            .patch(name, &PatchParams::default(), &to_patch(&guarded))
+            .await
+        {
+            Ok(written) => return Ok(written),
+            // The object changed between the check and the write (often just a
+            // controller's status update): check again against the new state.
+            Err(kube::Error::Api(status)) if status.code == 409 && attempt < CONFLICT_RETRIES => {
+                tokio::time::sleep(std::time::Duration::from_millis(100 * attempt as u64)).await;
+            }
+            Err(e) => return Err(e.to_string()),
+        }
     }
-    api.patch(name, &PatchParams::default(), &to_patch(&patch))
-        .await
-        .map_err(|e| e.to_string())
 }
+
+/// How often [`patch_checked`] re-checks after a write conflict.
+const CONFLICT_RETRIES: u32 = 5;
 
 #[cfg(test)]
 mod tests {

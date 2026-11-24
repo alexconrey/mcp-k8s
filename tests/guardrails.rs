@@ -887,3 +887,71 @@ async fn update_service_cannot_switch_to_a_load_balancer() {
     let seen = finish(client, server).await;
     assert!(seen[0].query.contains("dryRun=All"));
 }
+
+// ---------------------------------------------------------------------------
+// Per-resource switches reach sub-tools and side effects
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn create_job_from_cronjob_obeys_job_create() {
+    let perms = ActionPermissions::new(false, false, false, vec!["job-create".into()], true, true);
+    let (client, handle) = client_with(perms, &[]);
+    let err = rejected_offline(
+        client,
+        handle,
+        "create_job_from_cronjob",
+        json!({ "namespace": "default", "cronjob": "nightly" }),
+    )
+    .await;
+    assert!(err.contains("not allowed"), "{err}");
+}
+
+#[tokio::test]
+async fn create_ingress_backing_services_obey_service_create() {
+    let perms = ActionPermissions::new(
+        false,
+        false,
+        false,
+        vec!["service-create".into()],
+        true,
+        true,
+    );
+    let (client, handle) = client_with(perms, &[]);
+    let server = serve(handle, vec![not_found()]);
+    let err = handle_tool(
+        &client,
+        "create_ingress",
+        &json!({ "namespace": "default", "name": "i", "service_name": "web" }),
+    )
+    .await
+    .unwrap()
+    .unwrap_err();
+    assert!(err.contains("service-create"), "{err}");
+    // Only the existence check happened: no Service or Ingress was created.
+    assert_eq!(finish(client, server).await.len(), 1);
+}
+
+#[tokio::test]
+async fn create_job_from_cronjob_checks_the_template() {
+    let (client, handle) = strict_client();
+    let cronjob = json!({
+        "apiVersion": "batch/v1", "kind": "CronJob",
+        "metadata": { "name": "nightly", "namespace": "default", "uid": "u-1" },
+        "spec": { "schedule": "@daily", "jobTemplate": { "spec": { "template": privileged_template() } } }
+    });
+    let server = serve(handle, vec![(200, cronjob)]);
+    let err = handle_tool(
+        &client,
+        "create_job_from_cronjob",
+        &json!({ "namespace": "default", "cronjob": "nightly" }),
+    )
+    .await
+    .unwrap()
+    .unwrap_err();
+    assert!(err.contains("--allow-privileged"), "{err}");
+    assert_eq!(
+        finish(client, server).await.len(),
+        1,
+        "no Job may be created"
+    );
+}

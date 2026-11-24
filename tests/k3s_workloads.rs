@@ -34,7 +34,20 @@ fn k3s_tag() -> String {
 }
 
 async fn start_k3s() -> (kube::Client, ContainerAsync<K3s>) {
-    let conf_dir = tempfile::tempdir().expect("failed to create temp dir");
+    // Docker occasionally reports a fresh container without its port mapping;
+    // try a few times before giving up.
+    let mut last_err = String::new();
+    for _ in 0..3 {
+        match try_start_k3s().await {
+            Ok(started) => return started,
+            Err(e) => last_err = e,
+        }
+    }
+    panic!("failed to start k3s: {last_err}");
+}
+
+async fn try_start_k3s() -> Result<(kube::Client, ContainerAsync<K3s>), String> {
+    let conf_dir = tempfile::tempdir().map_err(|e| e.to_string())?;
     let container = K3s::default()
         .with_conf_mount(conf_dir.path())
         .with_tag(k3s_tag())
@@ -42,31 +55,29 @@ async fn start_k3s() -> (kube::Client, ContainerAsync<K3s>) {
         .with_userns_mode("host")
         .start()
         .await
-        .expect("failed to start k3s container");
+        .map_err(|e| format!("start: {e}"))?;
     let kube_conf = container
         .image()
         .read_kube_config()
-        .expect("failed to read kubeconfig from k3s");
+        .map_err(|e| format!("kubeconfig: {e}"))?;
     let port = container
         .get_host_port_ipv4(KUBE_SECURE_PORT)
         .await
-        .expect("failed to get mapped port");
+        .map_err(|e| format!("port: {e}"))?;
     let kube_conf = kube_conf.replace(
         "https://127.0.0.1:6443",
         &format!("https://127.0.0.1:{port}"),
     );
     let _ = rustls::crypto::ring::default_provider().install_default();
-    let kubeconfig = kube::config::Kubeconfig::from_yaml(&kube_conf).expect("kubeconfig");
+    let kubeconfig = kube::config::Kubeconfig::from_yaml(&kube_conf).map_err(|e| e.to_string())?;
     let config = kube::Config::from_custom_kubeconfig(
         kubeconfig,
         &kube::config::KubeConfigOptions::default(),
     )
     .await
-    .expect("kube config");
-    (
-        kube::Client::try_from(config).expect("kube client"),
-        container,
-    )
+    .map_err(|e| e.to_string())?;
+    let client = kube::Client::try_from(config).map_err(|e| e.to_string())?;
+    Ok((client, container))
 }
 
 async fn call(client: &K8sClient, tool: &str, args: Value) -> Result<String, String> {
@@ -505,24 +516,55 @@ async fn k3s_guardrails() {
     assert!(edit.contains("impersonate"), "{edit}");
     ok(&client, "create_rolebinding", json!({ "namespace": ns, "name": "viewers", "role_ref": { "kind": "ClusterRole", "name": "view" }, "subjects": [{ "kind": "ServiceAccount", "name": "default", "namespace": ns }] })).await;
 
-    // Custom resources: k3s ships helm.cattle.io (HelmChart runs charts as
-    // cluster-admin) and traefik.io. Neither group is allowlisted by default.
+    // Custom resources: k3s ships helm.cattle.io, whose HelmChart runs any chart
+    // as cluster-admin. Custom resource groups aren't allowlisted by default.
+    let crds = wait_for(&client, "list_crds", json!({}), 120, |v| {
+        v.to_string().contains("helmchartconfigs.helm.cattle.io")
+    })
+    .await;
+    assert!(
+        crds.to_string().contains("helmchartconfigs.helm.cattle.io"),
+        "{crds}"
+    );
     let chart = json!({ "metadata": { "name": "x" }, "spec": { "chart": "nginx", "repo": "https://charts.example.com" } });
-    let err = call(&client, "create_custom_resource", json!({ "group": "helm.cattle.io", "version": "v1", "kind": "HelmChart", "namespace": ns, "manifest": chart })).await.unwrap_err();
+    let err = call(&client, "create_custom_resource", json!({ "group": "helm.cattle.io", "version": "v1", "kind": "HelmChart", "namespace": ns, "manifest": chart }))
+        .await
+        .unwrap_err();
     assert!(
         err.contains("--allow-custom-resource-groups helm.cattle.io"),
         "{err}"
     );
-    let mut allow_traefik = WorkloadPolicy::default();
-    allow_traefik.allowed_custom_resource_groups = vec!["traefik.io".into()];
-    let traefik_client = K8sClient::new(
+    let err = call(&client, "apply_manifest", json!({ "manifest": json!({ "apiVersion": "helm.cattle.io/v1", "kind": "HelmChart", "metadata": { "name": "x", "namespace": ns }, "spec": { "chart": "nginx" } }).to_string() }))
+        .await
+        .unwrap_err();
+    assert!(
+        err.contains("--allow-custom-resource-groups helm.cattle.io"),
+        "{err}"
+    );
+    // With the group allowlisted, writes work (HelmChartConfig only overlays
+    // values onto a kube-system HelmChart of the same name: harmless here).
+    let mut allow_helm = WorkloadPolicy::default();
+    allow_helm.allowed_custom_resource_groups = vec!["helm.cattle.io".into()];
+    let helm_client = K8sClient::new(
         kube_client.clone(),
         vec![],
-        ActionPermissions::default().with_workload_policy(allow_traefik),
+        ActionPermissions::default().with_workload_policy(allow_helm),
     );
-    let mw = json!({ "metadata": { "name": "strip" }, "spec": { "stripPrefix": { "prefixes": ["/api"] } } });
-    ok(&traefik_client, "create_custom_resource", json!({ "group": "traefik.io", "version": "v1alpha1", "kind": "Middleware", "namespace": ns, "manifest": mw })).await;
-    ok(&traefik_client, "update_custom_resource", json!({ "group": "traefik.io", "version": "v1alpha1", "kind": "Middleware", "namespace": ns, "name": "strip", "patch": { "spec": { "stripPrefix": { "prefixes": ["/v2"] } } } })).await;
+    let config =
+        json!({ "metadata": { "name": "demo" }, "spec": { "valuesContent": "replicas: 1" } });
+    ok(&helm_client, "create_custom_resource", json!({ "group": "helm.cattle.io", "version": "v1", "kind": "HelmChartConfig", "namespace": ns, "manifest": config })).await;
+    ok(&helm_client, "update_custom_resource", json!({ "group": "helm.cattle.io", "version": "v1", "kind": "HelmChartConfig", "namespace": ns, "name": "demo", "patch": { "spec": { "valuesContent": "replicas: 2" } } })).await;
+    let raw = get_json(&client, "helm.cattle.io/v1", "HelmChartConfig", ns, "demo").await;
+    assert_eq!(raw["spec"]["valuesContent"], "replicas: 2");
+    assert_eq!(
+        raw["metadata"]["labels"]["app.kubernetes.io/managed-by"],
+        "mcp-k8s"
+    );
+    // Built-in kinds can't go through the custom resource tools.
+    let err = call(&helm_client, "create_custom_resource", json!({ "group": "", "version": "v1", "kind": "Pod", "namespace": ns, "manifest": { "metadata": { "name": "p" }, "spec": { "containers": [{ "name": "c", "image": BUSYBOX }] } } }))
+        .await
+        .unwrap_err();
+    assert!(err.contains("built-in kind"), "{err}");
 
     // An existing privileged DaemonSet (created with a permissive policy) can't
     // be modified through the strict client: that would be an image swap on a

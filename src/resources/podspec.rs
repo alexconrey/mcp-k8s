@@ -1656,6 +1656,7 @@ fn apply_container_defaults(
     defaults: &SecurityContext,
     pod: Option<&PodSecurityContext>,
     secure: bool,
+    defaulted_non_root: bool,
 ) {
     let pod_non_root = pod.and_then(|p| p.run_as_non_root);
     let pod_user = pod.and_then(|p| p.run_as_user);
@@ -1671,6 +1672,11 @@ fn apply_container_defaults(
     }
     if sc.capabilities.is_none() {
         sc.capabilities = defaults.capabilities.clone();
+    }
+    if secure && defaulted_non_root && sc.run_as_user == Some(0) && sc.run_as_non_root.is_none() {
+        // The caller asked for UID 0 in this container: our pod-level
+        // runAsNonRoot default must not make the kubelet refuse it.
+        sc.run_as_non_root = Some(false);
     }
     if secure {
         let privileged = sc.privileged == Some(true);
@@ -1752,12 +1758,14 @@ pub fn build_pod_spec(
     }
 
     let secure = policy.secure_defaults;
+    let mut defaulted_non_root = false;
     if secure {
         let sc = spec
             .security_context
             .get_or_insert_with(PodSecurityContext::default);
         if sc.run_as_non_root.is_none() && sc.run_as_user != Some(0) {
             sc.run_as_non_root = Some(true);
+            defaulted_non_root = true;
         }
         if sc.seccomp_profile.is_none() {
             sc.seccomp_profile = Some(SeccompProfile {
@@ -1775,7 +1783,13 @@ pub fn build_pod_spec(
         .iter_mut()
         .chain(spec.init_containers.iter_mut().flatten())
     {
-        apply_container_defaults(c, &fields.container_defaults, pod_security.as_ref(), secure);
+        apply_container_defaults(
+            c,
+            &fields.container_defaults,
+            pod_security.as_ref(),
+            secure,
+            defaulted_non_root,
+        );
     }
     Ok(spec)
 }

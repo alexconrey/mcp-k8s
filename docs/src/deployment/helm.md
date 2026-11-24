@@ -73,6 +73,8 @@ helm install mcp-k8s ./helm/mcp-k8s \
 | `permissions.disableUpdate` | `false` | Globally disable update operations |
 | `permissions.disableDelete` | `false` | Globally disable delete operations |
 | `permissions.disableActions` | `[]` | List of resource-action strings to disable (e.g. `["pods-delete", "secrets-create"]`) |
+| `permissions.disableApplyManifest` | `false` | Remove the `apply_manifest` tool |
+| `extraEnv` | `[]` | Extra container environment variables, e.g. `MCP_K8S_ALLOW_LOADBALANCER=true` to relax a [workload guardrail](../permissions.md#workload-guardrails). Quote values in a values file, or use `--set-string` on the command line |
 
 ### Resources
 

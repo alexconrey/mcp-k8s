@@ -425,6 +425,16 @@ pub(crate) async fn ensure_service(
     {
         return Ok(false);
     }
+    // Creating the backing Service is a Service create: honour service-create.
+    if !client
+        .permissions()
+        .is_action_allowed("service", &crate::permissions::Action::Create)
+    {
+        return Err(format!(
+            "Service '{name}' doesn't exist and creating it is not allowed (service-create is disabled); \
+             create it first or set create_missing_services: false"
+        ));
+    }
     let svc = service_from_args(&json!({ "namespace": ns, "name": name, "port": port }))?;
     crate::policy::check_typed(client, &svc)?;
     svc_api

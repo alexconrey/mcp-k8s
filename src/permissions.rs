@@ -176,7 +176,17 @@ impl ActionPermissions {
         let action = Self::action_for_tool(tool_name);
         // Extract resource from tool name by stripping the action prefix.
         let resource = Self::resource_from_tool(tool_name);
-        self.is_action_allowed(&resource, &action)
+        if !self.is_action_allowed(&resource, &action) {
+            return false;
+        }
+        // Sub-tools obey their base resource's switch too:
+        // update_deployment_labels needs deployment-update,
+        // create_job_from_cronjob needs job-create. Overrides only ever
+        // disable, so this can only add denials an operator asked for.
+        match resource.split_once('_') {
+            Some((base, _)) => self.is_action_allowed(base, &action),
+            None => true,
+        }
     }
 
     /// Best-effort resource extraction from a tool name.
@@ -488,6 +498,34 @@ mod tests {
             ActionPermissions::action_for_tool("port_forward_check"),
             Action::Read
         );
+    }
+
+    #[test]
+    fn sub_tools_obey_the_base_resource_switch() {
+        let perms = ActionPermissions::new(
+            false,
+            false,
+            false,
+            vec!["deployment-update".into(), "job-create".into()],
+            true,
+            true,
+        );
+        assert!(!perms.is_tool_allowed("update_deployment_labels"));
+        assert!(!perms.is_tool_allowed("update_deployment_affinity"));
+        assert!(!perms.is_tool_allowed("create_job_from_cronjob"));
+        assert!(perms.is_tool_allowed("create_cronjob"));
+        assert!(perms.is_tool_allowed("delete_deployment"));
+        // The specific key still works on its own.
+        let perms = ActionPermissions::new(
+            false,
+            false,
+            false,
+            vec!["deployment_labels-update".into()],
+            true,
+            true,
+        );
+        assert!(!perms.is_tool_allowed("update_deployment_labels"));
+        assert!(perms.is_tool_allowed("update_deployment"));
     }
 
     #[test]
