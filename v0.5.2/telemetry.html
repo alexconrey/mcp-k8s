@@ -1,0 +1,495 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Telemetry - mcp-k8s Documentation</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="favicon-8114d1fc.png">
+        <link rel="stylesheet" href="css/variables-8adf115d.css">
+        <link rel="stylesheet" href="css/general-e96d0476.css">
+        <link rel="stylesheet" href="css/chrome-d279d366.css">
+        <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="theme/version-select-f70ceab2.css">
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "searchindex-fb00c07e.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc-8f6ebf8b.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">mcp-k8s Documentation</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/alexconrey/mcp-k8s" title="Git repository" aria-label="Git repository">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/alexconrey/mcp-k8s/edit/main/docs/src/telemetry.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                            <span class=fa-svg id="git-edit-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M421.7 220.3l-11.3 11.3-22.6 22.6-205 205c-6.6 6.6-14.8 11.5-23.8 14.1L30.8 511c-8.4 2.5-17.5 .2-23.7-6.1S-1.5 489.7 1 481.2L38.7 353.1c2.6-9 7.5-17.2 14.1-23.8l205-205 22.6-22.6 11.3-11.3 33.9 33.9 62.1 62.1 33.9 33.9zM96 353.9l-9.3 9.3c-.9 .9-1.6 2.1-2 3.4l-25.3 86 86-25.3c1.3-.4 2.5-1.1 3.4-2l9.3-9.3H112c-8.8 0-16-7.2-16-16V353.9zM453.3 19.3l39.4 39.4c25 25 25 65.5 0 90.5l-14.5 14.5-22.6 22.6-11.3 11.3-33.9-33.9-62.1-62.1L314.3 67.7l11.3-11.3 22.6-22.6 14.5-14.5c25-25 65.5-25 90.5 0z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="telemetry"><a class="header" href="#telemetry">Telemetry</a></h1>
+<p>mcp-k8s describes every MCP request with an OpenTelemetry trace span, a
+duration metric and a log line, named after the OpenTelemetry
+<a href="https://github.com/open-telemetry/semantic-conventions-genai/blob/main/docs/gen-ai/mcp.md">MCP semantic conventions</a>
+(status <em>Development</em>; implemented against commit <code>7cb940f</code>, 2026-11-20).</p>
+<ul>
+<li>The <strong>library</strong> (<code>mcp_k8s</code>) emits plain <a href="https://docs.rs/tracing"><code>tracing</code></a>
+spans and events. It has no OpenTelemetry dependency, so it works with
+whatever OpenTelemetry version the application uses (see
+<a href="#embedding-deckwatch">Embedding</a>).</li>
+<li>The <strong><code>mcp-k8s</code> binary</strong> exports them over OTLP when you point it at a
+collector. Without an endpoint nothing is exported, and nothing changes
+apart from the extra log lines described below.</li>
+<li>The Prometheus <code>/metrics</code> endpoint keeps working as before (see
+<a href="#old-metric-names">Old metric names</a>).</li>
+</ul>
+<h2 id="turning-on-otlp-export"><a class="header" href="#turning-on-otlp-export">Turning on OTLP export</a></h2>
+<p>Set the standard OpenTelemetry environment variables:</p>
+<pre><code class="language-bash">OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector.observability:4318 \
+OTEL_RESOURCE_ATTRIBUTES=k8s.cluster.name=prod-east,deployment.environment.name=prod \
+mcp-k8s --http
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variable</th><th>Default</th><th>Effect</th></tr>
+</thead>
+<tbody>
+<tr><td><code>OTEL_EXPORTER_OTLP_ENDPOINT</code></td><td><em>(none: export off)</em></td><td>Collector base URL; <code>/v1/traces</code>, <code>/v1/metrics</code> and <code>/v1/logs</code> are appended. Use the http/protobuf port, usually 4318. <code>https://</code> works (rustls, system roots).</td></tr>
+<tr><td><code>OTEL_EXPORTER_OTLP_{TRACES,METRICS,LOGS}_ENDPOINT</code></td><td></td><td>Per-signal URL, used as is. Setting only one exports only that signal.</td></tr>
+<tr><td><code>OTEL_EXPORTER_OTLP_PROTOCOL</code> (and per-signal)</td><td><code>http/protobuf</code></td><td>Only <code>http/protobuf</code> is supported. Any other value (<code>grpc</code>, <code>http/json</code>) turns that signal off with a warning, rather than sending protobuf to a gRPC port.</td></tr>
+<tr><td><code>OTEL_EXPORTER_OTLP_HEADERS</code> (and per-signal)</td><td></td><td>Extra headers, e.g. <code>authorization=Bearer &lt;token&gt;</code>.</td></tr>
+<tr><td><code>OTEL_EXPORTER_OTLP_TIMEOUT</code> (and per-signal)</td><td><code>10000</code></td><td>Export timeout in milliseconds.</td></tr>
+<tr><td><code>OTEL_SERVICE_NAME</code></td><td><code>mcp-k8s</code></td><td><code>service.name</code>. <code>service.version</code> is set to the mcp-k8s version.</td></tr>
+<tr><td><code>OTEL_RESOURCE_ATTRIBUTES</code></td><td></td><td>More resource attributes. Put <code>k8s.cluster.name</code> here for a single-cluster deployment.</td></tr>
+<tr><td><code>OTEL_TRACES_SAMPLER</code>, <code>OTEL_TRACES_SAMPLER_ARG</code></td><td><code>parentbased_always_on</code></td><td>Trace sampling, e.g. <code>parentbased_traceidratio</code> and <code>0.25</code>.</td></tr>
+<tr><td><code>OTEL_{TRACES,METRICS,LOGS}_EXPORTER</code></td><td><code>otlp</code></td><td><code>none</code> turns one signal off.</td></tr>
+<tr><td><code>OTEL_SDK_DISABLED</code></td><td><code>false</code></td><td><code>true</code> turns all export off.</td></tr>
+<tr><td><code>OTEL_METRIC_EXPORT_INTERVAL</code>, <code>OTEL_BSP_*</code>, <code>OTEL_BLRP_*</code></td><td>SDK defaults</td><td>Batching and export intervals.</td></tr>
+<tr><td><code>MCP_K8S_OTEL_FILTER</code></td><td><code>info</code></td><td><a href="https://docs.rs/tracing-subscriber/latest/tracing_subscriber/filter/struct.EnvFilter.html"><code>EnvFilter</code></a> for exported spans and logs. <code>RUST_LOG</code> only controls console logs, so <code>RUST_LOG=warn</code> doesn’t starve the exporter.</td></tr>
+</tbody>
+</table>
+</div>
+<p>At startup the server logs <code>exporting OTLP over http/protobuf</code> with the signals
+it exports, or a warning for each setting it can’t honour. On SIGTERM or
+SIGINT it stops accepting requests, lets in-flight ones finish, and flushes
+everything before exiting.</p>
+<p>TLS uses rustls with the ring crypto provider that the binary installs at
+startup (the same one the HTTPS server and the Kubernetes client use), and the
+system’s root certificates (the container image ships them). For a collector
+with a private CA, point <code>SSL_CERT_FILE</code> at a PEM bundle that contains it (it
+replaces the system roots, so include any public roots you also need).</p>
+<p>With the <a href="./deployment/helm.html#opentelemetry">Helm chart</a>, set <code>otel.endpoint</code>
+and friends instead.</p>
+<h2 id="what-is-recorded"><a class="header" href="#what-is-recorded">What is recorded</a></h2>
+<h3 id="span"><a class="header" href="#span">Span</a></h3>
+<p>One span of kind <code>SERVER</code> per MCP request, named <code>{mcp.method.name} {target}</code>:
+<code>tools/call apply_manifest</code>, <code>prompts/get diagnose-pod</code>, <code>tools/list</code>. The
+target appears only for tools and prompts the server has, and methods outside
+the conventions’ list appear as <code>_OTHER</code>, so clients can’t create unbounded
+span names. In console logs the span is called <code>mcp_request</code>.</p>
+<p>If the request carries W3C trace context in <code>params._meta.traceparent</code> /
+<code>tracestate</code> (how the MCP conventions propagate it), that is the span’s
+parent. Otherwise the HTTP <code>traceparent</code> header is. When both are present the
+header’s context becomes a span link instead.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Attribute</th><th>When</th><th>Example</th></tr>
+</thead>
+<tbody>
+<tr><td><code>mcp.method.name</code></td><td>always</td><td><code>tools/call</code></td></tr>
+<tr><td><code>jsonrpc.request.id</code></td><td>requests (not notifications)</td><td><code>7</code></td></tr>
+<tr><td><code>mcp.protocol.version</code></td><td>HTTP: from the <code>MCP-Protocol-Version</code> header; <code>initialize</code>; stdio after <code>initialize</code></td><td><code>2025-11-25</code></td></tr>
+<tr><td><code>network.transport</code></td><td>always</td><td><code>tcp</code> (HTTP), <code>pipe</code> (stdio)</td></tr>
+<tr><td><code>network.protocol.name</code></td><td>HTTP</td><td><code>http</code></td></tr>
+<tr><td><code>client.address</code>, <code>client.port</code></td><td>HTTP: the TCP peer (a proxy, if there is one)</td><td><code>10.0.0.7</code>, <code>51000</code></td></tr>
+<tr><td><code>gen_ai.tool.name</code>, <code>gen_ai.operation.name</code></td><td><code>tools/call</code></td><td><code>apply_manifest</code>, <code>execute_tool</code></td></tr>
+<tr><td><code>gen_ai.prompt.name</code></td><td><code>prompts/get</code></td><td><code>diagnose-pod</code></td></tr>
+<tr><td><code>mcp.resource.uri</code></td><td><code>resources/read</code></td><td><code>k8s://prod/pods/web-1</code></td></tr>
+<tr><td><code>mcp_k8s.action</code></td><td><code>tools/call</code></td><td><code>read</code>, <code>write</code>, <code>delete</code>, <code>exec</code></td></tr>
+<tr><td><code>mcp_k8s.decision</code></td><td><code>tools/call</code></td><td><code>allowed</code>, <code>denied</code></td></tr>
+<tr><td><code>mcp_k8s.denied_rule</code></td><td>denied calls</td><td><code>global:create</code>, <code>override:deployment-delete</code>, <code>apply_manifest:disabled</code>; workload guardrails report <code>policy:&lt;setting&gt;</code> (the policy settings that would allow the call)</td></tr>
+<tr><td><code>mcp_k8s.outcome</code></td><td>always</td><td><code>ok</code>, <code>error</code>, <code>denied</code>, <code>cancelled</code></td></tr>
+<tr><td><code>error.type</code></td><td>failures</td><td>see below</td></tr>
+<tr><td><code>rpc.status_code</code></td><td>JSON-RPC error responses</td><td><code>-32000</code></td></tr>
+<tr><td><code>k8s.cluster.name</code></td><td><code>tools/call</code>, <code>resources/read</code>, with <code>--contexts</code> only</td><td><code>staging</code></td></tr>
+<tr><td><code>k8s.namespace.name</code>, <code>mcp_k8s.resource.kind</code>, <code>mcp_k8s.resource.name</code>, <code>mcp_k8s.resource.api_version</code></td><td><code>tools/call</code>, when the arguments name them</td><td><code>prod</code>, <code>Deployment</code>, <code>web</code>, <code>apps/v1</code></td></tr>
+<tr><td><code>mcp_k8s.tool.argument_keys</code></td><td><code>tools/call</code></td><td><code>container,name,namespace</code></td></tr>
+<tr><td><code>mcp_k8s.tool.arguments</code></td><td><code>tools/call</code>, allowlisted values only</td><td><code>{"container":"app","name":"web-1","namespace":"prod"}</code></td></tr>
+<tr><td><code>mcp_k8s.client.name</code>, <code>mcp_k8s.client.version</code></td><td><code>initialize</code>; every request on stdio</td><td><code>claude-code</code>, <code>2.1.0</code></td></tr>
+<tr><td><code>mcp_k8s.request_id</code></td><td>always, with or without OTLP</td><td>a UUID</td></tr>
+<tr><td><code>trace_id</code></td><td>when traces are exported</td><td>the W3C trace id, for joining console logs with traces</td></tr>
+</tbody>
+</table>
+</div>
+<p><code>mcp_k8s.client.*</code> is what the client says about itself in <code>initialize</code>:
+treat it as a label, never as an identity. mcp-k8s doesn’t issue
+<code>Mcp-Session-Id</code>, so over HTTP the client info is on the <code>initialize</code> span
+only and <code>mcp.session.id</code> is never set. <code>mcp_k8s.actor</code> is reserved for the
+authenticated user once single sign-on exists.</p>
+<p><code>error.type</code> values:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Value</th><th>Meaning</th></tr>
+</thead>
+<tbody>
+<tr><td><code>tool_error</code></td><td>The tool ran and failed. The server still answers with JSON-RPC error <code>-32000</code> (in <code>rpc.status_code</code>).</td></tr>
+<tr><td><code>permission_denied</code></td><td>A permission setting or workload guardrail refused the call (<code>mcp_k8s.decision=denied</code>, rule in <code>mcp_k8s.denied_rule</code>).</td></tr>
+<tr><td><code>unknown_tool</code></td><td><code>tools/call</code> named a tool the server doesn’t have. The span status stays unset: a caller mistake.</td></tr>
+<tr><td><code>cancelled</code></td><td>The request was dropped before the tool finished (client went away).</td></tr>
+<tr><td><code>-32601</code>, <code>-32000</code>, …</td><td>Any other JSON-RPC error response, by code. <code>-32700</code>, <code>-32600</code>, <code>-32601</code>, <code>-32602</code> and <code>-32002</code> are caller mistakes and leave the span status unset.</td></tr>
+</tbody>
+</table>
+</div>
+<p>The span status is <code>ERROR</code> for the other failures. Its description is left
+empty, although the conventions suggest the JSON-RPC error message: error
+messages can contain argument values (the Kubernetes API echoes names and
+invalid values), so they are never recorded.</p>
+<h3 id="metric"><a class="header" href="#metric">Metric</a></h3>
+<p><code>mcp.server.operation.duration</code>: a histogram of request duration in seconds
+(unit <code>s</code>, buckets <code>0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 30, 60, 120, 300</code> as the conventions ask), one observation per request. It carries only
+low-cardinality attributes:</p>
+<ul>
+<li><code>mcp.method.name</code> (<code>_OTHER</code> for unknown methods),</li>
+<li><code>gen_ai.tool.name</code> and <code>gen_ai.operation.name</code> (tool calls of known tools),</li>
+<li><code>mcp_k8s.action</code> and <code>mcp_k8s.decision</code> (tool calls),</li>
+<li><code>error.type</code> (failures).</li>
+</ul>
+<p>Never the namespace, resource name, client, session or denied rule: those are
+on the span. The binary’s meter provider also drops any other attribute, so a
+mistake can’t raise the metric’s cardinality.</p>
+<h3 id="logs"><a class="header" href="#logs">Logs</a></h3>
+<p>One <code>INFO</code> event at the end of every request, on target <code>mcp_k8s::telemetry</code>:</p>
+<ul>
+<li><code>tool call finished</code>, with <code>gen_ai.tool.name</code>, <code>mcp_k8s.outcome</code>,
+<code>duration_ms</code>, <code>mcp_k8s.decision</code>, <code>mcp_k8s.denied_rule</code>,
+<code>mcp_k8s.action</code>, <code>error.type</code>, <code>k8s.namespace.name</code>,
+<code>mcp_k8s.resource.kind</code> and <code>mcp_k8s.resource.name</code>;</li>
+<li><code>request finished</code> for other methods, with <code>mcp.method.name</code>,
+<code>mcp_k8s.outcome</code>, <code>duration_ms</code> and <code>error.type</code>;</li>
+<li><code>client initialized</code> for <code>initialize</code>, with the client name and version and
+the requested and negotiated protocol versions.</li>
+</ul>
+<p>With <code>--log-format json</code> each line also carries the request span’s fields, so
+<code>jq 'select(.fields["gen_ai.tool.name"] == "apply_manifest")'</code> finds every
+<code>apply_manifest</code> call. Exported over OTLP, the log records carry the trace and
+span ids. The per-request <code>processing request</code> line moved to <code>DEBUG</code>. In stdio
+mode, console logs go to stderr, because stdout carries the JSON-RPC stream.</p>
+<h2 id="redaction-guarantee"><a class="header" href="#redaction-guarantee">Redaction guarantee</a></h2>
+<p>Telemetry never records tool argument values, apart from a short allowlist of
+identifiers. It records the top-level argument <strong>keys</strong> (only keys the tool’s
+input schema declares; anything else is counted as <code>?</code>) and the values of
+these scalar arguments:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Argument</th><th>Why it is safe</th></tr>
+</thead>
+<tbody>
+<tr><td><code>namespace</code>, <code>name</code>, <code>kind</code>, <code>api_version</code></td><td>identify the object the call targets</td></tr>
+<tr><td><code>group</code>, <code>version</code></td><td>the API group and version of a custom-resource call</td></tr>
+<tr><td><code>pod_name</code>, <code>job_name</code></td><td>the target’s name for <code>get_pod_logs</code> / <code>get_build_logs</code></td></tr>
+<tr><td><code>container</code></td><td>a container name</td></tr>
+<tr><td><code>image</code></td><td>a container image reference</td></tr>
+<tr><td><code>replicas</code></td><td>a replica count</td></tr>
+<tr><td><code>cluster</code></td><td>the kubeconfig context an embedder’s tool targets</td></tr>
+<tr><td><code>decode</code></td><td>whether <code>get_secret</code> was asked for decoded values: worth auditing, and a boolean carries no data</td></tr>
+</tbody>
+</table>
+</div>
+<p>For <code>apply_manifest</code> and <code>create_custom_resource</code>, the manifest’s <code>kind</code>,
+<code>apiVersion</code>, <code>metadata.name</code> and <code>metadata.namespace</code> fill in the target.
+Nothing else is read from it.</p>
+<p>Everything else is dropped: Secret <code>data</code> and <code>stringData</code>, env values, exec
+commands, manifest and patch bodies, label and annotation keys and values,
+label and field selectors, plugin config, and error messages.</p>
+<p>A canary test enforces this for every tool. It builds arguments from each
+tool’s input schema with a unique marker in every string (nested objects,
+arrays and map keys included), runs the call against a mock API server that
+echoes requests into its error messages, and fails if a marker from outside
+the allowlist appears in any span or event field, or an allowlisted one goes
+missing. New tools are covered automatically.</p>
+<p>The guarantee covers what mcp-k8s itself records, at any level. Dependencies’
+<code>DEBUG</code> output can contain request details (kube-client’s <code>HTTP</code> spans carry
+the request URL with label selectors, and it logs the API server’s error
+messages), which is one reason exported spans and logs default to <code>info</code>.</p>
+<h2 id="embedding-deckwatch"><a class="header" href="#embedding-deckwatch">Embedding (deckwatch)</a></h2>
+<p>An application that embeds the library gets this telemetry by exporting
+<code>tracing</code> itself, with its own OpenTelemetry version:</p>
+<ol>
+<li><strong>Pipeline.</strong> Install <code>tracing-opentelemetry</code> (spans, plus its
+<code>MetricsLayer</code>) and <code>opentelemetry-appender-tracing</code> (logs). Keep
+<code>mcp_k8s=info</code> in the filter that feeds them, and filter the target
+<code>mcp_k8s::telemetry::metrics</code> out of console and OTLP logs: its events are
+metric observations, not log lines. Give the meter provider a view for
+<code>mcp.server.operation.duration</code> with unit <code>s</code>, the buckets above, and
+<code>mcp_k8s::telemetry::semconv::METRIC_ATTRIBUTES</code> as the allowed attribute
+keys. <code>MetricsLayer</code> creates instruments with none of these and turns every
+event field into an attribute. The binary’s <code>src/otel.rs</code> does all of
+this.</li>
+<li><strong>Request span.</strong> Per request, create
+<code>mcp_k8s::telemetry::server_span(method, target)</code> before entering it, and
+set its remote parent with <code>OpenTelemetrySpanExt::set_parent</code>
+(<code>W3cTraceContext::from_meta</code> reads <code>params._meta</code>).
+<code>tracing-opentelemetry</code> 0.34 ignores name changes once a span is entered,
+so pass the tool name as <code>target</code> up front, but only for tools you serve
+(<code>telemetry::is_known_tool</code> covers mcp-k8s’s).</li>
+<li><strong>Tools.</strong> <code>mcp_k8s::mcp::handle_tool</code> records into the request span by
+itself. Wrap your own tools with <code>telemetry::instrument_tool_call</code> or a
+<code>ToolCall</code> to get identical telemetry. A <code>handle_tool</code> call inside one of
+your tools reports into your call rather than starting a second one.</li>
+<li><strong>Other methods.</strong> Call <code>telemetry::finish_operation</code> at the end, and
+<code>telemetry::record_rpc_status</code> for JSON-RPC errors.</li>
+</ol>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use mcp_k8s::telemetry;
+use tracing::Instrument;
+
+let tool = params["name"].as_str().unwrap_or("");
+let args = &amp;params["arguments"];
+let own = is_deckwatch_tool(tool);
+let target = (own || telemetry::is_known_tool(tool)).then_some(tool);
+let span = telemetry::server_span("tools/call", target);
+// span.set_parent(cx) with cx from telemetry::W3cTraceContext::from_meta(&amp;params)
+let result = async {
+    if own {
+        Some(telemetry::instrument_tool_call(tool, args, deckwatch_tool(state, tool, args)).await)
+    } else {
+        mcp_k8s::mcp::handle_tool(&amp;client, tool, args).await
+    }
+}
+.instrument(span)
+.await;
+<span class="boring">}</span></code></pre>
+<p>Tools whose names don’t use mcp-k8s’s prefixes (<code>trigger_build</code>) can set the
+action with <code>ToolCall::start_with_action</code>, and guardrails can call
+<code>telemetry::record_denial(rule)</code> inside a call. <code>mcp_k8s.action</code> follows the
+permission classification (<code>ActionPermissions::action_for_tool</code>): <code>exec_*</code>
+tools are labelled <code>exec</code>, the permission action that gates them is
+<code>update</code>. The rustdoc of
+<code>mcp_k8s::telemetry</code> has the details.</p>
+<h2 id="old-metric-names"><a class="header" href="#old-metric-names">Old metric names</a></h2>
+<p>The Prometheus counters at <code>/metrics</code> are unchanged:
+<code>mcp_k8s_tool_calls_total{tool,status}</code>,
+<code>mcp_k8s_tool_call_duration_seconds{tool}</code> (both from the library, also inside
+embedders) and <code>mcp_requests_total{method}</code> (binary). They overlap with
+<code>mcp.server.operation.duration</code>, which carries the same information with
+semantic-convention names. A later release will deprecate them in favour of
+the OTel metric and remove them one minor release after that; the changelog
+will say when.</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="permissions.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                            </a>
+
+                            <a rel="next prefetch" href="deployment/docker.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="permissions.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                    </a>
+
+                    <a rel="next prefetch" href="deployment/docker.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                    </a>
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr-ef4e11c1.min.js"></script>
+        <script src="mark-09e88c2c.min.js"></script>
+        <script src="searcher-09f2665d.js"></script>
+
+        <script src="clipboard-1626706a.min.js"></script>
+        <script src="highlight-abc7f01d.js"></script>
+        <script src="book-609e4cb8.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="theme/version-select-4b868ecf.js"></script>
+
+
+
+    </div>
+    </body>
+</html>
