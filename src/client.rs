@@ -6,6 +6,7 @@ use kube::Api;
 
 use crate::error::Error;
 use crate::permissions::ActionPermissions;
+use crate::policy::WorkloadPolicy;
 
 #[derive(Clone)]
 pub struct K8sClient {
@@ -38,6 +39,12 @@ impl K8sClient {
 
     pub fn permissions(&self) -> &ActionPermissions {
         &self.permissions
+    }
+
+    /// The workload guardrail policy (shorthand for
+    /// `permissions().workload_policy()`).
+    pub fn policy(&self) -> &WorkloadPolicy {
+        self.permissions.workload_policy()
     }
 
     pub fn inner(&self) -> &kube::Client {

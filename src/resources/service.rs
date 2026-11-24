@@ -1,11 +1,15 @@
 use std::collections::BTreeMap;
 
-use k8s_openapi::api::core::v1::Service;
+use k8s_openapi::api::core::v1::{Service, ServicePort, ServiceSpec, SessionAffinityConfig, ClientIPConfig};
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use k8s_openapi::apimachinery::pkg::util::intstr::IntOrString;
-use kube::api::{DeleteParams, ListParams, Patch, PatchParams};
-use serde::Serialize;
+use kube::api::{DeleteParams, ListParams, PostParams};
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Map, Value};
 
 use crate::client::K8sClient;
+use crate::policy::{PatchKind, Source, MANAGED_BY_LABEL, MANAGED_BY_VALUE};
+use crate::resources::podspec;
 
 fn api(client: &K8sClient, ns: &str) -> Result<kube::Api<Service>, String> {
     if !client.is_namespace_allowed(ns) {
@@ -138,40 +142,14 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
             }
         }),
         serde_json::json!({
+            "name": "create_service",
+            "description": "Create a Service. Preferred over apply_manifest: arguments are validated and the server's guardrails are enforced. ClusterIP by default, selecting pods labelled app=<name> (override with selector). Supports several named ports (target_port by number or container port name), headless services (headless: true), session affinity, traffic policies and IP families. NodePort, LoadBalancer (including loadBalancerSourceRanges, loadBalancerClass and cloud load-balancer annotations), ExternalName and externalIPs are rejected unless the server operator allows them; the error names the setting.",
+            "inputSchema": create_service_schema()
+        }),
+        serde_json::json!({
             "name": "update_service",
-            "description": "Patch a service. Accepts optional fields: ports (array of {port, target_port, protocol}), selector (object), type.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "namespace": { "type": "string", "description": "Kubernetes namespace" },
-                    "name": { "type": "string", "description": "Service name" },
-                    "ports": {
-                        "type": "array",
-                        "description": "Array of port definitions",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "port": { "type": "integer", "description": "Service port" },
-                                "target_port": { "type": "integer", "description": "Container target port" },
-                                "protocol": { "type": "string", "description": "Protocol (TCP, UDP, SCTP). Defaults to TCP." }
-                            },
-                            "required": ["port"]
-                        }
-                    },
-                    "selector": {
-                        "type": "object",
-                        "description": "Label selector for pods",
-                        "additionalProperties": { "type": "string" }
-                    },
-                    "type": {
-                        "type": "string",
-                        "description": "Service type (ClusterIP, NodePort, LoadBalancer, ExternalName)",
-                        "enum": ["ClusterIP", "NodePort", "LoadBalancer", "ExternalName"]
-                    }
-                },
-                "required": ["namespace", "name"],
-                "additionalProperties": false
-            }
+            "description": "Update (patch) a Service: ports (merged by port number), selector, type, annotations, labels, session affinity, traffic policies, load balancer settings. Preferred over apply_manifest. The result is checked against the server's guardrails with a server-side dry run before it is written, so an update can't switch a Service to a disallowed type.",
+            "inputSchema": update_service_schema()
         }),
         serde_json::json!({
             "name": "delete_service",
@@ -189,6 +167,250 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
     ]
 }
 
+fn service_ports_schema() -> Value {
+    json!({
+        "type": "array",
+        "description": "Service ports",
+        "items": {
+            "type": "object",
+            "properties": {
+                "port": { "type": "integer", "description": "Port the Service listens on" },
+                "target_port": { "type": ["integer", "string"], "description": "Container port number or name (default: port)" },
+                "name": { "type": "string", "description": "Port name (required when there are several ports)" },
+                "protocol": { "type": "string", "enum": ["TCP", "UDP", "SCTP"], "description": "Default: TCP" },
+                "app_protocol": { "type": "string", "description": "Application protocol hint, e.g. http, https, kubernetes.io/h2c" },
+                "node_port": { "type": "integer", "description": "Fixed node port (NodePort/LoadBalancer only; gated)" }
+            },
+            "required": ["port"],
+            "additionalProperties": false
+        }
+    })
+}
+
+fn service_properties(create: bool) -> Map<String, Value> {
+    let mut props = json!({
+        "namespace": { "type": "string", "description": "Kubernetes namespace" },
+        "name": { "type": "string", "description": "Service name (also the default app label selector)" },
+        "type": { "type": "string", "enum": ["ClusterIP", "NodePort", "LoadBalancer", "ExternalName"], "description": "Service type (default: ClusterIP). NodePort needs --allow-nodeport, LoadBalancer --allow-loadbalancer, ExternalName --allow-external-services" },
+        "ports": service_ports_schema(),
+        "selector": { "type": "object", "description": "Pod label selector (default on create: {app: <name>})", "additionalProperties": { "type": "string" } },
+        "labels": { "type": "object", "additionalProperties": { "type": "string" } },
+        "annotations": { "type": "object", "description": "Annotations. Cloud load-balancer annotations need --allow-loadbalancer", "additionalProperties": { "type": "string" } },
+        "session_affinity": { "type": "string", "enum": ["None", "ClientIP"] },
+        "session_affinity_timeout_seconds": { "type": "integer", "description": "ClientIP affinity timeout (default: 10800)" },
+        "external_traffic_policy": { "type": "string", "enum": ["Cluster", "Local"], "description": "NodePort/LoadBalancer only" },
+        "internal_traffic_policy": { "type": "string", "enum": ["Cluster", "Local"] },
+        "load_balancer_source_ranges": { "type": "array", "items": { "type": "string" }, "description": "CIDRs allowed to reach the load balancer (needs --allow-loadbalancer)" },
+        "load_balancer_class": { "type": "string", "description": "Needs --allow-loadbalancer" },
+        "allocate_load_balancer_node_ports": { "type": "boolean", "description": "Needs --allow-loadbalancer" },
+        "external_name": { "type": "string", "description": "DNS name for ExternalName services (needs --allow-external-services)" },
+        "external_ips": { "type": "array", "items": { "type": "string" }, "description": "Needs --allow-external-services (CVE-2020-8554)" },
+        "publish_not_ready_addresses": { "type": "boolean" }
+    });
+    if create {
+        props["port"] = json!({ "type": "integer", "description": "Shorthand for a single port (default: 80)" });
+        props["target_port"] = json!({ "type": ["integer", "string"], "description": "Target for the single port shorthand (default: port)" });
+        props["headless"] = json!({ "type": "boolean", "description": "Headless service (clusterIP: None), e.g. for StatefulSets" });
+        props["cluster_ip"] = json!({ "type": "string", "description": "Fixed cluster IP, or \"None\" for a headless service" });
+        props["ip_families"] = json!({ "type": "array", "items": { "type": "string", "enum": ["IPv4", "IPv6"] } });
+        props["ip_family_policy"] = json!({ "type": "string", "enum": ["SingleStack", "PreferDualStack", "RequireDualStack"] });
+    }
+    props.as_object().cloned().unwrap_or_default()
+}
+
+fn create_service_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": service_properties(true),
+        "required": ["namespace", "name"],
+        "additionalProperties": false
+    })
+}
+
+fn update_service_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": service_properties(false),
+        "required": ["namespace", "name"],
+        "additionalProperties": false
+    })
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PortArgs {
+    port: i32,
+    #[serde(alias = "targetPort")]
+    target_port: Option<Value>,
+    name: Option<String>,
+    protocol: Option<String>,
+    #[serde(alias = "appProtocol")]
+    app_protocol: Option<String>,
+    #[serde(alias = "nodePort")]
+    node_port: Option<i32>,
+}
+
+fn service_ports(args: &Value) -> Result<Option<Vec<ServicePort>>, String> {
+    let Some(items) = podspec::opt::<Vec<PortArgs>>(args, "ports")? else {
+        return Ok(None);
+    };
+    items
+        .into_iter()
+        .enumerate()
+        .map(|(i, p)| {
+            let what = format!("ports[{i}]");
+            let protocol = p.protocol.unwrap_or_else(|| "TCP".to_string());
+            podspec::check_enum(&protocol, &["TCP", "UDP", "SCTP"], &format!("{what}.protocol"))?;
+            Ok(ServicePort {
+                port: p.port,
+                target_port: Some(match p.target_port {
+                    Some(v) => podspec::int_or_string(&v, &format!("{what}.target_port"))?,
+                    None => IntOrString::Int(p.port),
+                }),
+                name: p.name,
+                protocol: Some(protocol),
+                app_protocol: p.app_protocol,
+                node_port: p.node_port,
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()
+        .map(Some)
+}
+
+fn opt_str(args: &Value, key: &str, allowed: Option<&[&str]>) -> Result<Option<String>, String> {
+    match args.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(v)) => {
+            if let Some(allowed) = allowed {
+                podspec::check_enum(v, allowed, key)?;
+            }
+            Ok(Some(v.clone()))
+        }
+        Some(_) => Err(format!("{key} must be a string")),
+    }
+}
+
+/// ServiceSpec fields shared by create and update (everything except ports,
+/// selector and the create-only clusterIP/IP family settings).
+fn service_spec_fields(args: &Value) -> Result<ServiceSpec, String> {
+    Ok(ServiceSpec {
+        type_: opt_str(args, "type", Some(&["ClusterIP", "NodePort", "LoadBalancer", "ExternalName"]))?,
+        session_affinity: opt_str(args, "session_affinity", Some(&["None", "ClientIP"]))?,
+        session_affinity_config: args
+            .get("session_affinity_timeout_seconds")
+            .and_then(Value::as_i64)
+            .map(|t| SessionAffinityConfig {
+                client_ip: Some(ClientIPConfig {
+                    timeout_seconds: i32::try_from(t).ok(),
+                }),
+            }),
+        external_traffic_policy: opt_str(args, "external_traffic_policy", Some(&["Cluster", "Local"]))?,
+        internal_traffic_policy: opt_str(args, "internal_traffic_policy", Some(&["Cluster", "Local"]))?,
+        load_balancer_source_ranges: podspec::opt(args, "load_balancer_source_ranges")?,
+        load_balancer_class: opt_str(args, "load_balancer_class", None)?,
+        allocate_load_balancer_node_ports: args
+            .get("allocate_load_balancer_node_ports")
+            .and_then(Value::as_bool),
+        external_name: opt_str(args, "external_name", None)?,
+        external_ips: podspec::opt(args, "external_ips")?,
+        publish_not_ready_addresses: args.get("publish_not_ready_addresses").and_then(Value::as_bool),
+        ..Default::default()
+    })
+}
+
+/// Build the Service `create_service` creates.
+pub(crate) fn service_from_args(args: &Value) -> Result<Service, String> {
+    let ns = args["namespace"].as_str().ok_or("namespace is required")?;
+    let name = args["name"].as_str().ok_or("name is required")?;
+    let mut spec = service_spec_fields(args)?;
+    let external_name = spec.type_.as_deref() == Some("ExternalName");
+
+    let listed = service_ports(args)?;
+    let legacy = args.get("port").is_some() || args.get("target_port").is_some();
+    spec.ports = match (listed, legacy) {
+        (Some(_), true) => return Err("use either ports or port/target_port, not both".to_string()),
+        (Some(ports), false) => Some(ports),
+        (None, _) if external_name && !legacy => None,
+        (None, _) => {
+            let port = args["port"].as_i64().unwrap_or(80);
+            let port = i32::try_from(port).map_err(|_| "port must be a 32-bit integer")?;
+            let target = match args.get("target_port") {
+                Some(v) => podspec::int_or_string(v, "target_port")?,
+                None => IntOrString::Int(port),
+            };
+            Some(vec![ServicePort {
+                port,
+                target_port: Some(target),
+                protocol: Some("TCP".to_string()),
+                ..Default::default()
+            }])
+        }
+    };
+    spec.selector = match podspec::string_map(args, "selector")? {
+        Some(sel) => Some(sel),
+        None if external_name => None,
+        None => Some(BTreeMap::from([("app".to_string(), name.to_string())])),
+    };
+    let headless = args["headless"].as_bool() == Some(true);
+    spec.cluster_ip = match (headless, opt_str(args, "cluster_ip", None)?) {
+        (true, Some(ip)) if ip != "None" => {
+            return Err("headless: true means cluster_ip None; don't set both".to_string())
+        }
+        (true, _) => Some("None".to_string()),
+        (false, ip) => ip,
+    };
+    spec.ip_families = podspec::opt(args, "ip_families")?;
+    spec.ip_family_policy = opt_str(
+        args,
+        "ip_family_policy",
+        Some(&["SingleStack", "PreferDualStack", "RequireDualStack"]),
+    )?;
+
+    let mut labels = podspec::string_map(args, "labels")?.unwrap_or_default();
+    labels
+        .entry("app".to_string())
+        .or_insert_with(|| name.to_string());
+    labels.insert(MANAGED_BY_LABEL.to_string(), MANAGED_BY_VALUE.to_string());
+
+    Ok(Service {
+        metadata: ObjectMeta {
+            name: Some(name.to_string()),
+            namespace: Some(ns.to_string()),
+            labels: Some(labels),
+            annotations: podspec::string_map(args, "annotations")?,
+            ..Default::default()
+        },
+        spec: Some(spec),
+        ..Default::default()
+    })
+}
+
+/// Create a ClusterIP Service `name` selecting `app=<name>` on `port` unless
+/// a Service with that name exists (used by `create_ingress`).
+pub(crate) async fn ensure_service(
+    client: &K8sClient,
+    ns: &str,
+    name: &str,
+    port: i32,
+) -> Result<bool, String> {
+    let svc_api = api(client, ns)?;
+    if svc_api
+        .get_opt(name)
+        .await
+        .map_err(|e| e.to_string())?
+        .is_some()
+    {
+        return Ok(false);
+    }
+    let svc = service_from_args(&json!({ "namespace": ns, "name": name, "port": port }))?;
+    crate::policy::check_typed(client, &svc)?;
+    svc_api
+        .create(&PostParams::default(), &svc)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
 pub async fn handle_tool(
     client: &K8sClient,
     name: &str,
@@ -197,6 +419,7 @@ pub async fn handle_tool(
     let result = match name {
         "list_services" => list_services(client, args).await,
         "get_service" => get_service(client, args).await,
+        "create_service" => create_service(client, args).await,
         "update_service" => update_service(client, args).await,
         "delete_service" => delete_service(client, args).await,
         _ => return None,
@@ -263,58 +486,74 @@ async fn get_service(client: &K8sClient, args: &serde_json::Value) -> Result<Str
     serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
 }
 
+async fn create_service(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
+    let args = podspec::normalize_args(args, &create_service_schema())?;
+    let svc = service_from_args(&args)?;
+    let ns = svc.metadata.namespace.clone().unwrap_or_default();
+    let svc_api = api(client, &ns)?;
+    crate::policy::check_typed(client, &svc)?;
+
+    let created = svc_api
+        .create(&PostParams::default(), &svc)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let spec = created.spec.as_ref();
+    let first = spec.and_then(|s| s.ports.as_ref()).and_then(|p| p.first());
+    let result = serde_json::json!({
+        "name": created.metadata.name,
+        "namespace": ns,
+        "type": spec.and_then(|s| s.type_.clone()).unwrap_or_else(|| "ClusterIP".to_string()),
+        "cluster_ip": spec.and_then(|s| s.cluster_ip.clone()),
+        "port": first.map(|p| p.port),
+        "target_port": first.and_then(|p| p.target_port.as_ref()).map(|t| match t {
+            IntOrString::Int(i) => json!(i),
+            IntOrString::String(s) => json!(s),
+        }),
+        "ports": extract_summary(&created).ports,
+    });
+    serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
+}
+
 async fn update_service(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
+    let args = podspec::normalize_args(args, &update_service_schema())?;
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
 
-    let mut spec_patch = serde_json::Map::new();
-
-    if let Some(ports_val) = args.get("ports") {
-        if let Some(ports_arr) = ports_val.as_array() {
-            let ports: Vec<serde_json::Value> = ports_arr
-                .iter()
-                .map(|p| {
-                    let port = p["port"].as_i64().unwrap_or(80);
-                    let target_port = p
-                        .get("target_port")
-                        .and_then(|v| v.as_i64())
-                        .unwrap_or(port);
-                    let protocol = p["protocol"].as_str().unwrap_or("TCP");
-                    serde_json::json!({
-                        "port": port,
-                        "targetPort": target_port,
-                        "protocol": protocol,
-                    })
-                })
-                .collect();
-            spec_patch.insert("ports".to_string(), serde_json::Value::Array(ports));
+    let mut spec = serde_json::to_value(service_spec_fields(&args)?).map_err(|e| e.to_string())?;
+    if let Some(ports) = service_ports(&args)? {
+        spec["ports"] = serde_json::to_value(ports).map_err(|e| e.to_string())?;
+    }
+    if let Some(selector) = podspec::string_map(&args, "selector")? {
+        spec["selector"] = json!(selector);
+    }
+    let mut patch = Map::new();
+    if spec.as_object().is_some_and(|o| !o.is_empty()) {
+        patch.insert("spec".into(), spec);
+    }
+    let mut metadata = Map::new();
+    for key in ["labels", "annotations"] {
+        if let Some(map) = podspec::string_map(&args, key)? {
+            metadata.insert(key.into(), json!(map));
         }
     }
-
-    if let Some(selector) = args.get("selector") {
-        spec_patch.insert("selector".to_string(), selector.clone());
+    if !metadata.is_empty() {
+        patch.insert("metadata".into(), Value::Object(metadata));
     }
-
-    if let Some(svc_type) = args.get("type").and_then(|v| v.as_str()) {
-        spec_patch.insert(
-            "type".to_string(),
-            serde_json::Value::String(svc_type.to_string()),
-        );
+    if patch.is_empty() {
+        return Err("At least one of ports, selector, type or another Service field must be provided".to_string());
     }
-
-    if spec_patch.is_empty() {
-        return Err("At least one of ports, selector, or type must be provided".to_string());
-    }
-
-    let patch = serde_json::json!({
-        "spec": spec_patch,
-    });
 
     let svc_api = api(client, ns)?;
-    let patched = svc_api
-        .patch(name, &PatchParams::default(), &Patch::Strategic(patch))
-        .await
-        .map_err(|e| e.to_string())?;
+    let patched = crate::policy::patch_checked(
+        client,
+        &svc_api,
+        name,
+        Value::Object(patch),
+        PatchKind::Strategic,
+        Source::Typed,
+    )
+    .await?;
 
     let summary = extract_summary(&patched);
     serde_json::to_string_pretty(&summary).map_err(|e| e.to_string())

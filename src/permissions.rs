@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use crate::policy::WorkloadPolicy;
+
 /// The kind of CRUD action a tool performs.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Action {
@@ -37,6 +39,9 @@ pub struct ActionPermissions {
     /// When `false`, the `apply_manifest` tool is blocked regardless of other
     /// permission settings.
     pub apply_manifest_enabled: bool,
+    /// Guardrails every write path enforces (typed tools, `apply_manifest`,
+    /// custom resources). Restrictive by default; see [`WorkloadPolicy`].
+    workload_policy: WorkloadPolicy,
 }
 
 impl ActionPermissions {
@@ -68,7 +73,20 @@ impl ActionPermissions {
             resource_overrides,
             secret_decode_enabled,
             apply_manifest_enabled,
+            workload_policy: WorkloadPolicy::default(),
         }
+    }
+
+    /// Replace the workload guardrail policy (the default is
+    /// [`WorkloadPolicy::default()`], which is restrictive).
+    pub fn with_workload_policy(mut self, policy: WorkloadPolicy) -> Self {
+        self.workload_policy = policy;
+        self
+    }
+
+    /// The workload guardrail policy every write path enforces.
+    pub fn workload_policy(&self) -> &WorkloadPolicy {
+        &self.workload_policy
     }
 
     /// Check whether `action` is allowed for `resource`.
@@ -126,7 +144,10 @@ impl ActionPermissions {
         if tool_name.starts_with("create_") {
             return Action::Create;
         }
+        // exec_pod runs arbitrary commands inside a workload: it is a write,
+        // so read-only mode (and --disable-update) must turn it off.
         if tool_name.starts_with("update_")
+            || tool_name.starts_with("exec_")
             || tool_name.starts_with("scale_")
             || tool_name.starts_with("restart_")
             || tool_name.starts_with("rollback_")
@@ -178,6 +199,7 @@ impl ActionPermissions {
             "uncordon_",
             "drain_",
             "evict_",
+            "exec_",
         ];
         for prefix in &prefixes {
             if let Some(rest) = tool_name.strip_prefix(prefix) {
@@ -189,7 +211,8 @@ impl ActionPermissions {
 }
 
 impl Default for ActionPermissions {
-    /// All actions enabled, no overrides, secret decode enabled, apply_manifest enabled.
+    /// All actions enabled, no overrides, secret decode enabled, apply_manifest
+    /// enabled, and the restrictive default [`WorkloadPolicy`].
     fn default() -> Self {
         Self {
             global_create_enabled: true,
@@ -198,6 +221,7 @@ impl Default for ActionPermissions {
             resource_overrides: HashMap::new(),
             secret_decode_enabled: true,
             apply_manifest_enabled: true,
+            workload_policy: WorkloadPolicy::default(),
         }
     }
 }
@@ -441,6 +465,41 @@ mod tests {
             ActionPermissions::action_for_tool("drain_node"),
             Action::Update
         );
+    }
+
+    #[test]
+    fn exec_pod_is_a_write() {
+        // exec_pod runs arbitrary commands; it must not count as a read.
+        assert_eq!(
+            ActionPermissions::action_for_tool("exec_pod"),
+            Action::Update
+        );
+        assert_eq!(ActionPermissions::resource_from_tool("exec_pod"), "pod");
+        let read_only = ActionPermissions::new(true, true, true, vec![], true, true);
+        assert!(!read_only.is_tool_allowed("exec_pod"));
+        let no_update = ActionPermissions::new(false, true, false, vec![], true, true);
+        assert!(!no_update.is_tool_allowed("exec_pod"));
+        let per_resource =
+            ActionPermissions::new(false, false, false, vec!["pod-update".into()], true, true);
+        assert!(!per_resource.is_tool_allowed("exec_pod"));
+        assert!(ActionPermissions::default().is_tool_allowed("exec_pod"));
+        // port_forward_check only probes reachability and stays a read.
+        assert_eq!(
+            ActionPermissions::action_for_tool("port_forward_check"),
+            Action::Read
+        );
+    }
+
+    #[test]
+    fn workload_policy_defaults_to_restrictive_and_can_be_replaced() {
+        let perms = ActionPermissions::default();
+        assert_eq!(perms.workload_policy(), &WorkloadPolicy::default());
+        assert!(!perms.workload_policy().allow_privileged);
+        let perms = ActionPermissions::new(false, false, false, vec![], true, true)
+            .with_workload_policy(WorkloadPolicy::permissive());
+        assert!(perms.workload_policy().allow_privileged);
+        // Replacing the policy leaves the action switches alone.
+        assert!(perms.is_tool_allowed("create_pod"));
     }
 
     #[test]

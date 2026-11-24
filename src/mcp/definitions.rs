@@ -120,61 +120,6 @@ pub fn tool_definitions(permissions: &ActionPermissions) -> Vec<serde_json::Valu
                 "additionalProperties": false
             }
         }),
-        serde_json::json!({
-            "name": "create_service",
-            "description": "Create a Kubernetes ClusterIP Service pointing to pods with a matching app label.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "namespace": { "type": "string", "description": "Kubernetes namespace" },
-                    "name": { "type": "string", "description": "Service name (also used as the app label selector)" },
-                    "port": { "type": "integer", "description": "Service port (default: 80)" },
-                    "target_port": { "type": "integer", "description": "Container port to forward to (defaults to same as port)" }
-                },
-                "required": ["namespace", "name"],
-                "additionalProperties": false
-            }
-        }),
-        serde_json::json!({
-            "name": "create_ingress",
-            "description": "Create a Kubernetes Ingress resource. Automatically creates a backing ClusterIP Service if one doesn't exist.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "namespace": { "type": "string", "description": "Kubernetes namespace" },
-                    "name": { "type": "string", "description": "Ingress name" },
-                    "host": { "type": "string", "description": "Hostname for the ingress rule (e.g. myapp.example.com)" },
-                    "service_name": { "type": "string", "description": "Backend service name" },
-                    "service_port": { "type": "integer", "description": "Backend service port (default: 80)" },
-                    "path": { "type": "string", "description": "URL path (default: /)" },
-                    "path_type": { "type": "string", "description": "Path matching type (default: Prefix)", "enum": ["Prefix", "Exact", "ImplementationSpecific"] },
-                    "ingress_class": { "type": "string", "description": "IngressClass name (e.g. alb, nginx)" },
-                    "annotations": { "type": "object", "description": "Ingress annotations as key-value pairs", "additionalProperties": { "type": "string" } }
-                },
-                "required": ["namespace", "name", "service_name"],
-                "additionalProperties": false
-            }
-        }),
-        serde_json::json!({
-            "name": "update_ingress",
-            "description": "Update an existing Kubernetes Ingress resource (host, paths, annotations, TLS).",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "namespace": { "type": "string", "description": "Kubernetes namespace" },
-                    "name": { "type": "string", "description": "Ingress name" },
-                    "host": { "type": "string", "description": "Hostname for the ingress rule" },
-                    "service_name": { "type": "string", "description": "Backend service name" },
-                    "service_port": { "type": "integer", "description": "Backend service port (default: 80)" },
-                    "path": { "type": "string", "description": "URL path (default: /)" },
-                    "path_type": { "type": "string", "description": "Path matching type (default: Prefix)" },
-                    "ingress_class": { "type": "string", "description": "IngressClass name" },
-                    "annotations": { "type": "object", "description": "Ingress annotations as key-value pairs", "additionalProperties": { "type": "string" } }
-                },
-                "required": ["namespace", "name", "service_name"],
-                "additionalProperties": false
-            }
-        }),
     ];
     tools.extend(crate::resources::all_tool_definitions());
     tools.retain(|tool| {

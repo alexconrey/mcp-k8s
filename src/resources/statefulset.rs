@@ -1,12 +1,21 @@
 use std::collections::BTreeMap;
 
-use k8s_openapi::api::apps::v1::{StatefulSet, StatefulSetSpec};
-use k8s_openapi::api::core::v1::{Container, ContainerPort, PodSpec, PodTemplateSpec};
+use k8s_openapi::api::apps::v1::{
+    RollingUpdateStatefulSetStrategy, StatefulSet, StatefulSetPersistentVolumeClaimRetentionPolicy,
+    StatefulSetSpec, StatefulSetUpdateStrategy,
+};
+use k8s_openapi::api::core::v1::{
+    PersistentVolumeClaim, PersistentVolumeClaimSpec, VolumeResourceRequirements,
+};
+use k8s_openapi::apimachinery::pkg::api::resource::Quantity;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::{LabelSelector, ObjectMeta};
-use kube::api::{DeleteParams, ListParams, Patch, PatchParams, PostParams};
-use serde::Serialize;
+use kube::api::{DeleteParams, ListParams, PostParams};
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Map, Value};
 
 use crate::client::K8sClient;
+use crate::policy::{PatchKind, Source};
+use crate::resources::podspec::{self, WorkloadKind};
 
 fn api(client: &K8sClient, ns: &str) -> Result<kube::Api<StatefulSet>, String> {
     if !client.is_namespace_allowed(ns) {
@@ -179,6 +188,212 @@ fn extract_detail(sts: &StatefulSet) -> StatefulSetDetail {
 }
 
 // ---------------------------------------------------------------------------
+// Arguments
+// ---------------------------------------------------------------------------
+
+fn update_strategy_schema() -> Value {
+    json!({
+        "type": "object",
+        "description": "Update strategy",
+        "properties": {
+            "type": { "type": "string", "enum": ["RollingUpdate", "OnDelete"] },
+            "partition": { "type": "integer", "description": "Only pods with an ordinal >= partition are updated (staged rollouts)" },
+            "max_unavailable": { "type": ["integer", "string"], "description": "Pods that may be unavailable during an update" }
+        },
+        "additionalProperties": false
+    })
+}
+
+fn retention_schema() -> Value {
+    json!({
+        "type": "object",
+        "description": "What happens to the PVCs from volume_claim_templates when the StatefulSet is deleted or scaled down",
+        "properties": {
+            "when_deleted": { "type": "string", "enum": ["Retain", "Delete"] },
+            "when_scaled": { "type": "string", "enum": ["Retain", "Delete"] }
+        },
+        "additionalProperties": false
+    })
+}
+
+fn statefulset_properties(create: bool) -> Value {
+    let mut props = json!({
+        "replicas": { "type": "integer", "description": "Number of replicas (default: 1)" },
+        "update_strategy": update_strategy_schema(),
+        "min_ready_seconds": { "type": "integer" },
+        "revision_history_limit": { "type": "integer" },
+        "persistent_volume_claim_retention_policy": retention_schema()
+    });
+    if create {
+        props["service_name"] = json!({ "type": "string", "description": "Governing headless Service name" });
+        props["pod_management_policy"] = json!({ "type": "string", "enum": ["OrderedReady", "Parallel"], "description": "OrderedReady (default) starts pods one at a time; Parallel starts them together" });
+        props["volume_claim_templates"] = json!({
+            "type": "array",
+            "description": "Per-pod PersistentVolumeClaims. Mount them by name in volume_mounts.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": { "type": "string" },
+                    "storage": { "type": "string", "description": "Requested size, e.g. \"10Gi\"" },
+                    "storage_class_name": { "type": "string" },
+                    "access_modes": { "type": "array", "items": { "type": "string", "enum": ["ReadWriteOnce", "ReadOnlyMany", "ReadWriteMany", "ReadWriteOncePod"] }, "description": "Default: [ReadWriteOnce]" },
+                    "volume_mode": { "type": "string", "enum": ["Filesystem", "Block"] },
+                    "labels": { "type": "object", "additionalProperties": { "type": "string" } },
+                    "annotations": { "type": "object", "additionalProperties": { "type": "string" } }
+                },
+                "required": ["name", "storage"],
+                "additionalProperties": false
+            }
+        });
+    }
+    props
+}
+
+fn create_statefulset_schema() -> Value {
+    podspec::workload_schema(
+        WorkloadKind::StatefulSet,
+        statefulset_properties(true),
+        &["namespace", "name", "service_name"],
+    )
+}
+
+fn update_statefulset_schema() -> Value {
+    podspec::workload_update_schema(WorkloadKind::StatefulSet, statefulset_properties(false))
+}
+
+fn opt_i32(args: &Value, key: &str) -> Result<Option<i32>, String> {
+    match args.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(v) => v
+            .as_i64()
+            .and_then(|n| i32::try_from(n).ok())
+            .map(Some)
+            .ok_or_else(|| format!("{key} must be a 32-bit integer")),
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct UpdateStrategyArgs {
+    #[serde(rename = "type")]
+    type_: Option<String>,
+    partition: Option<i32>,
+    #[serde(alias = "maxUnavailable")]
+    max_unavailable: Option<Value>,
+}
+
+fn update_strategy(args: &Value) -> Result<Option<StatefulSetUpdateStrategy>, String> {
+    let Some(s) = podspec::opt::<UpdateStrategyArgs>(args, "update_strategy")? else {
+        return Ok(None);
+    };
+    let type_ = s.type_.unwrap_or_else(|| "RollingUpdate".to_string());
+    podspec::check_enum(&type_, &["RollingUpdate", "OnDelete"], "update_strategy.type")?;
+    let max_unavailable = s
+        .max_unavailable
+        .map(|v| podspec::int_or_string(&v, "update_strategy.max_unavailable"))
+        .transpose()?;
+    if type_ == "OnDelete" && (s.partition.is_some() || max_unavailable.is_some()) {
+        return Err("update_strategy: partition and max_unavailable only apply to RollingUpdate".to_string());
+    }
+    Ok(Some(StatefulSetUpdateStrategy {
+        type_: Some(type_),
+        rolling_update: (s.partition.is_some() || max_unavailable.is_some()).then_some(
+            RollingUpdateStatefulSetStrategy {
+                partition: s.partition,
+                max_unavailable,
+            },
+        ),
+    }))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RetentionArgs {
+    #[serde(alias = "whenDeleted")]
+    when_deleted: Option<String>,
+    #[serde(alias = "whenScaled")]
+    when_scaled: Option<String>,
+}
+
+fn retention(args: &Value) -> Result<Option<StatefulSetPersistentVolumeClaimRetentionPolicy>, String> {
+    let Some(r) = podspec::opt::<RetentionArgs>(args, "persistent_volume_claim_retention_policy")?
+    else {
+        return Ok(None);
+    };
+    for (v, what) in [(&r.when_deleted, "when_deleted"), (&r.when_scaled, "when_scaled")] {
+        if let Some(v) = v {
+            podspec::check_enum(v, &["Retain", "Delete"], what)?;
+        }
+    }
+    Ok(Some(StatefulSetPersistentVolumeClaimRetentionPolicy {
+        when_deleted: r.when_deleted,
+        when_scaled: r.when_scaled,
+    }))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ClaimTemplateArgs {
+    name: String,
+    storage: Value,
+    #[serde(alias = "storageClassName")]
+    storage_class_name: Option<String>,
+    #[serde(alias = "accessModes")]
+    access_modes: Option<Vec<String>>,
+    #[serde(alias = "volumeMode")]
+    volume_mode: Option<String>,
+    labels: Option<BTreeMap<String, String>>,
+    annotations: Option<BTreeMap<String, String>>,
+}
+
+fn claim_templates(args: &Value) -> Result<Option<Vec<PersistentVolumeClaim>>, String> {
+    let Some(items) = podspec::opt::<Vec<ClaimTemplateArgs>>(args, "volume_claim_templates")? else {
+        return Ok(None);
+    };
+    items
+        .into_iter()
+        .enumerate()
+        .map(|(i, t)| {
+            let what = format!("volume_claim_templates[{i}]");
+            let access_modes = t
+                .access_modes
+                .unwrap_or_else(|| vec!["ReadWriteOnce".to_string()]);
+            for m in &access_modes {
+                podspec::check_enum(
+                    m,
+                    &["ReadWriteOnce", "ReadOnlyMany", "ReadWriteMany", "ReadWriteOncePod"],
+                    &format!("{what}.access_modes"),
+                )?;
+            }
+            if let Some(m) = &t.volume_mode {
+                podspec::check_enum(m, &["Filesystem", "Block"], &format!("{what}.volume_mode"))?;
+            }
+            let storage = podspec::scalar_string(&t.storage, &format!("{what}.storage"))?;
+            Ok(PersistentVolumeClaim {
+                metadata: ObjectMeta {
+                    name: Some(t.name),
+                    labels: t.labels,
+                    annotations: t.annotations,
+                    ..Default::default()
+                },
+                spec: Some(PersistentVolumeClaimSpec {
+                    access_modes: Some(access_modes),
+                    storage_class_name: t.storage_class_name,
+                    volume_mode: t.volume_mode,
+                    resources: Some(VolumeResourceRequirements {
+                        requests: Some(BTreeMap::from([("storage".to_string(), Quantity(storage))])),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()
+        .map(Some)
+}
+
+// ---------------------------------------------------------------------------
 // Tool definitions
 // ---------------------------------------------------------------------------
 
@@ -212,35 +427,19 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
         }),
         serde_json::json!({
             "name": "create_statefulset",
-            "description": "Create a new statefulset in the specified namespace.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "namespace": { "type": "string", "description": "Kubernetes namespace" },
-                    "name": { "type": "string", "description": "StatefulSet name" },
-                    "image": { "type": "string", "description": "Container image" },
-                    "replicas": { "type": "integer", "description": "Number of replicas (default: 1)" },
-                    "service_name": { "type": "string", "description": "Governing headless service name" },
-                    "port": { "type": "integer", "description": "Container port to expose (optional)" }
-                },
-                "required": ["namespace", "name", "image", "service_name"],
-                "additionalProperties": false
-            }
+            "description": format!(
+                "Create a StatefulSet (pods selected by app=<name>). StatefulSet settings: service_name, replicas, volume_claim_templates, pod_management_policy, update_strategy (RollingUpdate with partition/max_unavailable, or OnDelete), persistent_volume_claim_retention_policy, min_ready_seconds, revision_history_limit, pod_annotations. {}",
+                podspec::CREATE_DESCRIPTION
+            ),
+            "inputSchema": create_statefulset_schema()
         }),
         serde_json::json!({
             "name": "update_statefulset",
-            "description": "Update (patch) an existing statefulset. Supports changing image and replica count.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "namespace": { "type": "string", "description": "Kubernetes namespace" },
-                    "name": { "type": "string", "description": "StatefulSet name" },
-                    "image": { "type": "string", "description": "New container image (optional)" },
-                    "replicas": { "type": "integer", "description": "New replica count (optional)" }
-                },
-                "required": ["namespace", "name"],
-                "additionalProperties": false
-            }
+            "description": format!(
+                "Update (patch) an existing StatefulSet: replicas, update_strategy, retention policy, and any container or pod field. {}",
+                podspec::UPDATE_DESCRIPTION
+            ),
+            "inputSchema": update_statefulset_schema()
         }),
         serde_json::json!({
             "name": "delete_statefulset",
@@ -319,72 +518,47 @@ async fn create_statefulset(
     client: &K8sClient,
     args: &serde_json::Value,
 ) -> Result<String, String> {
+    let args = podspec::normalize_args(args, &create_statefulset_schema())?;
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
-    let image = args["image"].as_str().ok_or("image is required")?;
-    let replicas = args["replicas"].as_i64().unwrap_or(1) as i32;
     let service_name = args["service_name"]
         .as_str()
         .ok_or("service_name is required")?;
-    let port = args["port"].as_i64().map(|p| p as i32);
+    if let Some(p) = args["pod_management_policy"].as_str() {
+        podspec::check_enum(p, &["OrderedReady", "Parallel"], "pod_management_policy")?;
+    }
+    let sts_api = api(client, ns)?;
 
-    let mut labels = BTreeMap::new();
-    labels.insert("app".to_string(), name.to_string());
-    labels.insert(
-        "app.kubernetes.io/managed-by".to_string(),
-        "mcp-k8s".to_string(),
-    );
-
-    let ports = port.map(|p| {
-        vec![ContainerPort {
-            container_port: p,
-            ..Default::default()
-        }]
-    });
-
+    let (meta, template) =
+        podspec::build_template(&args, name, WorkloadKind::StatefulSet, client.policy())?;
     let sts = StatefulSet {
         metadata: ObjectMeta {
             name: Some(name.to_string()),
             namespace: Some(ns.to_string()),
-            labels: Some(labels.clone()),
+            labels: Some(meta.labels),
+            annotations: meta.annotations,
             ..Default::default()
         },
         spec: Some(StatefulSetSpec {
-            replicas: Some(replicas),
+            replicas: Some(opt_i32(&args, "replicas")?.unwrap_or(1)),
             service_name: Some(service_name.to_string()),
             selector: LabelSelector {
-                match_labels: Some({
-                    let mut sel = BTreeMap::new();
-                    sel.insert("app".to_string(), name.to_string());
-                    sel
-                }),
+                match_labels: Some(meta.selector),
                 ..Default::default()
             },
-            template: PodTemplateSpec {
-                metadata: Some(ObjectMeta {
-                    labels: Some({
-                        let mut pod_labels = BTreeMap::new();
-                        pod_labels.insert("app".to_string(), name.to_string());
-                        pod_labels
-                    }),
-                    ..Default::default()
-                }),
-                spec: Some(PodSpec {
-                    containers: vec![Container {
-                        name: name.to_string(),
-                        image: Some(image.to_string()),
-                        ports,
-                        ..Default::default()
-                    }],
-                    ..Default::default()
-                }),
-            },
+            template,
+            volume_claim_templates: claim_templates(&args)?,
+            pod_management_policy: args["pod_management_policy"].as_str().map(str::to_string),
+            update_strategy: update_strategy(&args)?,
+            persistent_volume_claim_retention_policy: retention(&args)?,
+            min_ready_seconds: opt_i32(&args, "min_ready_seconds")?,
+            revision_history_limit: opt_i32(&args, "revision_history_limit")?,
             ..Default::default()
         }),
         ..Default::default()
     };
+    crate::policy::check_typed(client, &sts)?;
 
-    let sts_api = api(client, ns)?;
     let created = sts_api
         .create(&PostParams::default(), &sts)
         .await
@@ -399,37 +573,60 @@ async fn update_statefulset(
     client: &K8sClient,
     args: &serde_json::Value,
 ) -> Result<String, String> {
+    let args = podspec::normalize_args(args, &update_statefulset_schema())?;
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
-    let image = args["image"].as_str();
-    let replicas = args["replicas"].as_i64().map(|r| r as i32);
-
-    if image.is_none() && replicas.is_none() {
-        return Err("At least one of 'image' or 'replicas' must be provided".to_string());
-    }
-
-    let mut patch = serde_json::json!({ "spec": {} });
-
-    if let Some(r) = replicas {
-        patch["spec"]["replicas"] = serde_json::json!(r);
-    }
-
-    if let Some(img) = image {
-        patch["spec"]["template"] = serde_json::json!({
-            "spec": {
-                "containers": [{
-                    "name": name,
-                    "image": img
-                }]
-            }
-        });
-    }
-
     let sts_api = api(client, ns)?;
-    let patched = sts_api
-        .patch(name, &PatchParams::default(), &Patch::Strategic(patch))
-        .await
-        .map_err(|e| e.to_string())?;
+
+    let target = if podspec::touches_container(&args) {
+        let current = sts_api.get(name).await.map_err(|e| e.to_string())?;
+        let pod_spec = current.spec.as_ref().and_then(|s| s.template.spec.as_ref());
+        Some(podspec::resolve_container(pod_spec, args["container"].as_str(), name)?)
+    } else {
+        None
+    };
+
+    let mut spec = Map::new();
+    if let Some(r) = opt_i32(&args, "replicas")? {
+        spec.insert("replicas".into(), json!(r));
+    }
+    if let Some(strategy) = update_strategy(&args)? {
+        let mut value = serde_json::to_value(&strategy).map_err(|e| e.to_string())?;
+        if strategy.type_.as_deref() == Some("OnDelete") {
+            value["rollingUpdate"] = Value::Null;
+        }
+        spec.insert("updateStrategy".into(), value);
+    }
+    if let Some(policy) = retention(&args)? {
+        spec.insert(
+            "persistentVolumeClaimRetentionPolicy".into(),
+            serde_json::to_value(policy).map_err(|e| e.to_string())?,
+        );
+    }
+    for (arg, field) in [
+        ("min_ready_seconds", "minReadySeconds"),
+        ("revision_history_limit", "revisionHistoryLimit"),
+    ] {
+        if let Some(v) = opt_i32(&args, arg)? {
+            spec.insert(field.into(), json!(v));
+        }
+    }
+    if let Some(template) = podspec::build_template_patch(&args, target.as_deref())? {
+        spec.insert("template".into(), template);
+    }
+    if spec.is_empty() {
+        return Err("Nothing to update: give at least one field, e.g. image or replicas".to_string());
+    }
+
+    let patched = crate::policy::patch_checked(
+        client,
+        &sts_api,
+        name,
+        json!({ "spec": spec }),
+        PatchKind::Strategic,
+        Source::Typed,
+    )
+    .await?;
 
     let detail = extract_detail(&patched);
     serde_json::to_string_pretty(&serde_json::to_value(detail).unwrap_or_default())

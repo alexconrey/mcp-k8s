@@ -1,13 +1,16 @@
 use std::collections::BTreeMap;
 
-use k8s_openapi::api::batch::v1::{CronJob, CronJobSpec, JobSpec, JobTemplateSpec};
-use k8s_openapi::api::core::v1::{Container, PodSpec, PodTemplateSpec};
+use k8s_openapi::api::batch::v1::{CronJob, CronJobSpec, JobTemplateSpec};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
-use kube::api::{DeleteParams, ListParams, Patch, PatchParams, PostParams};
+use kube::api::{DeleteParams, ListParams, PostParams};
 use serde::Serialize;
+use serde_json::{json, Map, Value};
 
 use crate::client::K8sClient;
 use crate::extract;
+use crate::policy::{PatchKind, Source};
+use crate::resources::job::{job_properties, job_spec_from_args};
+use crate::resources::podspec::{self, WorkloadKind};
 
 fn api(client: &K8sClient, ns: &str) -> Result<kube::Api<CronJob>, String> {
     if !client.is_namespace_allowed(ns) {
@@ -46,40 +49,19 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
         }),
         serde_json::json!({
             "name": "create_cronjob",
-            "description": "Create a Kubernetes CronJob.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "namespace": { "type": "string", "description": "Kubernetes namespace" },
-                    "name": { "type": "string", "description": "CronJob name" },
-                    "schedule": { "type": "string", "description": "Cron schedule expression (e.g. '*/5 * * * *')" },
-                    "image": { "type": "string", "description": "Container image" },
-                    "command": {
-                        "type": "array",
-                        "items": { "type": "string" },
-                        "description": "Command to run in the container (optional)"
-                    },
-                    "restart_policy": { "type": "string", "description": "Restart policy (default: OnFailure)" }
-                },
-                "required": ["namespace", "name", "schedule", "image"],
-                "additionalProperties": false
-            }
+            "description": format!(
+                "Create a Kubernetes CronJob (restart_policy defaults to OnFailure). CronJob settings: schedule, time_zone, concurrency_policy, suspend, starting_deadline_seconds, successful_jobs_history_limit, failed_jobs_history_limit; job template settings as in create_job (backoff_limit, ttl_seconds_after_finished, completions, parallelism, completion_mode, pod_failure_policy, …). {}",
+                podspec::CREATE_DESCRIPTION
+            ),
+            "inputSchema": create_cronjob_schema()
         }),
         serde_json::json!({
             "name": "update_cronjob",
-            "description": "Update (patch) an existing Kubernetes CronJob. Supports updating schedule, suspend, and image.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "namespace": { "type": "string", "description": "Kubernetes namespace" },
-                    "name": { "type": "string", "description": "CronJob name" },
-                    "schedule": { "type": "string", "description": "New cron schedule expression" },
-                    "suspend": { "type": "boolean", "description": "Whether to suspend the cronjob" },
-                    "image": { "type": "string", "description": "New container image" }
-                },
-                "required": ["namespace", "name"],
-                "additionalProperties": false
-            }
+            "description": format!(
+                "Update (patch) an existing CronJob: schedule, suspend, time_zone, concurrency_policy, history limits, job settings, and the pod template. {}",
+                podspec::UPDATE_DESCRIPTION
+            ),
+            "inputSchema": update_cronjob_schema()
         }),
         serde_json::json!({
             "name": "delete_cronjob",
@@ -95,6 +77,48 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
             }
         }),
     ]
+}
+
+fn cronjob_properties() -> Value {
+    let mut props = job_properties(false);
+    let extra = json!({
+        "schedule": { "type": "string", "description": "Cron schedule expression (e.g. '*/5 * * * *')" },
+        "time_zone": { "type": "string", "description": "IANA time zone for the schedule (e.g. 'Europe/Berlin'; default: the controller's)" },
+        "concurrency_policy": { "type": "string", "enum": ["Allow", "Forbid", "Replace"], "description": "What to do when the previous run is still active (default: Allow)" },
+        "suspend": { "type": "boolean", "description": "Suspend future runs" },
+        "starting_deadline_seconds": { "type": "integer", "description": "Skip a run that can't start within this many seconds of its schedule" },
+        "successful_jobs_history_limit": { "type": "integer", "description": "Finished jobs to keep (default: 3)" },
+        "failed_jobs_history_limit": { "type": "integer", "description": "Failed jobs to keep (default: 1)" }
+    });
+    if let (Some(p), Some(e)) = (props.as_object_mut(), extra.as_object()) {
+        p.extend(e.clone());
+    }
+    props
+}
+
+fn create_cronjob_schema() -> Value {
+    podspec::workload_schema(
+        WorkloadKind::CronJob,
+        cronjob_properties(),
+        &["namespace", "name", "schedule"],
+    )
+}
+
+fn update_cronjob_schema() -> Value {
+    podspec::workload_update_schema(WorkloadKind::CronJob, cronjob_properties())
+}
+
+fn check_concurrency(args: &Value) -> Result<(), String> {
+    if let Some(p) = args.get("concurrency_policy").and_then(Value::as_str) {
+        podspec::check_enum(p, &["Allow", "Forbid", "Replace"], "concurrency_policy")?;
+    }
+    Ok(())
+}
+
+fn opt_i32(args: &Value, key: &str) -> Option<i32> {
+    args.get(key)
+        .and_then(Value::as_i64)
+        .and_then(|n| i32::try_from(n).ok())
 }
 
 pub async fn handle_tool(
@@ -201,59 +225,43 @@ async fn get_cronjob(client: &K8sClient, args: &serde_json::Value) -> Result<Str
 }
 
 async fn create_cronjob(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
+    let args = podspec::normalize_args(args, &create_cronjob_schema())?;
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
     let schedule = args["schedule"].as_str().ok_or("schedule is required")?;
-    let image = args["image"].as_str().ok_or("image is required")?;
-    let command: Option<Vec<String>> = args
-        .get("command")
-        .and_then(|v| serde_json::from_value(v.clone()).ok());
-    let restart_policy = args["restart_policy"]
-        .as_str()
-        .unwrap_or("OnFailure")
-        .to_string();
+    check_concurrency(&args)?;
+    let cj_api = api(client, ns)?;
 
-    let mut labels = BTreeMap::new();
-    labels.insert("app".to_string(), name.to_string());
-    labels.insert(
-        "app.kubernetes.io/managed-by".to_string(),
-        "mcp-k8s".to_string(),
-    );
-
+    let (meta, template) =
+        podspec::build_template(&args, name, WorkloadKind::CronJob, client.policy())?;
     let cj = CronJob {
         metadata: ObjectMeta {
             name: Some(name.to_string()),
             namespace: Some(ns.to_string()),
-            labels: Some(labels),
+            labels: Some(meta.labels.clone()),
+            annotations: meta.annotations,
             ..Default::default()
         },
         spec: Some(CronJobSpec {
             schedule: schedule.to_string(),
+            time_zone: args["time_zone"].as_str().map(str::to_string),
+            concurrency_policy: args["concurrency_policy"].as_str().map(str::to_string),
+            suspend: args["suspend"].as_bool(),
+            starting_deadline_seconds: args["starting_deadline_seconds"].as_i64(),
+            successful_jobs_history_limit: opt_i32(&args, "successful_jobs_history_limit"),
+            failed_jobs_history_limit: opt_i32(&args, "failed_jobs_history_limit"),
             job_template: JobTemplateSpec {
-                spec: Some(JobSpec {
-                    template: PodTemplateSpec {
-                        spec: Some(PodSpec {
-                            containers: vec![Container {
-                                name: name.to_string(),
-                                image: Some(image.to_string()),
-                                command,
-                                ..Default::default()
-                            }],
-                            restart_policy: Some(restart_policy),
-                            ..Default::default()
-                        }),
-                        ..Default::default()
-                    },
+                metadata: Some(ObjectMeta {
+                    labels: Some(meta.labels),
                     ..Default::default()
                 }),
-                ..Default::default()
+                spec: Some(job_spec_from_args(&args, template, None, false)?),
             },
-            ..Default::default()
         }),
         ..Default::default()
     };
+    crate::policy::check_typed(client, &cj)?;
 
-    let cj_api = api(client, ns)?;
     let created = cj_api
         .create(&PostParams::default(), &cj)
         .await
@@ -264,53 +272,70 @@ async fn create_cronjob(client: &K8sClient, args: &serde_json::Value) -> Result<
 }
 
 async fn update_cronjob(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
+    let args = podspec::normalize_args(args, &update_cronjob_schema())?;
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
-
-    let schedule = args["schedule"].as_str();
-    let suspend = args["suspend"].as_bool();
-    let image = args["image"].as_str();
-
-    let mut spec_patch = serde_json::Map::new();
-
-    if let Some(schedule) = schedule {
-        spec_patch.insert(
-            "schedule".to_string(),
-            serde_json::Value::String(schedule.to_string()),
-        );
-    }
-
-    if let Some(suspend) = suspend {
-        spec_patch.insert("suspend".to_string(), serde_json::Value::Bool(suspend));
-    }
-
-    if let Some(image) = image {
-        spec_patch.insert(
-            "jobTemplate".to_string(),
-            serde_json::json!({
-                "spec": {
-                    "template": {
-                        "spec": {
-                            "containers": [{
-                                "name": name,
-                                "image": image
-                            }]
-                        }
-                    }
-                }
-            }),
-        );
-    }
-
-    let patch = serde_json::json!({
-        "spec": spec_patch
-    });
-
+    check_concurrency(&args)?;
     let cj_api = api(client, ns)?;
-    let patched = cj_api
-        .patch(name, &PatchParams::default(), &Patch::Strategic(patch))
-        .await
-        .map_err(|e| e.to_string())?;
+
+    let target = if podspec::touches_container(&args) {
+        let current = cj_api.get(name).await.map_err(|e| e.to_string())?;
+        let pod_spec = current
+            .spec
+            .as_ref()
+            .and_then(|s| s.job_template.spec.as_ref())
+            .and_then(|j| j.template.spec.as_ref());
+        Some(podspec::resolve_container(pod_spec, args["container"].as_str(), name)?)
+    } else {
+        None
+    };
+
+    let mut spec = Map::new();
+    for (arg, field) in [
+        ("schedule", "schedule"),
+        ("time_zone", "timeZone"),
+        ("concurrency_policy", "concurrencyPolicy"),
+        ("suspend", "suspend"),
+        ("starting_deadline_seconds", "startingDeadlineSeconds"),
+        ("successful_jobs_history_limit", "successfulJobsHistoryLimit"),
+        ("failed_jobs_history_limit", "failedJobsHistoryLimit"),
+    ] {
+        if let Some(v) = args.get(arg) {
+            spec.insert(field.to_string(), v.clone());
+        }
+    }
+
+    let mut job_spec = Map::new();
+    let job_fields = job_spec_from_args(&args, Default::default(), None, false)?;
+    if let Some(o) = serde_json::to_value(&job_fields)
+        .map_err(|e| e.to_string())?
+        .as_object()
+    {
+        for (k, v) in o {
+            if k != "template" {
+                job_spec.insert(k.clone(), v.clone());
+            }
+        }
+    }
+    if let Some(template) = podspec::build_template_patch(&args, target.as_deref())? {
+        job_spec.insert("template".to_string(), template);
+    }
+    if !job_spec.is_empty() {
+        spec.insert("jobTemplate".to_string(), json!({ "spec": job_spec }));
+    }
+    if spec.is_empty() {
+        return Err("Nothing to update: give at least one CronJob, job or pod template field (e.g. schedule, suspend, image)".to_string());
+    }
+
+    let patched = crate::policy::patch_checked(
+        client,
+        &cj_api,
+        name,
+        json!({ "spec": spec }),
+        PatchKind::Strategic,
+        Source::Typed,
+    )
+    .await?;
 
     let detail = cronjob_detail(&patched);
     serde_json::to_string_pretty(&detail).map_err(|e| e.to_string())

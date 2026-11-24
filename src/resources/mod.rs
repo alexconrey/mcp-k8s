@@ -29,6 +29,7 @@ pub mod networkpolicy;
 pub mod node;
 pub mod pdb;
 pub mod pod;
+pub mod podspec;
 pub mod priorityclass;
 pub mod pv;
 pub mod pvc;

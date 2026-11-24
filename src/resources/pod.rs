@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use k8s_openapi::api::core::v1::{Container, Pod, PodSpec};
+use k8s_openapi::api::core::v1::Pod;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use kube::api::{AttachParams, DeleteParams, EvictParams, ListParams, PostParams};
 use serde::Serialize;
@@ -8,6 +8,7 @@ use tokio::io::AsyncReadExt;
 
 use crate::client::K8sClient;
 use crate::extract::pod_summary;
+use crate::resources::podspec::{self, WorkloadKind};
 use crate::types::PodSummary;
 
 fn api(client: &K8sClient, ns: &str) -> Result<kube::Api<Pod>, String> {
@@ -117,19 +118,11 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
         }),
         serde_json::json!({
             "name": "create_pod",
-            "description": "Create a standalone pod. Useful for debugging, one-shot tasks, or running a quick container.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "namespace": { "type": "string", "description": "Kubernetes namespace" },
-                    "name": { "type": "string", "description": "Pod name" },
-                    "image": { "type": "string", "description": "Container image" },
-                    "command": { "type": "array", "items": { "type": "string" }, "description": "Command to run (optional)" },
-                    "restart_policy": { "type": "string", "description": "Restart policy (default: Never)", "enum": ["Never", "Always", "OnFailure"] }
-                },
-                "required": ["namespace", "name", "image"],
-                "additionalProperties": false
-            }
+            "description": format!(
+                "Create a standalone pod: debugging, one-shot tasks, or a quick container (restart_policy defaults to Never). {}",
+                podspec::CREATE_DESCRIPTION
+            ),
+            "inputSchema": create_pod_schema()
         }),
         serde_json::json!({
             "name": "delete_pod",
@@ -191,6 +184,14 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
     ]
 }
 
+fn create_pod_schema() -> serde_json::Value {
+    podspec::workload_schema(
+        WorkloadKind::Pod,
+        serde_json::json!({}),
+        &["namespace", "name"],
+    )
+}
+
 pub async fn handle_tool(
     client: &K8sClient,
     name: &str,
@@ -242,45 +243,26 @@ async fn get_pod(client: &K8sClient, args: &serde_json::Value) -> Result<String,
 }
 
 async fn create_pod(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
+    let args = podspec::normalize_args(args, &create_pod_schema())?;
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
-    let image = args["image"].as_str().ok_or("image is required")?;
-    let command: Option<Vec<String>> = args
-        .get("command")
-        .and_then(|v| serde_json::from_value(v.clone()).ok());
-    let restart_policy = args["restart_policy"]
-        .as_str()
-        .unwrap_or("Never")
-        .to_string();
+    let pod_api = api(client, ns)?;
 
-    let mut labels = BTreeMap::new();
-    labels.insert("app".to_string(), name.to_string());
-    labels.insert(
-        "app.kubernetes.io/managed-by".to_string(),
-        "mcp-k8s".to_string(),
-    );
-
+    let (meta, template) =
+        podspec::build_template(&args, name, WorkloadKind::Pod, client.policy())?;
     let pod = Pod {
         metadata: ObjectMeta {
             name: Some(name.to_string()),
             namespace: Some(ns.to_string()),
-            labels: Some(labels),
+            labels: Some(meta.labels),
+            annotations: meta.annotations,
             ..Default::default()
         },
-        spec: Some(PodSpec {
-            containers: vec![Container {
-                name: name.to_string(),
-                image: Some(image.to_string()),
-                command,
-                ..Default::default()
-            }],
-            restart_policy: Some(restart_policy),
-            ..Default::default()
-        }),
+        spec: template.spec,
         ..Default::default()
     };
+    crate::policy::check_typed(client, &pod)?;
 
-    let pod_api = api(client, ns)?;
     let created = pod_api
         .create(&PostParams::default(), &pod)
         .await
