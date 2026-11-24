@@ -1,4 +1,5 @@
-FROM rust:1.89 AS builder
+# kube 5 requires rustc >= 1.95.
+FROM rust:1.95 AS builder
 
 RUN rustup target add x86_64-unknown-linux-musl
 RUN apt-get update && apt-get install -y musl-tools && rm -rf /var/lib/apt/lists/*

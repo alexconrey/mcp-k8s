@@ -1,4 +1,4 @@
-use k8s_openapi::api::certificates::v1alpha1::ClusterTrustBundle;
+use k8s_openapi::api::certificates::v1beta1::ClusterTrustBundle;
 use kube::api::ListParams;
 use serde::Serialize;
 
@@ -28,7 +28,7 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
     vec![
         serde_json::json!({
             "name": "list_clustertrustbundles",
-            "description": "List all ClusterTrustBundles. Returns name, signer_name, and created_at.",
+            "description": "List all ClusterTrustBundles (certificates.k8s.io/v1beta1). Returns name, signer_name, and created_at.",
             "inputSchema": {
                 "type": "object",
                 "properties": {},
@@ -38,7 +38,7 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
         }),
         serde_json::json!({
             "name": "get_clustertrustbundle",
-            "description": "Get a ClusterTrustBundle by name. Returns name, signer_name, trust_bundle (PEM cert data), labels, and annotations.",
+            "description": "Get a ClusterTrustBundle by name (certificates.k8s.io/v1beta1). Returns name, signer_name, trust_bundle (PEM cert data), labels, and annotations.",
             "inputSchema": {
                 "type": "object",
                 "properties": {

@@ -79,6 +79,8 @@ src/
 
 The library crate can be embedded in other applications. The [deckwatch](https://github.com/alexconrey/deckwatch) project uses `mcp_k8s` as a dependency for shared Kubernetes tool implementations.
 
+Library consumers depend with `default-features = false` and choose the k8s-openapi version feature in their own binary, e.g. `k8s-openapi = { version = "0.29", features = ["v1_33"] }`. The library doesn't enable one, because k8s-openapi allows only one `v1_*` feature per build.
+
 ## MCP Protocol
 
 mcp-k8s implements [MCP specification version 2025-11-25](https://spec.modelcontextprotocol.io/) using JSON-RPC 2.0. It handles the following methods:

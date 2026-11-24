@@ -225,6 +225,21 @@ See [RBAC & Auth](./rbac.md) for full parameter details.
 
 See [Cluster Resources](./cluster.md) for full parameter details.
 
+### Alpha and beta APIs
+
+These tools cover newer API groups. They use the newest API version in the Kubernetes 1.33 types (k8s-openapi `v1_33`) that mcp-k8s compiles against. Clusters serve alpha APIs, and beta APIs added since Kubernetes 1.24, only when they are enabled with `--runtime-config`; otherwise the tool returns the API server's 404.
+
+| Tools | API version |
+|-------|-------------|
+| `list_ipaddresses`, `get_ipaddress`, `list_servicecidrs`, `get_servicecidr` | `networking.k8s.io/v1` (GA since 1.33, always served) |
+| `list_clustertrustbundles`, `get_clustertrustbundle` | `certificates.k8s.io/v1beta1` |
+| `list_leasecandidates`, `get_leasecandidate` | `coordination.k8s.io/v1beta1` |
+| `list_resourceclaims`, `get_resourceclaim`, `list_resourceclaimtemplates`, `list_resourceslices`, `list_deviceclasses`, `get_deviceclass` | `resource.k8s.io/v1beta2` (clusters 1.34+ serve GA `v1` by default instead) |
+| `list_volumeattributesclasses`, `get_volumeattributesclass` | `storage.k8s.io/v1beta1` (clusters 1.34+ serve GA `v1` by default instead) |
+| `list_mutatingadmissionpolicies`, `get_mutatingadmissionpolicy`, `list_mutatingadmissionpolicybindings`, `get_mutatingadmissionpolicybinding` | `admissionregistration.k8s.io/v1alpha1` |
+| `list_storageversions`, `get_storageversion` | `internal.apiserver.k8s.io/v1alpha1` |
+| `list_storageversionmigrations`, `get_storageversionmigration` | `storagemigration.k8s.io/v1alpha1` (removed in Kubernetes 1.35) |
+
 ### Cluster Management (3 tools)
 
 | Tool | Action | Description |

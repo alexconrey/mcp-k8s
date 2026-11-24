@@ -25,14 +25,32 @@ jobs:
         run: cargo fmt --check
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings
+      # k8s-openapi allows exactly one `v1_*` version feature per build, so the
+      # final binary picks it (ours through the `server` feature, deckwatch in
+      # its own Cargo.toml). The library's own dependency must not enable one.
+      - name: Library doesn't pick a k8s-openapi version
+        run: |
+          features=$(cargo metadata --no-deps --format-version 1 | jq -c '
+            [.packages[] | select(.name == "mcp-k8s") | .dependencies[]
+             | select(.name == "k8s-openapi" and .kind == null) | .features[]
+             | select(test("^(v1_[0-9]+|earliest|latest)$"))]')
+          if [ "$features" != "[]" ]; then
+            echo "::error file=Cargo.toml::the k8s-openapi dependency enables $features; only the server feature and [dev-dependencies] may pick a version"
+            exit 1
+          fi
       # Library consumers (e.g. deckwatch) build without the `server` feature;
-      # make sure that configuration stays warning-free.
+      # make sure that configuration stays warning-free. Without `server`
+      # nothing picks a k8s-openapi version, so pick the one a consumer would.
       - name: Clippy (library only, no default features)
-        run: cargo clippy --lib --no-default-features -- -D warnings
+        run: cargo clippy --lib --no-default-features --features k8s-openapi/v1_33 -- -D warnings
       - name: Build
         run: cargo build --release
       - name: Test
         run: cargo test
+      # The same tests without `server`; the k8s-openapi dev-dependency
+      # supplies the version feature.
+      - name: Test (library only, no default features)
+        run: cargo test --no-default-features
 
   docker:
     runs-on: ubuntu-latest

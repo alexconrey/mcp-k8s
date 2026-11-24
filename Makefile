@@ -1,4 +1,4 @@
-.PHONY: build test fmt clippy check docker docs docs-serve deploy clean run run-http lint setup deny hooks
+.PHONY: build test test-lib fmt clippy clippy-lib check docker docs docs-serve deploy clean run run-http lint setup deny hooks
 
 # Build release binary
 build:
@@ -8,6 +8,10 @@ build:
 test:
 	cargo test
 
+# Run the tests without the `server` feature, as library consumers build it
+test-lib:
+	cargo test --no-default-features
+
 # Format code
 fmt:
 	cargo fmt
@@ -16,8 +20,13 @@ fmt:
 clippy:
 	cargo clippy --all-targets -- -D warnings
 
+# Lint the library-only build (what deckwatch compiles). Without `server`
+# nothing picks a k8s-openapi version feature, so pick the binary's.
+clippy-lib:
+	cargo clippy --lib --no-default-features --features k8s-openapi/v1_33 -- -D warnings
+
 # Run all checks (fmt, clippy, test) — same as CI
-check: fmt clippy test
+check: fmt clippy clippy-lib test test-lib
 
 # Build Docker image
 docker:
