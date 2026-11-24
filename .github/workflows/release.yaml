@@ -36,9 +36,52 @@ jobs:
           fi
           exit $fail
 
+  # Publish only a commit that passed CI on main. Release tags go on merge
+  # commits of main, whose push-triggered CI run is checked here (waiting for it
+  # if it's still going). Warn-only CI legs (deny advisories, semver) don't fail
+  # the run, so they don't block a release.
+  ci-passed:
+    name: CI passed on the tagged commit
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Wait for the CI run on main for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          start=$(date +%s)
+          while :; do
+            elapsed=$(( $(date +%s) - start ))
+            run=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yaml/runs?head_sha=$GITHUB_SHA&event=push&branch=main&per_page=1" \
+              --jq '.workflow_runs[0] // empty | "\(.status) \(.conclusion) \(.html_url)"')
+            if [ -z "$run" ]; then
+              # The run appears seconds after the merge. If there's still none
+              # after 5 minutes, the tag isn't on a commit that went through main.
+              if [ "$elapsed" -ge 300 ]; then
+                echo "::error::no CI run on main for $GITHUB_SHA; tag a merge commit of main"
+                exit 1
+              fi
+            else
+              read -r status conclusion url <<< "$run"
+              echo "CI $status/${conclusion:-pending}: $url"
+              if [ "$status" = completed ]; then
+                if [ "$conclusion" = success ]; then exit 0; fi
+                echo "::error::CI on $GITHUB_SHA concluded '$conclusion'; fix main and tag again"
+                exit 1
+              fi
+            fi
+            if [ "$elapsed" -ge 2700 ]; then
+              echo "::error::CI on $GITHUB_SHA didn't finish within 45 minutes"
+              exit 1
+            fi
+            sleep 30
+          done
+
   docker:
     runs-on: ubuntu-latest
-    needs: verify-version
+    needs: [verify-version, ci-passed]
     permissions:
       contents: read
       packages: write
@@ -49,16 +92,28 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      # vX.Y.Z (immutable by convention), vX.Y (moves with patch releases) and
+      # latest (the newest release). Pushes to main publish :main and :<sha>,
+      # never :latest, so :latest always means a release.
+      - name: Image tags
+        id: tags
+        run: |
+          minor=$(echo "$GITHUB_REF_NAME" | sed -E 's/^(v[0-9]+\.[0-9]+)\..*/\1/')
+          {
+            echo "tags<<EOF"
+            echo "ghcr.io/$GITHUB_REPOSITORY:$GITHUB_REF_NAME"
+            echo "ghcr.io/$GITHUB_REPOSITORY:$minor"
+            echo "ghcr.io/$GITHUB_REPOSITORY:latest"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           push: true
-          tags: |
-            ghcr.io/${{ github.repository }}:${{ github.ref_name }}
-            ghcr.io/${{ github.repository }}:latest
+          tags: ${{ steps.tags.outputs.tags }}
 
   helm:
     runs-on: ubuntu-latest
-    needs: verify-version
+    needs: [verify-version, ci-passed]
     permissions:
       contents: read
       packages: write
@@ -98,28 +153,24 @@ jobs:
           OWNER: ${{ github.repository_owner }}
         run: |
           VERSION="${TAG#v}"
-          PREV_TAG=$(git tag --sort=-v:refname | grep '^v' | sed -n '2p')
-
-          if [ -z "$PREV_TAG" ]; then
-            COMMITS=$(git log --pretty=format:"- %s (%h)" HEAD)
-          else
-            COMMITS=$(git log --pretty=format:"- %s (%h)" "${PREV_TAG}..HEAD")
-          fi
-
-          TOOL_COUNT=$(grep -r '"name":' src/mcp/definitions.rs src/resources/*.rs 2>/dev/null | grep -c 'inputSchema' || echo "200+")
+          # This release's CHANGELOG section (verify-version checked it exists).
+          CHANGES=$(awk -v hdr="## [$VERSION]" '
+            index($0, hdr) == 1 { found = 1; next }
+            found && /^## \[/ { exit }
+            found { print }' CHANGELOG.md)
+          MINOR="${TAG%.*}"
 
           {
-            echo "## What's Changed"
-            echo ""
-            echo "${COMMITS}"
+            echo "${CHANGES}"
             echo ""
             echo "## Artifacts"
             echo ""
             echo "| Artifact | Location |"
             echo "|----------|----------|"
-            echo "| Docker image | \`ghcr.io/${REPO}:${TAG}\` |"
+            echo "| Docker image | \`ghcr.io/${REPO}:${TAG}\` (also \`:${MINOR}\` and \`:latest\`) |"
             echo "| Helm chart | \`oci://ghcr.io/${OWNER}/charts/mcp-k8s:${VERSION}\` |"
             echo "| Documentation | https://${OWNER}.github.io/mcp-k8s/${TAG}/ |"
+            echo "| Library (Cargo) | \`mcp-k8s = { git = \"https://github.com/${REPO}.git\", tag = \"${TAG}\", default-features = false }\` |"
             echo ""
             echo "## Quick Start"
             echo ""
@@ -133,11 +184,8 @@ jobs:
             echo "# Claude Code (stdio)"
             echo "claude mcp add k8s -- /path/to/mcp-k8s"
             echo "\`\`\`"
-            echo ""
-            echo "## Stats"
-            echo ""
-            echo "- **${TOOL_COUNT}** MCP tools"
           } > /tmp/release_notes.md
+          cat /tmp/release_notes.md
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4

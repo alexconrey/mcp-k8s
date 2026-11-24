@@ -17,7 +17,7 @@ spec:
       serviceAccountName: {{ include "mcp-k8s.serviceAccountName" . }}
       containers:
         - name: mcp-k8s
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default (printf "v%s" .Chart.AppVersion) }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command:
             - /mcp-k8s

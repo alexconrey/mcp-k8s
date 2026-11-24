@@ -69,6 +69,13 @@ release workflow refuses a tag that doesn't match `Cargo.toml`,
   `headersSecret`, `filter`, `extraEnv`).
 
 ### Changed
+- **Image tags:** pushes to `main` publish `:main` and `:<sha>` and no longer
+  move `:latest`. Releases publish `:vX.Y.Z`, `:vX.Y` and `:latest`, so
+  `:latest` is always the newest release. If you followed `main` through
+  `:latest`, switch to `:main`.
+- GitHub Release notes now carry the version's CHANGELOG section, plus a
+  Cargo snippet for pinning the tag. They no longer have a raw commit log or
+  the broken tool count.
 - **Log output.** Every request ends with an `INFO` line, `tool call
   finished` or `request finished` (outcome, `duration_ms`, decision, target),
   on target `mcp_k8s::telemetry`; `processing request` moved to `DEBUG`. The
@@ -90,8 +97,14 @@ release workflow refuses a tag that doesn't match `Cargo.toml`,
 ### Fixed
 - In stdio mode, logs went to stdout and mixed with the JSON-RPC stream. They
   go to stderr now; HTTP mode still logs to stdout.
+- The Helm chart defaulted `image.tag` to `latest`, which every push to `main`
+  overwrote, so installing a chart release ran an unreleased `main` build.
+  `image.tag` now defaults to `v<appVersion>`, the image released with the
+  chart.
 
 ### Internal
+- `release.yaml` publishes only after CI passed on the tagged commit (new
+  `ci-passed` job).
 - CI hardening:
   - `rust-toolchain.toml` pins the toolchain, and CI fails if the Dockerfile's
     `rust:` tag drifts from it;
@@ -111,6 +124,13 @@ release workflow refuses a tag that doesn't match `Cargo.toml`,
   `opentelemetry-appender-tracing` (0.33), `tracing-opentelemetry` (0.34) and
   `reqwest` 0.13 (`blocking`, `rustls-no-provider`). The library-only build
   (`--no-default-features`) has no new dependencies.
+- CI runs the k3s integration tests on every PR (`k3s` job), and
+  `cargo semver-checks` of the library API against the last release (`semver`
+  job, warn-only).
+- The k3s tests wait for the API server to serve the `default` namespace and
+  ServiceAccount before running, which fixes intermittent failures under load.
+- The `cluster.rs` unit tests use a mock client and no longer need a
+  kubeconfig, so `cargo test -- --ignored` can't reach a real cluster.
 
 ### Deprecated (announced)
 - The Prometheus metrics `mcp_k8s_tool_calls_total`,
