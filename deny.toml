@@ -1,6 +1,16 @@
+# cargo-deny configuration. CI runs `cargo deny check` on every PR and push to
+# main (ci.yaml `deny` job), and `audit.yaml` runs the advisory check weekly.
+# Locally: `make deny`.
+
 [advisories]
 db-path = "~/.cargo/advisory-db"
 db-urls = ["https://github.com/rustsec/advisory-db"]
+# Vulnerability and unsound advisories always fail. Yanked crates fail too:
+# `cargo update -p <crate>` usually fixes them.
+yanked = "deny"
+# Ignore an advisory only with a reason and a link to the issue tracking the
+# fix, e.g. { id = "RUSTSEC-YYYY-NNNN", reason = "..." }.
+ignore = []
 
 [licenses]
 allow = [
@@ -16,15 +26,19 @@ allow = [
     "BSL-1.0",
     "CC0-1.0",
     "MPL-2.0",
+    # Mozilla CA root data in webpki-root-certs (via kube-client ->
+    # rustls-platform-verifier).
+    "CDLA-Permissive-2.0",
 ]
 confidence-threshold = 0.8
 
 [bans]
 multiple-versions = "warn"
-wildcards = "allow"
+wildcards = "deny"
 
 [sources]
-unknown-registry = "warn"
-unknown-git = "warn"
+# Only crates.io. A git dependency must be added to `allow-git` deliberately.
+unknown-registry = "deny"
+unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 allow-git = []
