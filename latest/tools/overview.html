@@ -36,7 +36,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-4e6edd76.js";
+            window.path_to_searchindex_js = "../searchindex-64b8b2b9.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-caea04ac.js"></script>
@@ -430,25 +430,6 @@
 </table>
 </div>
 <p>See <a href="./cluster.html">Cluster Resources</a> for full parameter details.</p>
-<h3 id="alpha-and-beta-apis"><a class="header" href="#alpha-and-beta-apis">Alpha and beta APIs</a></h3>
-<p>These tools cover newer API groups. They use the newest API version in the Kubernetes 1.33 types (k8s-openapi <code>v1_33</code>) that mcp-k8s compiles against. Clusters serve alpha APIs, and beta APIs added since Kubernetes 1.24, only when they are enabled with <code>--runtime-config</code>; otherwise the tool returns the API server’s 404.</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Tools</th><th>API version</th></tr>
-</thead>
-<tbody>
-<tr><td><code>list_ipaddresses</code>, <code>get_ipaddress</code>, <code>list_servicecidrs</code>, <code>get_servicecidr</code></td><td><code>networking.k8s.io/v1</code> (GA since 1.33, always served)</td></tr>
-<tr><td><code>list_clustertrustbundles</code>, <code>get_clustertrustbundle</code></td><td><code>certificates.k8s.io/v1beta1</code></td></tr>
-<tr><td><code>list_leasecandidates</code>, <code>get_leasecandidate</code></td><td><code>coordination.k8s.io/v1beta1</code></td></tr>
-<tr><td><code>list_resourceclaims</code>, <code>get_resourceclaim</code>, <code>list_resourceclaimtemplates</code>, <code>list_resourceslices</code>, <code>list_deviceclasses</code>, <code>get_deviceclass</code></td><td><code>resource.k8s.io/v1beta2</code> (clusters 1.34+ serve GA <code>v1</code> by default instead)</td></tr>
-<tr><td><code>list_volumeattributesclasses</code>, <code>get_volumeattributesclass</code></td><td><code>storage.k8s.io/v1beta1</code> (clusters 1.34+ serve GA <code>v1</code> by default instead)</td></tr>
-<tr><td><code>list_mutatingadmissionpolicies</code>, <code>get_mutatingadmissionpolicy</code>, <code>list_mutatingadmissionpolicybindings</code>, <code>get_mutatingadmissionpolicybinding</code></td><td><code>admissionregistration.k8s.io/v1alpha1</code></td></tr>
-<tr><td><code>list_storageversions</code>, <code>get_storageversion</code></td><td><code>internal.apiserver.k8s.io/v1alpha1</code></td></tr>
-<tr><td><code>list_storageversionmigrations</code>, <code>get_storageversionmigration</code></td><td><code>storagemigration.k8s.io/v1alpha1</code> (removed in Kubernetes 1.35)</td></tr>
-</tbody>
-</table>
-</div>
 <h3 id="cluster-management-3-tools"><a class="header" href="#cluster-management-3-tools">Cluster Management (3 tools)</a></h3>
 <div class="table-wrapper">
 <table>

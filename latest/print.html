@@ -37,7 +37,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-4e6edd76.js";
+            window.path_to_searchindex_js = "searchindex-64b8b2b9.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-caea04ac.js"></script>
@@ -249,7 +249,6 @@
     └── ...              # 46 resource modules total
 </code></pre>
 <p>The library crate can be embedded in other applications. The <a href="https://github.com/alexconrey/deckwatch">deckwatch</a> project uses <code>mcp_k8s</code> as a dependency for shared Kubernetes tool implementations.</p>
-<p>Library consumers depend with <code>default-features = false</code> and choose the k8s-openapi version feature in their own binary, e.g. <code>k8s-openapi = { version = "0.29", features = ["v1_33"] }</code>. The library doesn’t enable one, because k8s-openapi allows only one <code>v1_*</code> feature per build.</p>
 <h2 id="mcp-protocol"><a class="header" href="#mcp-protocol">MCP Protocol</a></h2>
 <p>mcp-k8s implements <a href="https://spec.modelcontextprotocol.io/">MCP specification version 2025-11-25</a> using JSON-RPC 2.0. It handles the following methods:</p>
 <div class="table-wrapper">
@@ -282,12 +281,9 @@
 <h2 id="building-from-source"><a class="header" href="#building-from-source">Building from Source</a></h2>
 <h3 id="prerequisites"><a class="header" href="#prerequisites">Prerequisites</a></h3>
 <ul>
-<li><a href="https://rustup.rs/">Rust</a> 1.95 or newer (stable toolchain)</li>
-<li>Access to a Kubernetes <strong>1.33 or newer</strong> cluster (via <code>KUBECONFIG</code> or in-cluster config)</li>
+<li><a href="https://rustup.rs/">Rust</a> (stable toolchain)</li>
+<li>Access to a Kubernetes cluster (via <code>KUBECONFIG</code> or in-cluster config)</li>
 </ul>
-<p>mcp-k8s compiles against the Kubernetes 1.33 API types (k8s-openapi <code>v1_33</code>).
-Tools for alpha and beta APIs only work on clusters that enable those APIs; see
-<a href="#alpha-and-beta-apis">Alpha and beta APIs</a>.</p>
 <h3 id="build"><a class="header" href="#build">Build</a></h3>
 <pre><code class="language-bash">git clone https://github.com/alexconrey/mcp-k8s.git
 cd mcp-k8s
@@ -1077,25 +1073,6 @@ CACHE_TTL=60 mcp-k8s
 </table>
 </div>
 <p>See <a href="#cluster-resources">Cluster Resources</a> for full parameter details.</p>
-<h3 id="alpha-and-beta-apis"><a class="header" href="#alpha-and-beta-apis">Alpha and beta APIs</a></h3>
-<p>These tools cover newer API groups. They use the newest API version in the Kubernetes 1.33 types (k8s-openapi <code>v1_33</code>) that mcp-k8s compiles against. Clusters serve alpha APIs, and beta APIs added since Kubernetes 1.24, only when they are enabled with <code>--runtime-config</code>; otherwise the tool returns the API server’s 404.</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Tools</th><th>API version</th></tr>
-</thead>
-<tbody>
-<tr><td><code>list_ipaddresses</code>, <code>get_ipaddress</code>, <code>list_servicecidrs</code>, <code>get_servicecidr</code></td><td><code>networking.k8s.io/v1</code> (GA since 1.33, always served)</td></tr>
-<tr><td><code>list_clustertrustbundles</code>, <code>get_clustertrustbundle</code></td><td><code>certificates.k8s.io/v1beta1</code></td></tr>
-<tr><td><code>list_leasecandidates</code>, <code>get_leasecandidate</code></td><td><code>coordination.k8s.io/v1beta1</code></td></tr>
-<tr><td><code>list_resourceclaims</code>, <code>get_resourceclaim</code>, <code>list_resourceclaimtemplates</code>, <code>list_resourceslices</code>, <code>list_deviceclasses</code>, <code>get_deviceclass</code></td><td><code>resource.k8s.io/v1beta2</code> (clusters 1.34+ serve GA <code>v1</code> by default instead)</td></tr>
-<tr><td><code>list_volumeattributesclasses</code>, <code>get_volumeattributesclass</code></td><td><code>storage.k8s.io/v1beta1</code> (clusters 1.34+ serve GA <code>v1</code> by default instead)</td></tr>
-<tr><td><code>list_mutatingadmissionpolicies</code>, <code>get_mutatingadmissionpolicy</code>, <code>list_mutatingadmissionpolicybindings</code>, <code>get_mutatingadmissionpolicybinding</code></td><td><code>admissionregistration.k8s.io/v1alpha1</code></td></tr>
-<tr><td><code>list_storageversions</code>, <code>get_storageversion</code></td><td><code>internal.apiserver.k8s.io/v1alpha1</code></td></tr>
-<tr><td><code>list_storageversionmigrations</code>, <code>get_storageversionmigration</code></td><td><code>storagemigration.k8s.io/v1alpha1</code> (removed in Kubernetes 1.35)</td></tr>
-</tbody>
-</table>
-</div>
 <h3 id="cluster-management-3-tools"><a class="header" href="#cluster-management-3-tools">Cluster Management (3 tools)</a></h3>
 <div class="table-wrapper">
 <table>
@@ -3993,7 +3970,6 @@ scrape_configs:
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="helm-chart"><a class="header" href="#helm-chart">Helm Chart</a></h1>
 <p>mcp-k8s includes a Helm chart for deploying to Kubernetes clusters. The chart creates a Deployment, Service, ServiceAccount, and RBAC resources.</p>
-<p>The chart requires Kubernetes 1.33 or newer (<code>kubeVersion: "&gt;=1.33.0-0"</code>, which also accepts pre-release server versions such as EKS’s <code>v1.35.9-eks-…</code>).</p>
 <h2 id="installation-1"><a class="header" href="#installation-1">Installation</a></h2>
 <h3 id="add-the-chart-from-local-source"><a class="header" href="#add-the-chart-from-local-source">Add the chart (from local source)</a></h3>
 <pre><code class="language-bash">git clone https://github.com/alexconrey/mcp-k8s.git
