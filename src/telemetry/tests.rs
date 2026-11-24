@@ -518,12 +518,9 @@ fn server_span_names() {
         field(&spans[2].fields, semconv::MCP_METHOD_NAME),
         Some("evil/method")
     );
+    // Tool attributes are ToolCall's to record, once.
     let first = cap.span_fields(spans[0].span_id.unwrap());
-    assert_eq!(field(&first, semconv::GEN_AI_TOOL_NAME), Some("get_pod"));
-    assert_eq!(
-        field(&first, semconv::GEN_AI_OPERATION_NAME),
-        Some("execute_tool")
-    );
+    assert_eq!(field(&first, semconv::GEN_AI_TOOL_NAME), None);
     let last = cap.span_fields(spans[3].span_id.unwrap());
     assert_eq!(
         field(&last, semconv::GEN_AI_PROMPT_NAME),

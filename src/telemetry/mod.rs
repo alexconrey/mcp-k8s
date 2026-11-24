@@ -117,7 +117,12 @@ const MAX_NAME_LEN: usize = 128;
 /// [`ToolCall`] and [`crate::mcp::handle_tool`]) can `record` into it later.
 /// It sets `otel.kind = "server"`, `mcp.method.name`, and `otel.name` =
 /// `{method} {target}`, or `{method}` without a target. Methods outside the
-/// conventions' well-known list appear as `_OTHER` in the name.
+/// conventions' well-known list appear as `_OTHER` in the name. For
+/// `prompts/get` it records `gen_ai.prompt.name`; tool attributes are
+/// recorded by [`ToolCall`] when the call finishes.
+///
+/// Record each attribute at most once: the OpenTelemetry SDK keeps every
+/// value recorded for a key, so a second `record` exports a duplicate.
 ///
 /// - `target`: for `tools/call` the tool name, for `prompts/get` the prompt
 ///   name, otherwise `None`. Pass only names you serve: anything else is
@@ -173,17 +178,10 @@ pub fn server_span(method: &str, target: Option<&str>) -> Span {
         { semconv::MCP_K8S_TOOL_ARGUMENT_KEYS } = Empty,
         { semconv::MCP_K8S_TOOL_ARGUMENTS } = Empty,
     );
-    if let Some(t) = &target {
-        match method {
-            semconv::TOOLS_CALL => {
-                span.record(semconv::GEN_AI_TOOL_NAME, t.as_str());
-                span.record(semconv::GEN_AI_OPERATION_NAME, semconv::EXECUTE_TOOL);
-            }
-            "prompts/get" => {
-                span.record(semconv::GEN_AI_PROMPT_NAME, t.as_str());
-            }
-            _ => {}
-        }
+    // The tool attributes are left to ToolCall, which records each once: the
+    // OTel SDK keeps duplicate attribute keys rather than overwriting them.
+    if let (Some(t), "prompts/get") = (&target, method) {
+        span.record(semconv::GEN_AI_PROMPT_NAME, t.as_str());
     }
     span
 }

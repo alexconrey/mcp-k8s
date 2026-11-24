@@ -337,6 +337,7 @@ fn export_filter() -> EnvFilter {
         "hyper",
         "h2",
         "reqwest",
+        "rustls",
         "tower",
     ];
     for target in quiet {

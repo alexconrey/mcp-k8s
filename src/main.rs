@@ -744,10 +744,13 @@ async fn record_request(
         client.record(span);
     }
     if matches!(request.method.as_str(), "tools/call" | "resources/read") {
-        span.record(
-            semconv::K8S_CLUSTER_NAME,
-            manager.active_name().await.as_str(),
-        );
+        // A context name only means something with --contexts. Without it the
+        // cluster is called "default"; single-cluster deployments should set
+        // k8s.cluster.name as a resource attribute (OTEL_RESOURCE_ATTRIBUTES).
+        let name = manager.active_name().await;
+        if name != "default" || manager.list_clusters().await.len() > 1 {
+            span.record(semconv::K8S_CLUSTER_NAME, name.as_str());
+        }
     }
     if request.method == "resources/read" {
         if let Some(uri) = request.params["uri"].as_str() {
@@ -845,6 +848,10 @@ async fn handle_tool_call(
         };
         (result, reported)
     } else {
+        // On the span only (spans tolerate it), never in its name or the metric.
+        if !tool_name.is_empty() {
+            Span::current().record(semconv::GEN_AI_TOOL_NAME, clip(tool_name, 128).as_str());
+        }
         (body.await, false)
     };
 
@@ -1203,11 +1210,15 @@ mod tests {
             .collect()
     }
 
+    /// The span's attributes. Fails if a key was recorded twice: the SDK
+    /// exports every value, so a double `record` is a bug.
     fn attrs(span: &SpanData) -> HashMap<String, Value> {
-        span.attributes
-            .iter()
-            .map(|kv| (kv.key.to_string(), kv.value.clone()))
-            .collect()
+        let mut map = HashMap::new();
+        for kv in &span.attributes {
+            let dup = map.insert(kv.key.to_string(), kv.value.clone());
+            assert!(dup.is_none(), "{} recorded twice on {}", kv.key, span.name);
+        }
+        map
     }
 
     fn s(v: &str) -> Value {
@@ -1492,7 +1503,9 @@ mod tests {
 
         // An unknown tool never names the span or the metric.
         assert_eq!(spans[1].name, "tools/call");
-        assert_eq!(attrs(&spans[1])[semconv::ERROR_TYPE], s("unknown_tool"));
+        let unknown = attrs(&spans[1]);
+        assert_eq!(unknown[semconv::ERROR_TYPE], s("unknown_tool"));
+        assert_eq!(unknown[semconv::GEN_AI_TOOL_NAME], s("no-such-tool-1234"));
         assert_eq!(spans[2].name, "_OTHER");
         assert_eq!(attrs(&spans[2])[semconv::RPC_STATUS_CODE], s("-32601"));
         assert_eq!(
