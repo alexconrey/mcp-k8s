@@ -47,6 +47,63 @@ spec:
             - name: DISABLE_APPLY_MANIFEST
               value: "true"
             {{- end }}
+            {{- with .Values.otel }}
+            {{- if .endpoint }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .endpoint | quote }}
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: "http/protobuf"
+            {{- if .serviceName }}
+            - name: OTEL_SERVICE_NAME
+              value: {{ .serviceName | quote }}
+            {{- end }}
+            {{- $attrs := list }}
+            {{- if .clusterName }}
+            {{- $attrs = append $attrs (printf "k8s.cluster.name=%s" .clusterName) }}
+            {{- end }}
+            {{- range $key, $value := .resourceAttributes }}
+            {{- $attrs = append $attrs (printf "%s=%v" $key $value) }}
+            {{- end }}
+            {{- if $attrs }}
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: {{ join "," $attrs | quote }}
+            {{- end }}
+            {{- if .sampler }}
+            - name: OTEL_TRACES_SAMPLER
+              value: {{ .sampler | quote }}
+            {{- end }}
+            {{- if .samplerArg }}
+            - name: OTEL_TRACES_SAMPLER_ARG
+              value: {{ .samplerArg | quote }}
+            {{- end }}
+            {{- if not .traces }}
+            - name: OTEL_TRACES_EXPORTER
+              value: "none"
+            {{- end }}
+            {{- if not .metrics }}
+            - name: OTEL_METRICS_EXPORTER
+              value: "none"
+            {{- end }}
+            {{- if not .logs }}
+            - name: OTEL_LOGS_EXPORTER
+              value: "none"
+            {{- end }}
+            {{- if and .headersSecret.name .headersSecret.key }}
+            - name: OTEL_EXPORTER_OTLP_HEADERS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .headersSecret.name | quote }}
+                  key: {{ .headersSecret.key | quote }}
+            {{- end }}
+            {{- if .filter }}
+            - name: MCP_K8S_OTEL_FILTER
+              value: {{ .filter | quote }}
+            {{- end }}
+            {{- end }}
+            {{- with .extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+            {{- end }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

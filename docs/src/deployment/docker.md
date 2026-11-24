@@ -112,6 +112,20 @@ docker run --rm \
 
 Set `LOG_FORMAT=json` for structured JSON log output, suitable for log aggregation pipelines such as Loki, Datadog, or CloudWatch.
 
+### OpenTelemetry export
+
+```bash
+docker run --rm \
+  -v ~/.kube/config:/home/nonroot/.kube/config:ro \
+  -p 8080:8080 \
+  -e OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318 \
+  -e OTEL_RESOURCE_ATTRIBUTES=k8s.cluster.name=dev \
+  ghcr.io/alexconrey/mcp-k8s:latest
+```
+
+Exports traces, the `mcp.server.operation.duration` metric and logs over OTLP
+http/protobuf. See [Telemetry](../telemetry.md).
+
 ### Multi-cluster
 
 ```bash
@@ -139,7 +153,12 @@ docker run --rm \
 | `DISABLE_SECRET_DECODE` | Prevent secret value decoding | `false` |
 | `LOG_FORMAT` | Log output format (`text` or `json`) | `text` |
 | `KUBECONFIG` | Path to kubeconfig file | *(auto-detected)* |
-| `RUST_LOG` | Log level filter | `info` |
+| `RUST_LOG` | Console log level filter | `info` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP http/protobuf collector URL; export is off without it | *(none)* |
+| `OTEL_SERVICE_NAME` | `service.name` for exported telemetry | `mcp-k8s` |
+| `OTEL_RESOURCE_ATTRIBUTES` | Extra resource attributes | *(none)* |
+| `OTEL_TRACES_SAMPLER` | Trace sampler | `parentbased_always_on` |
+| `MCP_K8S_OTEL_FILTER` | Filter for exported spans and logs | `info` |
 
 ## Endpoints
 
@@ -173,6 +192,10 @@ Exposed metrics:
 | `mcp_requests_total` | Counter | `method` | Total MCP JSON-RPC requests by method |
 | `mcp_k8s_tool_calls_total` | Counter | `tool`, `status` | Total tool calls by tool name. `status` is `ok`, `error` or `denied` (blocked by permissions) |
 | `mcp_k8s_tool_call_duration_seconds` | Histogram | `tool` | Tool call duration in seconds |
+
+These names will be deprecated in a later release in favour of the
+OpenTelemetry metric `mcp.server.operation.duration`, exported over OTLP (see
+[Telemetry](../telemetry.md#old-metric-names)).
 
 ## Health Checks
 

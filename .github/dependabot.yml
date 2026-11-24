@@ -25,6 +25,14 @@ updates:
     commit-message:
       prefix: "chore(deps)"
     groups:
+      # The binary's OpenTelemetry crates move together: each
+      # tracing-opentelemetry release pins one opentelemetry 0.x minor, and
+      # it usually ships after the opentelemetry release. Listed before
+      # cargo-minor-patch, which would otherwise take these 0.x minors one by
+      # one. If CI fails, wait for tracing-opentelemetry to catch up.
+      otel-stack:
+        patterns: ["opentelemetry", "opentelemetry-*", "opentelemetry_*", "tracing-opentelemetry"]
+        update-types: [major, minor]
       cargo-minor-patch:
         update-types: [minor, patch]
       # kube and k8s-openapi are part of the public library API
