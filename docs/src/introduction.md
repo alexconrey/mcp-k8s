@@ -13,7 +13,7 @@ mcp-k8s bridges the gap between AI assistants and Kubernetes clusters. It transl
 - **SSE transport** -- `POST /mcp/sse` endpoint for Server-Sent Events streaming alongside the standard `POST /mcp` JSON-RPC endpoint.
 - **MCP resources** -- `resources/list` and `resources/read` support for direct resource access via `k8s://` URIs (pods, deployments, services, configmaps, secrets, statefulsets, daemonsets, jobs, cronjobs, ingresses, nodes, namespaces).
 - **MCP prompts** -- Built-in diagnostic prompts (`diagnose-pod`, `review-namespace-rbac`, `cluster-health-check`, `resource-usage-report`) that guide the AI through multi-step investigation workflows.
-- **Prometheus metrics** -- `GET /metrics` endpoint exposing `mcp_requests_total`, `mcp_tool_calls_total`, and `mcp_tool_call_duration_seconds` with per-tool labels.
+- **Prometheus metrics** -- `GET /metrics` endpoint exposing `mcp_requests_total`, `mcp_k8s_tool_calls_total`, and `mcp_k8s_tool_call_duration_seconds` with per-tool labels.
 - **Fine-grained permission controls** -- Global and per-resource flags to disable create, update, or delete operations. Read operations are always allowed. Disabled tools are filtered from `tools/list` responses and rejected in `tools/call`.
 - **Namespace allowlisting** -- Restrict tool operations to a set of allowed namespaces.
 - **Token-efficient responses** -- Focused summary and detail types strip irrelevant fields from Kubernetes API responses, reducing context window consumption.
