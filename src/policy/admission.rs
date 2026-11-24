@@ -138,7 +138,8 @@ pub(crate) async fn admit_manifest(
             Action::Create
         };
         let resource = resource_key(&group, &kind);
-        if !client.permissions().is_action_allowed(&resource, &action) {
+        if let Some(rule) = client.permissions().action_denied_by(&resource, &action) {
+            crate::telemetry::record_denial(&rule);
             let verb = if exists {
                 "update the existing"
             } else {

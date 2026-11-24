@@ -1178,3 +1178,54 @@ async fn canary_no_argument_value_reaches_telemetry() {
         failures.join("\n")
     );
 }
+
+#[tokio::test]
+async fn policy_rejection_through_handle_tool_is_a_denial() {
+    let cap = Capture::default();
+    let client = mock_client(ActionPermissions::default());
+    let result = crate::mcp::handle_tool(
+        &client,
+        "create_service",
+        &json!({"namespace": "prod", "name": "web", "type": "LoadBalancer", "port": 80}),
+    )
+    .with_subscriber(cap.dispatch())
+    .await;
+    assert!(matches!(result, Some(Err(_))), "{result:?}");
+    let spans = cap.new_spans();
+    assert_eq!(spans.len(), 1);
+    let f = cap.span_fields(spans[0].span_id.unwrap());
+    assert_eq!(field(&f, semconv::MCP_K8S_DECISION), Some("denied"));
+    assert_eq!(
+        field(&f, semconv::MCP_K8S_DENIED_RULE),
+        Some("policy:allow_load_balancer")
+    );
+    assert_eq!(field(&f, semconv::ERROR_TYPE), Some("permission_denied"));
+}
+
+#[tokio::test]
+async fn exec_is_denied_when_updates_are_disabled() {
+    let cap = Capture::default();
+    let client = mock_client(ActionPermissions::new(
+        false,
+        true,
+        false,
+        vec![],
+        true,
+        true,
+    ));
+    let result = crate::mcp::handle_tool(
+        &client,
+        "exec_pod",
+        &json!({"namespace": "prod", "name": "web-1", "command": ["id"]}),
+    )
+    .with_subscriber(cap.dispatch())
+    .await;
+    assert!(matches!(result, Some(Err(_))));
+    let f = cap.span_fields(cap.new_spans()[0].span_id.unwrap());
+    assert_eq!(field(&f, semconv::MCP_K8S_ACTION), Some("exec"));
+    assert_eq!(field(&f, semconv::MCP_K8S_DECISION), Some("denied"));
+    assert_eq!(
+        field(&f, semconv::MCP_K8S_DENIED_RULE),
+        Some("global:update")
+    );
+}

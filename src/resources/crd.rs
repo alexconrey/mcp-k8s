@@ -448,14 +448,15 @@ async fn update_custom_resource(
 
     let (api, scope) = get_dynamic_api_with_scope(client, group, version, kind, namespace).await?;
     if matches!(scope, Scope::Cluster) && !client.policy().manifest_kind_allowed(group, kind) {
-        return Err(crate::policy::PolicyError {
+        let error = crate::policy::PolicyError {
             violations: vec![crate::policy::kind_not_allowed(
                 group,
                 kind,
                 "cluster-scoped objects affect every namespace",
             )],
-        }
-        .to_string());
+        };
+        error.record_denial();
+        return Err(error.to_string());
     }
     // The dry-run result is checked like a raw manifest: the group must be
     // allowlisted and embedded pod specs must pass the pod rules.
