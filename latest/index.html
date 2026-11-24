@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-64b8b2b9.js";
+            window.path_to_searchindex_js = "searchindex-4e6edd76.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-caea04ac.js"></script>
@@ -251,6 +251,7 @@
     └── ...              # 46 resource modules total
 </code></pre>
 <p>The library crate can be embedded in other applications. The <a href="https://github.com/alexconrey/deckwatch">deckwatch</a> project uses <code>mcp_k8s</code> as a dependency for shared Kubernetes tool implementations.</p>
+<p>Library consumers depend with <code>default-features = false</code> and choose the k8s-openapi version feature in their own binary, e.g. <code>k8s-openapi = { version = "0.29", features = ["v1_33"] }</code>. The library doesn’t enable one, because k8s-openapi allows only one <code>v1_*</code> feature per build.</p>
 <h2 id="mcp-protocol"><a class="header" href="#mcp-protocol">MCP Protocol</a></h2>
 <p>mcp-k8s implements <a href="https://spec.modelcontextprotocol.io/">MCP specification version 2025-11-25</a> using JSON-RPC 2.0. It handles the following methods:</p>
 <div class="table-wrapper">
