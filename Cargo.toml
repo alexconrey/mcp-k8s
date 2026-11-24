@@ -1,6 +1,6 @@
 [package]
 name = "mcp-k8s"
-version = "0.5.0"
+version = "0.5.1"
 edition = "2021"
 description = "Kubernetes MCP (Model Context Protocol) server and library"
 license = "MIT"
