@@ -60,3 +60,37 @@ networkPolicy:
   allowedCIDRs: []
   # Restrict ingress to pods in specific namespaces
   allowedNamespaces: []
+
+# OpenTelemetry export of traces, the mcp.server.operation.duration metric and
+# logs, over OTLP http/protobuf. Off while `endpoint` is empty. Each value sets
+# a standard OTEL_* variable; see the Telemetry page of the docs.
+otel:
+  # OTEL_EXPORTER_OTLP_ENDPOINT, e.g. http://otel-collector.observability:4318
+  # (the http/protobuf port; gRPC is not supported).
+  endpoint: ""
+  # OTEL_SERVICE_NAME. The binary defaults to "mcp-k8s".
+  serviceName: ""
+  # Added to OTEL_RESOURCE_ATTRIBUTES as k8s.cluster.name: the name of the
+  # cluster this release runs in (spans carry it only with --contexts).
+  clusterName: ""
+  # More OTEL_RESOURCE_ATTRIBUTES, e.g. {deployment.environment.name: prod}.
+  resourceAttributes: {}
+  # OTEL_TRACES_SAMPLER and OTEL_TRACES_SAMPLER_ARG, e.g.
+  # parentbased_traceidratio and "0.25". The SDK default is parentbased_always_on.
+  sampler: ""
+  samplerArg: ""
+  # false stops exporting a signal (OTEL_{TRACES,METRICS,LOGS}_EXPORTER=none).
+  traces: true
+  metrics: true
+  logs: true
+  # OTEL_EXPORTER_OTLP_HEADERS (e.g. "authorization=Bearer <token>") from a
+  # Secret key, so credentials stay out of values.
+  headersSecret:
+    name: ""
+    key: ""
+  # MCP_K8S_OTEL_FILTER: tracing filter for exported spans and logs (default
+  # "info"). DEBUG output of dependencies can contain request details.
+  filter: ""
+  # Other environment variables, e.g. OTEL_EXPORTER_OTLP_TIMEOUT or
+  # OTEL_METRIC_EXPORT_INTERVAL. Rendered even without `endpoint`.
+  extraEnv: []

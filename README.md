@@ -14,12 +14,13 @@ endpoint for in-cluster deployment.
 - **CRD discovery**: full CRUD lifecycle for any installed CRD via dynamic API discovery
 - **Watch/subscribe**: `watch_resource` tool observes resource changes over a time window
 - **MCP resources and prompts**: `resources/read` for direct `k8s://` URI access, built-in diagnostic prompts
+- **OpenTelemetry**: one SERVER span per MCP request, the `mcp.server.operation.duration` histogram and logs over OTLP (http/protobuf), named after the OpenTelemetry MCP conventions, with tool arguments redacted to an allowlist ([Telemetry](#telemetry))
 - **Prometheus metrics**: `GET /metrics` endpoint with request counts and tool call latency histograms
 - **Bearer token auth and TLS**: `--auth-token` for HTTP authentication, `--tls-cert`/`--tls-key` for HTTPS
 - **Action permission controls**: disable create/update/delete globally or per-resource via CLI flags and env vars
 - **Namespace allowlisting**: restrict operations to specific namespaces
 - **Token-efficient responses**: focused summary/detail types instead of raw K8s API objects
-- **Structured JSON logging**: `--log-format json` for production log aggregation
+- **Structured JSON logging**: `--log-format json` for production log aggregation, one searchable line per call
 - **Swagger UI**: interactive API docs at `/swagger-ui` in HTTP mode
 - **Helm chart and Kustomize manifests** for production deployment
 
@@ -120,8 +121,10 @@ Beyond standard CRUD, the server supports:
 | `--disable-apply-manifest` | `DISABLE_APPLY_MANIFEST` | `false` | Block the `apply_manifest` tool entirely |
 | `--disable-secret-decode` | `DISABLE_SECRET_DECODE` | `false` | Prevent secret value decoding |
 | `--cache-ttl` | `CACHE_TTL` | `0` | Response cache TTL in seconds (0 = disabled) |
-| `--log-format` | `LOG_FORMAT` | `text` | Log format: `text` or `json` |
+| `--log-format` | `LOG_FORMAT` | `text` | Log format: `text` or `json` (stderr in stdio mode) |
 | — | `KUBECONFIG` | in-cluster | Kubernetes config path |
+| — | `OTEL_EXPORTER_OTLP_ENDPOINT` | (none) | OTLP http/protobuf collector URL; telemetry export is off without it. See [Telemetry](#telemetry) |
+| — | `MCP_K8S_OTEL_FILTER` | `info` | Filter for spans and logs exported over OTLP (`RUST_LOG` only drives console logs) |
 
 ### Read-only mode
 
@@ -130,6 +133,63 @@ mcp-k8s --disable-create --disable-update --disable-delete
 ```
 
 Disabled tools are hidden from `tools/list` so the LLM won't attempt to call them.
+
+## Telemetry
+
+Every MCP request produces one OpenTelemetry SERVER span, one observation of
+the `mcp.server.operation.duration` histogram (seconds) and one log line,
+named after the OpenTelemetry
+[MCP semantic conventions](https://github.com/open-telemetry/semantic-conventions-genai/blob/main/docs/gen-ai/mcp.md)
+(Development status, implemented against commit `7cb940f`). The library emits
+them as plain `tracing`; the binary exports them over OTLP once an endpoint is
+set:
+
+```bash
+OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318 \
+OTEL_RESOURCE_ATTRIBUTES=k8s.cluster.name=prod mcp-k8s --http
+```
+
+- **Configuration:** the standard `OTEL_EXPORTER_OTLP_ENDPOINT` (and
+  per-signal endpoints), `OTEL_EXPORTER_OTLP_PROTOCOL` (only
+  `http/protobuf`), `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_SERVICE_NAME`
+  (default `mcp-k8s`), `OTEL_RESOURCE_ATTRIBUTES`, `OTEL_TRACES_SAMPLER`,
+  `OTEL_{TRACES,METRICS,LOGS}_EXPORTER=none` and `OTEL_SDK_DISABLED`, plus
+  `MCP_K8S_OTEL_FILTER` (default `info`) for what gets exported. In Helm, set
+  `otel.endpoint`. TLS uses rustls with the same ring provider as the rest of
+  the binary. Telemetry is flushed on SIGTERM/SIGINT.
+- **Span** `tools/call <tool>` (kind SERVER): `mcp.method.name`,
+  `gen_ai.tool.name`, `gen_ai.operation.name=execute_tool`,
+  `jsonrpc.request.id`, `mcp.protocol.version`, `client.address`,
+  `network.transport`, `rpc.status_code`, `error.type`
+  (`tool_error`, `permission_denied`, `unknown_tool`, `cancelled`, or the
+  JSON-RPC code), `mcp_k8s.action` (`read`/`write`/`delete`/`exec`),
+  `mcp_k8s.decision` and `mcp_k8s.denied_rule`, `mcp_k8s.outcome`, the target
+  (`k8s.namespace.name`, `mcp_k8s.resource.kind`, `mcp_k8s.resource.name`,
+  `mcp_k8s.resource.api_version`; `k8s.cluster.name` with `--contexts`), the
+  argument keys and allowlisted values, `mcp_k8s.client.name`/`.version` from
+  `initialize`, and `mcp_k8s.request_id`. The parent comes from
+  `params._meta.traceparent`, else the HTTP `traceparent` header.
+- **Metric** `mcp.server.operation.duration`: only `mcp.method.name`,
+  `gen_ai.tool.name`, `gen_ai.operation.name`, `mcp_k8s.action`,
+  `mcp_k8s.decision` and `error.type`. Never namespaces, names, clients or
+  sessions.
+- **Log** `tool call finished` (tool, outcome, `duration_ms`, decision,
+  action, `error.type`, target) or `request finished`, on target
+  `mcp_k8s::telemetry`.
+- **Redaction:** telemetry records argument keys plus the values of
+  `namespace`, `name`, `kind`, `api_version`, `group`, `version`,
+  `pod_name`, `job_name`, `container`, `image`, `replicas`, `cluster` and
+  `decode`, and never anything else: not Secret data, env values, exec
+  commands, manifest or patch bodies, label or annotation values, selectors,
+  plugin config or error messages. A canary test checks every tool's schema.
+- **Old metric names:** the Prometheus counters at `/metrics` stay as they
+  are for now; a later release will deprecate them in favour of
+  `mcp.server.operation.duration`.
+
+Embedders get the same telemetry from the library (see
+[Library Usage](#library-usage)). The
+[Telemetry docs page](https://alexconrey.github.io/mcp-k8s/latest/telemetry.html)
+has the full attribute tables.
 
 ## Building
 
@@ -209,16 +269,56 @@ if let Some(result) = mcp::handle_tool(&client, "list_deployments", &args).await
 }
 ```
 
+### Telemetry in an embedding application
+
+The library emits `tracing` only, never an `opentelemetry` crate, so it works
+with whatever OpenTelemetry version you export with (OTel's global providers
+live in the `opentelemetry` crate, so a library pinned to another 0.x version
+would silently send nowhere). `mcp::handle_tool` instruments every call it
+serves. To give your own tools identical telemetry under one request span:
+
+```rust
+use mcp_k8s::telemetry;
+use tracing::Instrument;
+
+// One SERVER span per request. Name it after the tool only if you serve it.
+let target = (is_own_tool(tool) || telemetry::is_known_tool(tool)).then_some(tool);
+let span = telemetry::server_span("tools/call", target);
+// With your OTel crates, before the span is entered:
+// span.set_parent(cx), cx from telemetry::W3cTraceContext::from_meta(&params)
+let result = async {
+    if is_own_tool(tool) {
+        // A handle_tool call inside your tool reports into this call.
+        Some(telemetry::instrument_tool_call(tool, &args, own_tool(tool, &args)).await)
+    } else {
+        mcp::handle_tool(&client, tool, &args).await
+    }
+}
+.instrument(span)
+.await;
+```
+
+Export with `tracing-opentelemetry` (spans, and its `MetricsLayer` for the
+metric) and `opentelemetry-appender-tracing` (logs). Keep `mcp_k8s=info` in
+their filter, keep the target `mcp_k8s::telemetry::metrics` (metric events)
+out of console and OTLP logs, and give the meter provider a view with unit
+`s`, the conventions' buckets and `telemetry::semconv::METRIC_ATTRIBUTES` as
+the allowed keys. The rustdoc of `mcp_k8s::telemetry` and the Telemetry docs
+page have the full recipe; the binary's `src/otel.rs` is a working example.
+
 ## Testing
 
 ```bash
-cargo test                                      # 430 unit + 2 router + 8 integration tests
+cargo test                                      # 455 unit + 11 binary + 8 integration tests
 cargo test --no-default-features                # the same, as library consumers build it
 cargo test --test k3s_integration -- --ignored  # 13 k3s tests (needs Docker)
 ```
 
-The unit tests cover type extraction, serialization, tool definitions, and
-permission filtering. The k3s tests run against `rancher/k3s:v1.35.10-k3s1`;
+The unit tests cover type extraction, serialization, tool definitions,
+permission filtering and telemetry, including a canary test that runs every
+tool with marker values in all its string arguments and fails if one outside
+the allowlist reaches a span, metric or log. The binary's tests export the
+real dispatch path into in-memory OpenTelemetry exporters. The k3s tests run against `rancher/k3s:v1.35.10-k3s1`;
 set `MCP_K8S_K3S_TAG` to use another k3s release.
 
 ## License

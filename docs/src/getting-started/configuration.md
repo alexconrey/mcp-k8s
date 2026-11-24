@@ -149,13 +149,18 @@ mcp-k8s --http --tls-cert /etc/certs/tls.crt --tls-key /etc/certs/tls.key
 
 | Env Var | Default | Description |
 |---------|---------|-------------|
-| `RUST_LOG` | `info` | Controls log verbosity using the `tracing` crate's `EnvFilter` syntax. |
+| `RUST_LOG` | `info` | Controls console log verbosity using the `tracing` crate's `EnvFilter` syntax. It doesn't affect what is exported over OTLP (see [Telemetry](#telemetry)). |
 
 ### Log Format
 
 | Flag | Env Var | Default | Description |
 |------|---------|---------|-------------|
 | `--log-format` | `LOG_FORMAT` | `text` | Log output format. Set to `json` for structured JSON logging suitable for log aggregation pipelines (e.g. Loki, Datadog, CloudWatch). |
+
+Every request ends with one `INFO` line: `tool call finished` (tool, outcome,
+`duration_ms`, decision, target) or `request finished`. With `json`, each line
+also carries the request span's fields. In stdio mode logs go to stderr,
+because stdout carries the JSON-RPC stream; in HTTP mode they go to stdout.
 
 Examples:
 
@@ -172,6 +177,24 @@ RUST_LOG=mcp_k8s=info,kube=warn mcp-k8s
 # Structured JSON logging for production
 mcp-k8s --http --log-format json
 ```
+
+## Telemetry
+
+OTLP export of traces, the `mcp.server.operation.duration` metric and logs is
+configured with the standard OpenTelemetry variables and is off unless an
+endpoint is set:
+
+| Env Var | Default | Description |
+|---------|---------|-------------|
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | *(none: off)* | Collector URL for OTLP over http/protobuf, e.g. `http://otel-collector:4318`. Per-signal `OTEL_EXPORTER_OTLP_{TRACES,METRICS,LOGS}_ENDPOINT` work too. |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | `http/protobuf` | Only `http/protobuf` is supported; other values turn export off with a warning. |
+| `OTEL_SERVICE_NAME` | `mcp-k8s` | `service.name` of the exported data. |
+| `OTEL_RESOURCE_ATTRIBUTES` | *(none)* | Extra resource attributes, e.g. `k8s.cluster.name=prod`. |
+| `OTEL_TRACES_SAMPLER` / `OTEL_TRACES_SAMPLER_ARG` | `parentbased_always_on` | Trace sampling. |
+| `MCP_K8S_OTEL_FILTER` | `info` | `EnvFilter` for exported spans and logs. |
+
+See [Telemetry](../telemetry.md) for every variable, the span, metric and log
+names, and the redaction guarantee.
 
 ## Response Cache
 
