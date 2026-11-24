@@ -52,18 +52,25 @@ jobs:
       - name: Test (library only, no default features)
         run: cargo test --no-default-features
 
-  # Licenses, bans, sources and RustSec advisories, using deny.toml. New
-  # advisories fail this job even on unrelated PRs; fix or ignore them (with a
-  # reason) in deny.toml. audit.yaml also runs the advisory check weekly.
+  # cargo deny with deny.toml. Bans, licenses and sources must pass. The
+  # advisories leg only warns: a new RustSec advisory shows as a failed
+  # `deny (advisories)` check without failing the run, so it doesn't block
+  # unrelated PRs. audit.yaml runs the advisory check weekly as the backstop.
+  # Don't make `deny (advisories)` a required status check.
   deny:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        checks: [advisories, bans licenses sources]
+    continue-on-error: ${{ matrix.checks == 'advisories' }}
     steps:
       - uses: actions/checkout@v7
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
-          command: check
+          command: check ${{ matrix.checks }}
 
   docker:
     runs-on: ubuntu-latest
