@@ -394,7 +394,7 @@ mcp-k8s/
 │   └── k3s_workloads.rs    # k3s tests for the typed workload tools and guardrails (2 tests, #[ignore])
 ├── docs/                   # mdBook documentation (GitHub Pages)
 │   ├── book.toml
-│   ├── src/                # @@PAGES@@ documentation pages
+│   ├── src/                # 23 documentation pages
 │   └── theme/              # Version switcher (JS + CSS)
 ├── helm/
 │   ├── mcp-k8s/            # Helm chart (with PDB, HPA, NetworkPolicy, Ingress)
@@ -449,7 +449,7 @@ CI workflow (build, test, clippy, fmt) runs against them before merge.
 
 ```bash
 cargo build --release       # Build
-cargo test                  # @@UNIT@@ unit + @@BIN@@ binary (router, telemetry) + 8 integration + 30 guardrail tests
+cargo test                  # 549 unit + 11 binary (router, telemetry) + 8 integration + 30 guardrail tests
 cargo test --no-default-features  # Same tests without `server` (what deckwatch compiles)
 cargo test --test k3s_integration -- --ignored  # k3s integration tests (needs Docker)
 cargo test --test k3s_workloads -- --ignored --test-threads=1  # k3s workload/guardrail tests
