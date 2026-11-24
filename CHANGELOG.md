@@ -151,6 +151,10 @@ every write path, `apply_manifest` included.
 - `create_ingress` created backing Services even with `service-create`
   disabled.
 
+## [0.5.1] - 2026-11-24
+
+Security and dependency release. No library API changes.
+
 ### Security
 - Lockfile updates for RustSec advisories: `h2` 0.4.21 (RUSTSEC-2026-0258),
   `rustls` 0.23.46 (RUSTSEC-2026-0285, -0346, -0348, -0349),
@@ -162,6 +166,15 @@ every write path, `apply_manifest` included.
   (RUSTSEC-2026-0367, -0368, -0369, -0429, -0545, -0548), with `zip` 9. No API
   changes were needed.
 
+### Changed
+- Dependency updates from Dependabot: `tower-http` 0.6 → 0.7 and
+  `axum-server` 0.7 → 0.9 (#21), `metrics-exporter-prometheus` 0.17 → 0.18
+  (#22), and minor/patch bumps of `serde_json`, `thiserror`, `http`,
+  `futures`, `clap`, `uuid` and `tokio-test` (#20). All of these are
+  server-feature or dev dependencies except `serde_json`, `thiserror`, `http`
+  and `futures`.
+- The container image builds with `rust:1.99` (was 1.95). (#19)
+
 ### Internal
 - Dependabot for cargo, Docker base images and GitHub Actions, plus Dependabot
   alerts and security updates.
@@ -169,8 +182,8 @@ every write path, `apply_manifest` included.
   advisories only warn. `audit.yaml` runs the advisory check weekly and fails
   on findings. `deny.toml` now denies yanked crates, wildcard versions and
   unknown registries and git sources, and allows `CDLA-Permissive-2.0`
-  (Mozilla CA data in `webpki-root-certs`).
-- Router tests for `/openapi.json` and the Swagger UI.
+  (Mozilla CA data in `webpki-root-certs`). (#18, #23)
+- Router tests for `/openapi.json` and the Swagger UI. (#18)
 
 ## [0.5.0] - 2026-11-24
 
