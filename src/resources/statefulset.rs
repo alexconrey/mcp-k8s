@@ -225,7 +225,8 @@ fn statefulset_properties(create: bool) -> Value {
         "persistent_volume_claim_retention_policy": retention_schema()
     });
     if create {
-        props["service_name"] = json!({ "type": "string", "description": "Governing headless Service name" });
+        props["service_name"] =
+            json!({ "type": "string", "description": "Governing headless Service name" });
         props["pod_management_policy"] = json!({ "type": "string", "enum": ["OrderedReady", "Parallel"], "description": "OrderedReady (default) starts pods one at a time; Parallel starts them together" });
         props["volume_claim_templates"] = json!({
             "type": "array",
@@ -287,13 +288,20 @@ fn update_strategy(args: &Value) -> Result<Option<StatefulSetUpdateStrategy>, St
         return Ok(None);
     };
     let type_ = s.type_.unwrap_or_else(|| "RollingUpdate".to_string());
-    podspec::check_enum(&type_, &["RollingUpdate", "OnDelete"], "update_strategy.type")?;
+    podspec::check_enum(
+        &type_,
+        &["RollingUpdate", "OnDelete"],
+        "update_strategy.type",
+    )?;
     let max_unavailable = s
         .max_unavailable
         .map(|v| podspec::int_or_string(&v, "update_strategy.max_unavailable"))
         .transpose()?;
     if type_ == "OnDelete" && (s.partition.is_some() || max_unavailable.is_some()) {
-        return Err("update_strategy: partition and max_unavailable only apply to RollingUpdate".to_string());
+        return Err(
+            "update_strategy: partition and max_unavailable only apply to RollingUpdate"
+                .to_string(),
+        );
     }
     Ok(Some(StatefulSetUpdateStrategy {
         type_: Some(type_),
@@ -315,12 +323,17 @@ struct RetentionArgs {
     when_scaled: Option<String>,
 }
 
-fn retention(args: &Value) -> Result<Option<StatefulSetPersistentVolumeClaimRetentionPolicy>, String> {
+fn retention(
+    args: &Value,
+) -> Result<Option<StatefulSetPersistentVolumeClaimRetentionPolicy>, String> {
     let Some(r) = podspec::opt::<RetentionArgs>(args, "persistent_volume_claim_retention_policy")?
     else {
         return Ok(None);
     };
-    for (v, what) in [(&r.when_deleted, "when_deleted"), (&r.when_scaled, "when_scaled")] {
+    for (v, what) in [
+        (&r.when_deleted, "when_deleted"),
+        (&r.when_scaled, "when_scaled"),
+    ] {
         if let Some(v) = v {
             podspec::check_enum(v, &["Retain", "Delete"], what)?;
         }
@@ -347,7 +360,8 @@ struct ClaimTemplateArgs {
 }
 
 fn claim_templates(args: &Value) -> Result<Option<Vec<PersistentVolumeClaim>>, String> {
-    let Some(items) = podspec::opt::<Vec<ClaimTemplateArgs>>(args, "volume_claim_templates")? else {
+    let Some(items) = podspec::opt::<Vec<ClaimTemplateArgs>>(args, "volume_claim_templates")?
+    else {
         return Ok(None);
     };
     items
@@ -361,7 +375,12 @@ fn claim_templates(args: &Value) -> Result<Option<Vec<PersistentVolumeClaim>>, S
             for m in &access_modes {
                 podspec::check_enum(
                     m,
-                    &["ReadWriteOnce", "ReadOnlyMany", "ReadWriteMany", "ReadWriteOncePod"],
+                    &[
+                        "ReadWriteOnce",
+                        "ReadOnlyMany",
+                        "ReadWriteMany",
+                        "ReadWriteOncePod",
+                    ],
                     &format!("{what}.access_modes"),
                 )?;
             }
@@ -381,7 +400,10 @@ fn claim_templates(args: &Value) -> Result<Option<Vec<PersistentVolumeClaim>>, S
                     storage_class_name: t.storage_class_name,
                     volume_mode: t.volume_mode,
                     resources: Some(VolumeResourceRequirements {
-                        requests: Some(BTreeMap::from([("storage".to_string(), Quantity(storage))])),
+                        requests: Some(BTreeMap::from([(
+                            "storage".to_string(),
+                            Quantity(storage),
+                        )])),
                         ..Default::default()
                     }),
                     ..Default::default()
@@ -581,7 +603,11 @@ async fn update_statefulset(
     let target = if podspec::touches_container(&args) {
         let current = sts_api.get(name).await.map_err(|e| e.to_string())?;
         let pod_spec = current.spec.as_ref().and_then(|s| s.template.spec.as_ref());
-        Some(podspec::resolve_container(pod_spec, args["container"].as_str(), name)?)
+        Some(podspec::resolve_container(
+            pod_spec,
+            args["container"].as_str(),
+            name,
+        )?)
     } else {
         None
     };
@@ -615,7 +641,9 @@ async fn update_statefulset(
         spec.insert("template".into(), template);
     }
     if spec.is_empty() {
-        return Err("Nothing to update: give at least one field, e.g. image or replicas".to_string());
+        return Err(
+            "Nothing to update: give at least one field, e.g. image or replicas".to_string(),
+        );
     }
 
     let patched = crate::policy::patch_checked(

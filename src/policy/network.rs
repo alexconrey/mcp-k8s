@@ -77,7 +77,11 @@ pub fn check_service(policy: &WorkloadPolicy, service: &Value, out: &mut Vec<Vio
         _ => {}
     }
 
-    let ports = spec.get("ports").and_then(Value::as_array).cloned().unwrap_or_default();
+    let ports = spec
+        .get("ports")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
     for (i, port) in ports.iter().enumerate() {
         let node_port = port.get("nodePort").and_then(Value::as_i64).unwrap_or(0);
         if node_port != 0 && !policy.allow_node_port && !policy.allow_load_balancer {
@@ -118,7 +122,10 @@ pub fn check_service(policy: &WorkloadPolicy, service: &Value, out: &mut Vec<Vio
             .and_then(Value::as_object)
         {
             for key in annotations.keys() {
-                if LOAD_BALANCER_ANNOTATION_PREFIXES.iter().any(|p| key.starts_with(p)) {
+                if LOAD_BALANCER_ANNOTATION_PREFIXES
+                    .iter()
+                    .any(|p| key.starts_with(p))
+                {
                     out.push(Violation::new(
                         format!("metadata.annotations[{key:?}]"),
                         "load balancer annotations are only allowed when LoadBalancer Services are",
@@ -176,7 +183,12 @@ pub fn check_ingress(policy: &WorkloadPolicy, ingress: &Value, out: &mut Vec<Vio
     }
 }
 
-fn check_ingress_annotation(policy: &WorkloadPolicy, key: &str, value: &str, out: &mut Vec<Violation>) {
+fn check_ingress_annotation(
+    policy: &WorkloadPolicy,
+    key: &str,
+    value: &str,
+    out: &mut Vec<Violation>,
+) {
     let location = format!("metadata.annotations[{key:?}]");
 
     if !policy.ingress_annotation_allowlist.is_empty()
@@ -218,7 +230,10 @@ fn check_ingress_annotation(policy: &WorkloadPolicy, key: &str, value: &str, out
     let Some(nginx_name) = key.strip_prefix(NGINX_PREFIX) else {
         return;
     };
-    if let Some(c) = value.chars().find(|c| NGINX_VALUE_FORBIDDEN_CHARS.contains(c)) {
+    if let Some(c) = value
+        .chars()
+        .find(|c| NGINX_VALUE_FORBIDDEN_CHARS.contains(c))
+    {
         out.push(Violation::new(
             &location,
             format!("value contains {c:?}, which can inject nginx configuration"),
@@ -227,7 +242,10 @@ fn check_ingress_annotation(policy: &WorkloadPolicy, key: &str, value: &str, out
         return;
     }
     let lower = value.to_ascii_lowercase();
-    if let Some(word) = NGINX_VALUE_FORBIDDEN_WORDS.iter().find(|w| lower.contains(*w)) {
+    if let Some(word) = NGINX_VALUE_FORBIDDEN_WORDS
+        .iter()
+        .find(|w| lower.contains(*w))
+    {
         out.push(Violation::new(
             &location,
             format!("value contains {word:?}, which ingress-nginx blocks in annotation values"),
@@ -253,7 +271,9 @@ fn is_plain_http_url(value: &str) -> bool {
         Some(rest) => {
             !rest.is_empty()
                 && !rest.starts_with('/')
-                && !value.chars().any(|c| c.is_whitespace() || c.is_control() || c == '#')
+                && !value
+                    .chars()
+                    .any(|c| c.is_whitespace() || c.is_control() || c == '#')
         }
         None => false,
     }

@@ -80,9 +80,11 @@ pub(crate) async fn admit_manifest(
         .as_str()
         .ok_or("manifest must contain 'metadata.name'")?
         .to_string();
-    let namespace = namespace
-        .map(str::to_string)
-        .or_else(|| manifest["metadata"]["namespace"].as_str().map(str::to_string));
+    let namespace = namespace.map(str::to_string).or_else(|| {
+        manifest["metadata"]["namespace"]
+            .as_str()
+            .map(str::to_string)
+    });
     let group = group_of(&api_version).to_string();
     let policy = client.policy();
 
@@ -130,10 +132,18 @@ pub(crate) async fn admit_manifest(
             .await
             .map_err(|e| format!("Failed to look up {kind} '{name}': {e}"))?
             .is_some();
-        let action = if exists { Action::Update } else { Action::Create };
+        let action = if exists {
+            Action::Update
+        } else {
+            Action::Create
+        };
         let resource = resource_key(&group, &kind);
         if !client.permissions().is_action_allowed(&resource, &action) {
-            let verb = if exists { "update the existing" } else { "create" };
+            let verb = if exists {
+                "update the existing"
+            } else {
+                "create"
+            };
             return Err(format!(
                 "apply_manifest would {verb} {kind} '{name}', but action '{action}' is not allowed on resource '{resource}' \
                  (see --disable-{action} and --disable {resource}-{action})"
@@ -141,7 +151,9 @@ pub(crate) async fn admit_manifest(
         }
     }
 
-    if group == "rbac.authorization.k8s.io" && (kind == "RoleBinding" || kind == "ClusterRoleBinding") {
+    if group == "rbac.authorization.k8s.io"
+        && (kind == "RoleBinding" || kind == "ClusterRoleBinding")
+    {
         let violations =
             bound_role_violations(client, namespace.as_deref(), &manifest["roleRef"]).await?;
         policy_error(violations)?;
@@ -182,7 +194,8 @@ pub(crate) async fn bound_role_violations(
     let name = role_ref["name"].as_str().unwrap_or("");
     let role = match kind {
         "ClusterRole" => {
-            let api: Api<k8s_openapi::api::rbac::v1::ClusterRole> = Api::all(client.inner().clone());
+            let api: Api<k8s_openapi::api::rbac::v1::ClusterRole> =
+                Api::all(client.inner().clone());
             api.get_opt(name)
                 .await
                 .map_err(|e| format!("Failed to look up ClusterRole '{name}': {e}"))?
@@ -270,17 +283,29 @@ mod tests {
     fn resource_keys_match_typed_tool_names() {
         assert_eq!(resource_key("apps", "Deployment"), "deployment");
         assert_eq!(resource_key("", "PersistentVolumeClaim"), "pvc");
-        assert_eq!(resource_key("autoscaling", "HorizontalPodAutoscaler"), "hpa");
+        assert_eq!(
+            resource_key("autoscaling", "HorizontalPodAutoscaler"),
+            "hpa"
+        );
         assert_eq!(resource_key("policy", "PodDisruptionBudget"), "pdb");
-        assert_eq!(resource_key("networking.k8s.io", "NetworkPolicy"), "networkpolicy");
-        assert_eq!(resource_key("cert-manager.io", "Certificate"), "custom_resource");
+        assert_eq!(
+            resource_key("networking.k8s.io", "NetworkPolicy"),
+            "networkpolicy"
+        );
+        assert_eq!(
+            resource_key("cert-manager.io", "Certificate"),
+            "custom_resource"
+        );
     }
 
     #[test]
     fn managed_by_label_added_but_not_overridden() {
         let mut obj = serde_json::json!({ "metadata": { "name": "x" } });
         add_managed_by_label(&mut obj);
-        assert_eq!(obj["metadata"]["labels"][MANAGED_BY_LABEL], MANAGED_BY_VALUE);
+        assert_eq!(
+            obj["metadata"]["labels"][MANAGED_BY_LABEL],
+            MANAGED_BY_VALUE
+        );
 
         let mut helm = serde_json::json!({ "metadata": { "name": "x", "labels": { MANAGED_BY_LABEL: "Helm" } } });
         add_managed_by_label(&mut helm);

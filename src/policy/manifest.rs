@@ -5,7 +5,9 @@ use serde_json::Value;
 
 use super::network::{check_ingress, check_service};
 use super::pod::{check_container, check_pod_spec};
-use super::rbac::{check_binding, check_cluster_role_extras, check_namespace_labels, check_rules, check_secret};
+use super::rbac::{
+    check_binding, check_cluster_role_extras, check_namespace_labels, check_rules, check_secret,
+};
 use super::{flags, Remedy, Violation, WorkloadPolicy};
 
 /// Who built the object being checked.
@@ -62,9 +64,21 @@ const ADMISSION: &str = "admissionregistration.k8s.io";
 const SENSITIVE_NAMESPACED_KINDS: &[(&str, &str, &str)] = &[
     (RBAC, "Role", "RBAC objects grant permissions"),
     (RBAC, "RoleBinding", "RBAC objects grant permissions"),
-    ("", "Endpoints", "hand-written endpoints can redirect a Service's traffic anywhere (CVE-2021-25740)"),
-    ("discovery.k8s.io", "EndpointSlice", "hand-written endpoints can redirect a Service's traffic anywhere (CVE-2021-25740)"),
-    ("apps", "ControllerRevision", "controller revisions feed pod templates into rollbacks"),
+    (
+        "",
+        "Endpoints",
+        "hand-written endpoints can redirect a Service's traffic anywhere (CVE-2021-25740)",
+    ),
+    (
+        "discovery.k8s.io",
+        "EndpointSlice",
+        "hand-written endpoints can redirect a Service's traffic anywhere (CVE-2021-25740)",
+    ),
+    (
+        "apps",
+        "ControllerRevision",
+        "controller revisions feed pod templates into rollbacks",
+    ),
 ];
 
 /// Built-in cluster-scoped kinds. Raw manifests may not write any
@@ -129,7 +143,7 @@ pub(crate) fn is_builtin_cluster_scoped(group: &str, kind: &str) -> bool {
 }
 
 /// The violation for a kind raw manifests may not write.
-pub(crate) fn kind_not_allowed(group: &str, kind: &str, why: &str) -> Violation {
+pub fn kind_not_allowed(group: &str, kind: &str, why: &str) -> Violation {
     let shown = if group.is_empty() {
         kind.to_string()
     } else {
@@ -153,7 +167,10 @@ pub(crate) fn kind_not_allowed(group: &str, kind: &str, why: &str) -> Violation 
 /// vector means the object is allowed.
 pub fn check_object(policy: &WorkloadPolicy, object: &Value, source: Source) -> Vec<Violation> {
     let mut out = Vec::new();
-    let api_version = object.get("apiVersion").and_then(Value::as_str).unwrap_or("");
+    let api_version = object
+        .get("apiVersion")
+        .and_then(Value::as_str)
+        .unwrap_or("");
     let kind = object.get("kind").and_then(Value::as_str).unwrap_or("");
     let group = group_of(api_version);
 
@@ -195,7 +212,13 @@ pub fn check_object(policy: &WorkloadPolicy, object: &Value, source: Source) -> 
 }
 
 /// Content rules for built-in kinds.
-fn check_builtin(policy: &WorkloadPolicy, group: &str, kind: &str, object: &Value, out: &mut Vec<Violation>) {
+fn check_builtin(
+    policy: &WorkloadPolicy,
+    group: &str,
+    kind: &str,
+    object: &Value,
+    out: &mut Vec<Violation>,
+) {
     let spec = object.get("spec");
     match (group, kind) {
         ("", "Pod") => {
@@ -209,9 +232,12 @@ fn check_builtin(policy: &WorkloadPolicy, group: &str, kind: &str, object: &Valu
         | ("apps", "Deployment")
         | ("apps", "StatefulSet")
         | ("apps", "DaemonSet")
-        | ("batch", "Job") => {
-            check_template(policy, spec.and_then(|s| s.get("template")), "spec.template", out)
-        }
+        | ("batch", "Job") => check_template(
+            policy,
+            spec.and_then(|s| s.get("template")),
+            "spec.template",
+            out,
+        ),
         ("batch", "CronJob") => check_template(
             policy,
             spec.and_then(|s| s.get("jobTemplate"))
@@ -221,7 +247,9 @@ fn check_builtin(policy: &WorkloadPolicy, group: &str, kind: &str, object: &Valu
             out,
         ),
         ("", "Service") => check_service(policy, object, out),
-        ("networking.k8s.io", "Ingress") | ("extensions", "Ingress") => check_ingress(policy, object, out),
+        ("networking.k8s.io", "Ingress") | ("extensions", "Ingress") => {
+            check_ingress(policy, object, out)
+        }
         ("", "Secret") => check_secret(policy, object, out),
         ("", "Namespace") => {
             if let Some(labels) = object.get("metadata").and_then(|m| m.get("labels")) {
@@ -244,7 +272,12 @@ fn check_builtin(policy: &WorkloadPolicy, group: &str, kind: &str, object: &Valu
     }
 }
 
-fn check_template(policy: &WorkloadPolicy, template: Option<&Value>, path: &str, out: &mut Vec<Violation>) {
+fn check_template(
+    policy: &WorkloadPolicy,
+    template: Option<&Value>,
+    path: &str,
+    out: &mut Vec<Violation>,
+) {
     if let Some(spec) = template.and_then(|t| t.get("spec")) {
         check_pod_spec(
             policy,
@@ -270,7 +303,11 @@ fn scan_embedded(policy: &WorkloadPolicy, value: &Value, path: &str, out: &mut V
             if embedded_manifest {
                 for v in check_object(policy, value, Source::Manifest) {
                     out.push(Violation::new(
-                        format!("{path} (embedded {}): {}", map["kind"].as_str().unwrap_or("?"), v.location),
+                        format!(
+                            "{path} (embedded {}): {}",
+                            map["kind"].as_str().unwrap_or("?"),
+                            v.location
+                        ),
                         v.reason,
                         v.remedy,
                     ));

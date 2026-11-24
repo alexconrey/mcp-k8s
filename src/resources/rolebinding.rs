@@ -279,6 +279,14 @@ async fn create_rolebinding(
         },
         subjects: Some(subjects),
     };
+    crate::policy::check_typed(client, &rb)?;
+    let bound = crate::policy::bound_role_violations(
+        client,
+        Some(ns),
+        &serde_json::to_value(&rb.role_ref).map_err(|e| e.to_string())?,
+    )
+    .await?;
+    crate::policy::into_result(bound).map_err(|e| e.to_string())?;
 
     let rb_api = api(client, ns)?;
     let created = rb_api

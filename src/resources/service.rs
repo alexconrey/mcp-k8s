@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
 
-use k8s_openapi::api::core::v1::{Service, ServicePort, ServiceSpec, SessionAffinityConfig, ClientIPConfig};
+use k8s_openapi::api::core::v1::{
+    ClientIPConfig, Service, ServicePort, ServiceSpec, SessionAffinityConfig,
+};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use k8s_openapi::apimachinery::pkg::util::intstr::IntOrString;
 use kube::api::{DeleteParams, ListParams, PostParams};
@@ -212,7 +214,8 @@ fn service_properties(create: bool) -> Map<String, Value> {
         props["target_port"] = json!({ "type": ["integer", "string"], "description": "Target for the single port shorthand (default: port)" });
         props["headless"] = json!({ "type": "boolean", "description": "Headless service (clusterIP: None), e.g. for StatefulSets" });
         props["cluster_ip"] = json!({ "type": "string", "description": "Fixed cluster IP, or \"None\" for a headless service" });
-        props["ip_families"] = json!({ "type": "array", "items": { "type": "string", "enum": ["IPv4", "IPv6"] } });
+        props["ip_families"] =
+            json!({ "type": "array", "items": { "type": "string", "enum": ["IPv4", "IPv6"] } });
         props["ip_family_policy"] = json!({ "type": "string", "enum": ["SingleStack", "PreferDualStack", "RequireDualStack"] });
     }
     props.as_object().cloned().unwrap_or_default()
@@ -260,7 +263,11 @@ fn service_ports(args: &Value) -> Result<Option<Vec<ServicePort>>, String> {
         .map(|(i, p)| {
             let what = format!("ports[{i}]");
             let protocol = p.protocol.unwrap_or_else(|| "TCP".to_string());
-            podspec::check_enum(&protocol, &["TCP", "UDP", "SCTP"], &format!("{what}.protocol"))?;
+            podspec::check_enum(
+                &protocol,
+                &["TCP", "UDP", "SCTP"],
+                &format!("{what}.protocol"),
+            )?;
             Ok(ServicePort {
                 port: p.port,
                 target_port: Some(match p.target_port {
@@ -294,7 +301,11 @@ fn opt_str(args: &Value, key: &str, allowed: Option<&[&str]>) -> Result<Option<S
 /// selector and the create-only clusterIP/IP family settings).
 fn service_spec_fields(args: &Value) -> Result<ServiceSpec, String> {
     Ok(ServiceSpec {
-        type_: opt_str(args, "type", Some(&["ClusterIP", "NodePort", "LoadBalancer", "ExternalName"]))?,
+        type_: opt_str(
+            args,
+            "type",
+            Some(&["ClusterIP", "NodePort", "LoadBalancer", "ExternalName"]),
+        )?,
         session_affinity: opt_str(args, "session_affinity", Some(&["None", "ClientIP"]))?,
         session_affinity_config: args
             .get("session_affinity_timeout_seconds")
@@ -304,8 +315,16 @@ fn service_spec_fields(args: &Value) -> Result<ServiceSpec, String> {
                     timeout_seconds: i32::try_from(t).ok(),
                 }),
             }),
-        external_traffic_policy: opt_str(args, "external_traffic_policy", Some(&["Cluster", "Local"]))?,
-        internal_traffic_policy: opt_str(args, "internal_traffic_policy", Some(&["Cluster", "Local"]))?,
+        external_traffic_policy: opt_str(
+            args,
+            "external_traffic_policy",
+            Some(&["Cluster", "Local"]),
+        )?,
+        internal_traffic_policy: opt_str(
+            args,
+            "internal_traffic_policy",
+            Some(&["Cluster", "Local"]),
+        )?,
         load_balancer_source_ranges: podspec::opt(args, "load_balancer_source_ranges")?,
         load_balancer_class: opt_str(args, "load_balancer_class", None)?,
         allocate_load_balancer_node_ports: args
@@ -313,7 +332,9 @@ fn service_spec_fields(args: &Value) -> Result<ServiceSpec, String> {
             .and_then(Value::as_bool),
         external_name: opt_str(args, "external_name", None)?,
         external_ips: podspec::opt(args, "external_ips")?,
-        publish_not_ready_addresses: args.get("publish_not_ready_addresses").and_then(Value::as_bool),
+        publish_not_ready_addresses: args
+            .get("publish_not_ready_addresses")
+            .and_then(Value::as_bool),
         ..Default::default()
     })
 }
@@ -541,7 +562,10 @@ async fn update_service(client: &K8sClient, args: &serde_json::Value) -> Result<
         patch.insert("metadata".into(), Value::Object(metadata));
     }
     if patch.is_empty() {
-        return Err("At least one of ports, selector, type or another Service field must be provided".to_string());
+        return Err(
+            "At least one of ports, selector, type or another Service field must be provided"
+                .to_string(),
+        );
     }
 
     let svc_api = api(client, ns)?;
@@ -586,9 +610,9 @@ mod tests {
     use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 
     #[test]
-    fn tool_definitions_returns_four_unique_tools() {
+    fn tool_definitions_returns_five_unique_tools() {
         let defs = tool_definitions();
-        assert_eq!(defs.len(), 4);
+        assert_eq!(defs.len(), 5);
 
         let names: Vec<&str> = defs.iter().map(|d| d["name"].as_str().unwrap()).collect();
 
@@ -599,8 +623,184 @@ mod tests {
 
         assert!(names.contains(&"list_services"));
         assert!(names.contains(&"get_service"));
+        assert!(names.contains(&"create_service"));
         assert!(names.contains(&"update_service"));
         assert!(names.contains(&"delete_service"));
+    }
+
+    fn service_violations(
+        svc: &Service,
+        policy: &crate::policy::WorkloadPolicy,
+    ) -> Vec<crate::policy::Violation> {
+        crate::policy::check_object(
+            policy,
+            &serde_json::to_value(svc).unwrap(),
+            crate::policy::Source::Typed,
+        )
+    }
+
+    #[test]
+    fn legacy_arguments_build_the_same_service() {
+        // The original create_service: name, port, target_port.
+        let svc = service_from_args(&json!({
+            "namespace": "web", "name": "frontend", "port": 8080, "target_port": 80
+        }))
+        .unwrap();
+        let spec = svc.spec.as_ref().unwrap();
+        assert!(spec.type_.is_none(), "ClusterIP by default");
+        assert_eq!(spec.selector.as_ref().unwrap()["app"], "frontend");
+        let port = &spec.ports.as_ref().unwrap()[0];
+        assert_eq!(port.port, 8080);
+        assert_eq!(port.target_port, Some(IntOrString::Int(80)));
+        assert_eq!(port.protocol.as_deref(), Some("TCP"));
+        let labels = svc.metadata.labels.as_ref().unwrap();
+        assert_eq!(labels["app"], "frontend");
+        assert_eq!(labels[MANAGED_BY_LABEL], MANAGED_BY_VALUE);
+
+        // Defaults: port 80, target_port = port.
+        let svc = service_from_args(&json!({ "namespace": "web", "name": "x" })).unwrap();
+        let port = &svc.spec.as_ref().unwrap().ports.as_ref().unwrap()[0];
+        assert_eq!(
+            (port.port, port.target_port.clone()),
+            (80, Some(IntOrString::Int(80)))
+        );
+    }
+
+    #[test]
+    fn full_service_arguments() {
+        let svc = service_from_args(&json!({
+            "namespace": "web", "name": "db", "headless": true,
+            "ports": [
+                { "port": 5432, "target_port": "postgres", "name": "pg" },
+                { "port": 9187, "name": "metrics", "protocol": "TCP", "app_protocol": "http" }
+            ],
+            "selector": { "app": "postgres" },
+            "session_affinity": "ClientIP", "session_affinity_timeout_seconds": 600,
+            "internal_traffic_policy": "Local",
+            "ip_families": ["IPv4", "IPv6"], "ip_family_policy": "PreferDualStack",
+            "publish_not_ready_addresses": true,
+            "labels": { "tier": "data" }, "annotations": { "team": "dba" }
+        }))
+        .unwrap();
+        let spec = svc.spec.as_ref().unwrap();
+        assert_eq!(spec.cluster_ip.as_deref(), Some("None"));
+        let ports = spec.ports.as_ref().unwrap();
+        assert_eq!(
+            ports[0].target_port,
+            Some(IntOrString::String("postgres".into()))
+        );
+        assert_eq!(ports[1].target_port, Some(IntOrString::Int(9187)));
+        assert_eq!(ports[1].app_protocol.as_deref(), Some("http"));
+        assert_eq!(spec.selector.as_ref().unwrap()["app"], "postgres");
+        assert_eq!(spec.session_affinity.as_deref(), Some("ClientIP"));
+        assert_eq!(
+            spec.session_affinity_config
+                .as_ref()
+                .unwrap()
+                .client_ip
+                .as_ref()
+                .unwrap()
+                .timeout_seconds,
+            Some(600)
+        );
+        assert_eq!(spec.internal_traffic_policy.as_deref(), Some("Local"));
+        assert_eq!(spec.ip_families.as_ref().unwrap().len(), 2);
+        assert_eq!(spec.ip_family_policy.as_deref(), Some("PreferDualStack"));
+        assert_eq!(spec.publish_not_ready_addresses, Some(true));
+        assert_eq!(svc.metadata.labels.as_ref().unwrap()["tier"], "data");
+        assert!(service_violations(&svc, &Default::default()).is_empty());
+    }
+
+    #[test]
+    fn service_argument_errors() {
+        let both = json!({ "namespace": "w", "name": "x", "port": 80, "ports": [{ "port": 81 }] });
+        assert!(service_from_args(&both).unwrap_err().contains("not both"));
+        let headless_ip =
+            json!({ "namespace": "w", "name": "x", "headless": true, "cluster_ip": "10.0.0.1" });
+        assert!(service_from_args(&headless_ip).is_err());
+        let bad_type = json!({ "namespace": "w", "name": "x", "type": "Mesh" });
+        assert!(service_from_args(&bad_type).unwrap_err().contains("type"));
+        let bad_proto =
+            json!({ "namespace": "w", "name": "x", "ports": [{ "port": 1, "protocol": "ICMP" }] });
+        assert!(service_from_args(&bad_proto).is_err());
+        let unknown =
+            json!({ "namespace": "w", "name": "x", "ports": [{ "port": 1, "targetPortz": 2 }] });
+        assert!(service_from_args(&unknown)
+            .unwrap_err()
+            .contains("unknown field"));
+    }
+
+    #[test]
+    fn nodeport_and_loadbalancer_are_gated() {
+        let lb = service_from_args(&json!({
+            "namespace": "w", "name": "x", "type": "LoadBalancer",
+            "load_balancer_source_ranges": ["10.0.0.0/8"],
+            "annotations": { "service.beta.kubernetes.io/aws-load-balancer-scheme": "internet-facing" }
+        }))
+        .unwrap();
+        let v = service_violations(&lb, &Default::default());
+        assert!(
+            v.iter().all(|v| v.flag().cli == "--allow-loadbalancer"),
+            "{v:?}"
+        );
+        assert_eq!(v.len(), 3, "type, source ranges and annotation: {v:?}");
+        let mut allow = crate::policy::WorkloadPolicy::default();
+        allow.allow_load_balancer = true;
+        assert!(service_violations(&lb, &allow).is_empty());
+
+        let np = service_from_args(&json!({ "namespace": "w", "name": "x", "type": "NodePort", "ports": [{ "port": 80, "node_port": 30080 }] })).unwrap();
+        let v = service_violations(&np, &Default::default());
+        assert!(
+            !v.is_empty() && v.iter().all(|v| v.flag().cli == "--allow-nodeport"),
+            "{v:?}"
+        );
+        allow.allow_node_port = true;
+        assert!(service_violations(&np, &allow).is_empty());
+
+        let ext = service_from_args(&json!({ "namespace": "w", "name": "x", "type": "ExternalName", "external_name": "db.example.com" })).unwrap();
+        assert!(
+            ext.spec.as_ref().unwrap().selector.is_none(),
+            "ExternalName gets no default selector"
+        );
+        let v = service_violations(&ext, &Default::default());
+        assert_eq!(v[0].flag().cli, "--allow-external-services");
+    }
+
+    #[test]
+    fn service_schemas() {
+        let create = create_service_schema();
+        let props = create["properties"].as_object().unwrap();
+        for key in [
+            "namespace",
+            "name",
+            "port",
+            "target_port",
+            "type",
+            "ports",
+            "selector",
+            "headless",
+            "cluster_ip",
+            "session_affinity",
+            "external_traffic_policy",
+            "internal_traffic_policy",
+            "ip_families",
+            "ip_family_policy",
+            "load_balancer_source_ranges",
+            "load_balancer_class",
+            "external_name",
+            "external_ips",
+            "labels",
+            "annotations",
+        ] {
+            assert!(props.contains_key(key), "create_service is missing {key}");
+        }
+        assert_eq!(create["required"], json!(["namespace", "name"]));
+        let update = update_service_schema();
+        let props = update["properties"].as_object().unwrap();
+        for key in ["ports", "selector", "type"] {
+            assert!(props.contains_key(key), "update_service is missing {key}");
+        }
+        assert!(!props.contains_key("headless"), "clusterIP is immutable");
     }
 
     #[test]

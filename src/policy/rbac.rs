@@ -18,7 +18,11 @@ fn strings<'a>(v: &'a Value, key: &str) -> Vec<&'a str> {
 }
 
 fn escalation(location: String, reason: String) -> Violation {
-    Violation::new(location, reason, Remedy::Enable(&flags::ALLOW_RBAC_ESCALATION))
+    Violation::new(
+        location,
+        reason,
+        Remedy::Enable(&flags::ALLOW_RBAC_ESCALATION),
+    )
 }
 
 /// Check RBAC policy rules (the Kubernetes JSON form, `apiGroups`,
@@ -32,25 +36,43 @@ pub fn check_rules(policy: &WorkloadPolicy, rules: &[Value], path: &str, out: &m
         let loc = format!("{path}[{i}]");
         let verbs = strings(rule, "verbs");
         if verbs.contains(&"*") {
-            out.push(escalation(loc.clone(), "wildcard verb \"*\" grants every verb, including escalate, bind and impersonate".into()));
+            out.push(escalation(
+                loc.clone(),
+                "wildcard verb \"*\" grants every verb, including escalate, bind and impersonate"
+                    .into(),
+            ));
         }
         for verb in verbs.iter().filter(|v| ESCALATION_VERBS.contains(v)) {
-            out.push(escalation(loc.clone(), format!("verb {verb:?} is a privilege escalation primitive")));
+            out.push(escalation(
+                loc.clone(),
+                format!("verb {verb:?} is a privilege escalation primitive"),
+            ));
         }
         if strings(rule, "apiGroups").contains(&"*") {
-            out.push(escalation(loc.clone(), "wildcard apiGroup \"*\" covers every API group, including RBAC".into()));
+            out.push(escalation(
+                loc.clone(),
+                "wildcard apiGroup \"*\" covers every API group, including RBAC".into(),
+            ));
         }
         if let Some(r) = strings(rule, "resources")
             .into_iter()
             .find(|r| *r == "*" || r.ends_with("/*"))
         {
-            out.push(escalation(loc.clone(), format!("wildcard resource {r:?} covers resources and subresources nobody reviewed")));
+            out.push(escalation(
+                loc.clone(),
+                format!(
+                    "wildcard resource {r:?} covers resources and subresources nobody reviewed"
+                ),
+            ));
         }
         if let Some(u) = strings(rule, "nonResourceURLs")
             .into_iter()
             .find(|u| *u == "*" || u.ends_with('*'))
         {
-            out.push(escalation(loc.clone(), format!("wildcard nonResourceURL {u:?}")));
+            out.push(escalation(
+                loc.clone(),
+                format!("wildcard nonResourceURL {u:?}"),
+            ));
         }
     }
 }
@@ -58,7 +80,11 @@ pub fn check_rules(policy: &WorkloadPolicy, rules: &[Value], path: &str, out: &m
 /// Extra ClusterRole rules: aggregation pulls in rules nobody reviewed, and the
 /// `aggregate-to-*` labels push this role's rules into the built-in
 /// admin/edit/view roles.
-pub(crate) fn check_cluster_role_extras(policy: &WorkloadPolicy, role: &Value, out: &mut Vec<Violation>) {
+pub(crate) fn check_cluster_role_extras(
+    policy: &WorkloadPolicy,
+    role: &Value,
+    out: &mut Vec<Violation>,
+) {
     if policy.allow_rbac_escalation {
         return;
     }
@@ -139,7 +165,10 @@ pub(crate) fn check_bound_role(
     for v in inner {
         out.push(Violation::new(
             "roleRef",
-            format!("the bound {role_kind} {role_name:?} has an escalation rule ({}: {})", v.location, v.reason),
+            format!(
+                "the bound {role_kind} {role_name:?} has an escalation rule ({}: {})",
+                v.location, v.reason
+            ),
             v.remedy,
         ));
     }

@@ -139,7 +139,12 @@ pub fn check_pod_spec(
     for key in ["initContainers", "containers", "ephemeralContainers"] {
         for (i, container) in items(spec, key).iter().enumerate() {
             let name = str_at(container, "name").unwrap_or("?");
-            check_container(policy, container, &format!("{path}.{key}[{i}] ({name})"), out);
+            check_container(
+                policy,
+                container,
+                &format!("{path}.{key}[{i}] ({name})"),
+                out,
+            );
         }
     }
 
@@ -156,7 +161,9 @@ pub fn check_pod_spec(
                 || key == "seccomp.security.alpha.kubernetes.io/pod"
                 || key.starts_with("container.seccomp.security.alpha.kubernetes.io/");
             if legacy_profile
-                && value.as_str().is_some_and(|v| v.eq_ignore_ascii_case("unconfined"))
+                && value
+                    .as_str()
+                    .is_some_and(|v| v.eq_ignore_ascii_case("unconfined"))
                 && !policy.allow_unconfined
             {
                 out.push(Violation::new(
@@ -193,7 +200,10 @@ fn check_volume(policy: &WorkloadPolicy, volume: &Value, path: &str, out: &mut V
         } else {
             out.push(Violation::new(
                 format!("{path} ({name})"),
-                format!("volume type {source} is not in the safe set ({})", SAFE_VOLUME_TYPES.join(", ")),
+                format!(
+                    "volume type {source} is not in the safe set ({})",
+                    SAFE_VOLUME_TYPES.join(", ")
+                ),
                 Remedy::AddTo(&flags::ALLOW_VOLUME_TYPES, source.clone()),
             ));
         }
@@ -288,12 +298,19 @@ pub(crate) fn check_container(
 }
 
 /// Rules shared by pod- and container-level security contexts.
-fn check_security_options(policy: &WorkloadPolicy, sc: &Value, path: &str, out: &mut Vec<Violation>) {
+fn check_security_options(
+    policy: &WorkloadPolicy,
+    sc: &Value,
+    path: &str,
+    out: &mut Vec<Violation>,
+) {
     if policy.allow_unconfined && policy.allow_privileged {
         return;
     }
     for key in ["seccompProfile", "appArmorProfile"] {
-        if sc.get(key).and_then(|p| str_at(p, "type")) == Some("Unconfined") && !policy.allow_unconfined {
+        if sc.get(key).and_then(|p| str_at(p, "type")) == Some("Unconfined")
+            && !policy.allow_unconfined
+        {
             out.push(Violation::new(
                 format!("{path}.{key}"),
                 format!("{key}.type: Unconfined turns off syscall/LSM confinement"),
@@ -329,7 +346,12 @@ fn check_security_options(policy: &WorkloadPolicy, sc: &Value, path: &str, out: 
 
 /// Probes and lifecycle hooks run from the kubelet: a `host` other than the
 /// pod itself makes the node send requests anywhere (SSRF).
-fn check_handler_host(policy: &WorkloadPolicy, handler: &Value, path: &str, out: &mut Vec<Violation>) {
+fn check_handler_host(
+    policy: &WorkloadPolicy,
+    handler: &Value,
+    path: &str,
+    out: &mut Vec<Violation>,
+) {
     if policy.allow_unconfined {
         return;
     }

@@ -129,10 +129,20 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
                                 "verbs": {
                                     "type": "array",
                                     "items": { "type": "string" },
-                                    "description": "Verbs (e.g. [\"get\", \"list\", \"watch\"])"
+                                    "description": "Verbs (e.g. [\"get\", \"list\", \"watch\"]). escalate, bind, impersonate and \"*\" are rejected unless the server allows RBAC escalation (--allow-rbac-escalation)"
+                                },
+                                "resource_names": {
+                                    "type": "array",
+                                    "items": { "type": "string" },
+                                    "description": "Restrict the rule to these object names (optional)"
+                                },
+                                "non_resource_urls": {
+                                    "type": "array",
+                                    "items": { "type": "string" },
+                                    "description": "Non-resource URLs such as /healthz (ClusterRoles only; use with verbs and empty api_groups/resources)"
                                 }
                             },
-                            "required": ["api_groups", "resources", "verbs"],
+                            "required": ["verbs"],
                             "additionalProperties": false
                         }
                     }
@@ -167,10 +177,20 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
                                 "verbs": {
                                     "type": "array",
                                     "items": { "type": "string" },
-                                    "description": "Verbs (e.g. [\"get\", \"list\", \"watch\"])"
+                                    "description": "Verbs (e.g. [\"get\", \"list\", \"watch\"]). escalate, bind, impersonate and \"*\" are rejected unless the server allows RBAC escalation (--allow-rbac-escalation)"
+                                },
+                                "resource_names": {
+                                    "type": "array",
+                                    "items": { "type": "string" },
+                                    "description": "Restrict the rule to these object names (optional)"
+                                },
+                                "non_resource_urls": {
+                                    "type": "array",
+                                    "items": { "type": "string" },
+                                    "description": "Non-resource URLs such as /healthz (ClusterRoles only; use with verbs and empty api_groups/resources)"
                                 }
                             },
-                            "required": ["api_groups", "resources", "verbs"],
+                            "required": ["verbs"],
                             "additionalProperties": false
                         }
                     }
@@ -264,6 +284,7 @@ async fn create_clusterrole(
         rules: Some(rules),
         aggregation_rule: None,
     };
+    crate::policy::check_typed(client, &cr)?;
 
     let cr_api = api(client);
     let created = cr_api
@@ -282,21 +303,18 @@ async fn update_clusterrole(
     let name = args["name"].as_str().ok_or("name is required")?;
     let rules_value = args.get("rules").ok_or("rules is required")?;
 
-    let rules: Vec<serde_json::Value> = rules_value
-        .as_array()
-        .ok_or("rules must be an array")?
-        .iter()
-        .map(|rule| {
-            serde_json::json!({
-                "apiGroups": rule.get("api_groups").cloned().unwrap_or(serde_json::json!([])),
-                "resources": rule.get("resources").cloned().unwrap_or(serde_json::json!([])),
-                "verbs": rule.get("verbs").cloned().unwrap_or(serde_json::json!([])),
-            })
-        })
-        .collect();
+    let rules = parse_policy_rules(rules_value)?;
+    // Rules are replaced wholesale, so checking the new rules is enough.
+    crate::policy::check_typed(
+        client,
+        &ClusterRole {
+            rules: Some(rules.clone()),
+            ..Default::default()
+        },
+    )?;
 
     let patch = serde_json::json!({
-        "rules": rules,
+        "rules": serde_json::to_value(&rules).map_err(|e| e.to_string())?,
     });
 
     let cr_api = api(client);
@@ -350,12 +368,27 @@ fn parse_policy_rules(
                 .and_then(|v| serde_json::from_value(v.clone()).ok())
                 .ok_or("each rule must have verbs")?;
 
+            let strings = |key: &str| -> Result<Option<Vec<String>>, String> {
+                rule.get(key)
+                    .map(|v| serde_json::from_value(v.clone()))
+                    .transpose()
+                    .map_err(|e| format!("invalid {key}: {e}"))
+            };
+            let non_resource_urls = strings("non_resource_urls")?;
+            let resource_rule = !api_groups.is_empty() || !resources.is_empty();
+            if non_resource_urls.is_some() && resource_rule {
+                return Err(
+                    "a rule has either non_resource_urls or api_groups/resources, not both"
+                        .to_string(),
+                );
+            }
+
             Ok(k8s_openapi::api::rbac::v1::PolicyRule {
-                api_groups: Some(api_groups),
-                resources: Some(resources),
+                api_groups: resource_rule.then_some(api_groups),
+                resources: resource_rule.then_some(resources),
                 verbs,
-                non_resource_urls: None,
-                resource_names: None,
+                non_resource_urls,
+                resource_names: strings("resource_names")?,
             })
         })
         .collect()

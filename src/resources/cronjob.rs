@@ -285,7 +285,11 @@ async fn update_cronjob(client: &K8sClient, args: &serde_json::Value) -> Result<
             .as_ref()
             .and_then(|s| s.job_template.spec.as_ref())
             .and_then(|j| j.template.spec.as_ref());
-        Some(podspec::resolve_container(pod_spec, args["container"].as_str(), name)?)
+        Some(podspec::resolve_container(
+            pod_spec,
+            args["container"].as_str(),
+            name,
+        )?)
     } else {
         None
     };
@@ -297,7 +301,10 @@ async fn update_cronjob(client: &K8sClient, args: &serde_json::Value) -> Result<
         ("concurrency_policy", "concurrencyPolicy"),
         ("suspend", "suspend"),
         ("starting_deadline_seconds", "startingDeadlineSeconds"),
-        ("successful_jobs_history_limit", "successfulJobsHistoryLimit"),
+        (
+            "successful_jobs_history_limit",
+            "successfulJobsHistoryLimit",
+        ),
         ("failed_jobs_history_limit", "failedJobsHistoryLimit"),
     ] {
         if let Some(v) = args.get(arg) {

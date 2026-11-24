@@ -18,17 +18,17 @@
 use std::collections::BTreeMap;
 
 use k8s_openapi::api::core::v1::{
-    AppArmorProfile, Capabilities, ConfigMapEnvSource, ConfigMapKeySelector, ConfigMapProjection,
-    ConfigMapVolumeSource, CSIVolumeSource, Container, ContainerPort, DownwardAPIProjection,
-    DownwardAPIVolumeFile, DownwardAPIVolumeSource, EmptyDirVolumeSource, EnvFromSource, EnvVar,
-    EnvVarSource, ExecAction, GRPCAction, HTTPGetAction, HTTPHeader, HostAlias,
-    HostPathVolumeSource, KeyToPath, Lifecycle, LifecycleHandler, LocalObjectReference,
+    Affinity, AppArmorProfile, CSIVolumeSource, Capabilities, ConfigMapEnvSource,
+    ConfigMapKeySelector, ConfigMapProjection, ConfigMapVolumeSource, Container, ContainerPort,
+    DownwardAPIProjection, DownwardAPIVolumeFile, DownwardAPIVolumeSource, EmptyDirVolumeSource,
+    EnvFromSource, EnvVar, EnvVarSource, ExecAction, GRPCAction, HTTPGetAction, HTTPHeader,
+    HostAlias, HostPathVolumeSource, KeyToPath, Lifecycle, LifecycleHandler, LocalObjectReference,
     NFSVolumeSource, ObjectFieldSelector, PersistentVolumeClaimVolumeSource, PodDNSConfig,
     PodSecurityContext, PodSpec, PodTemplateSpec, Probe, ProjectedVolumeSource,
     ResourceFieldSelector, ResourceRequirements, SeccompProfile, SecretEnvSource,
     SecretKeySelector, SecretProjection, SecretVolumeSource, SecurityContext,
     ServiceAccountTokenProjection, SleepAction, Sysctl, TCPSocketAction, Toleration,
-    TopologySpreadConstraint, Affinity, Volume, VolumeMount, VolumeProjection,
+    TopologySpreadConstraint, Volume, VolumeMount, VolumeProjection,
 };
 use k8s_openapi::apimachinery::pkg::api::resource::Quantity;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
@@ -195,7 +195,9 @@ pub fn normalize_args(args: &Value, schema: &Value) -> Result<Value, String> {
             alias
         };
         if out.contains_key(&canonical) {
-            return Err(format!("argument '{canonical}' was given twice (as '{key}' too)"));
+            return Err(format!(
+                "argument '{canonical}' was given twice (as '{key}' too)"
+            ));
         }
         out.insert(canonical, value.clone());
     }
@@ -240,9 +242,17 @@ pub(crate) fn int_or_string(value: &Value, what: &str) -> Result<IntOrString, St
     }
 }
 
-fn quantity_map(map: &BTreeMap<String, Value>, what: &str) -> Result<BTreeMap<String, Quantity>, String> {
+fn quantity_map(
+    map: &BTreeMap<String, Value>,
+    what: &str,
+) -> Result<BTreeMap<String, Quantity>, String> {
     map.iter()
-        .map(|(k, v)| Ok((k.clone(), Quantity(scalar_string(v, &format!("{what}.{k}"))?))))
+        .map(|(k, v)| {
+            Ok((
+                k.clone(),
+                Quantity(scalar_string(v, &format!("{what}.{k}"))?),
+            ))
+        })
         .collect()
 }
 
@@ -250,7 +260,10 @@ pub(crate) fn check_enum(value: &str, allowed: &[&str], what: &str) -> Result<()
     if allowed.contains(&value) {
         Ok(())
     } else {
-        Err(format!("{what} must be one of {}, got {value:?}", allowed.join(", ")))
+        Err(format!(
+            "{what} must be one of {}, got {value:?}",
+            allowed.join(", ")
+        ))
     }
 }
 
@@ -279,7 +292,11 @@ pub fn camelize_keys(value: &Value) -> Value {
             map.iter()
                 .map(|(k, v)| {
                     let key = camel(k);
-                    let v = if key == "matchLabels" { v.clone() } else { camelize_keys(v) };
+                    let v = if key == "matchLabels" {
+                        v.clone()
+                    } else {
+                        camelize_keys(v)
+                    };
                     (key, v)
                 })
                 .collect(),
@@ -881,13 +898,19 @@ fn env_from_sources(items: Vec<EnvFromArgs>, what: &str) -> Result<Vec<EnvFromSo
                         ..Default::default()
                     })
                 }
-                _ => Err(format!("{field}: set exactly one of secret_ref or config_map_ref")),
+                _ => Err(format!(
+                    "{field}: set exactly one of secret_ref or config_map_ref"
+                )),
             }
         })
         .collect()
 }
 
-fn container_ports(port: Option<i32>, ports: Option<Vec<Value>>, what: &str) -> Result<Option<Vec<ContainerPort>>, String> {
+fn container_ports(
+    port: Option<i32>,
+    ports: Option<Vec<Value>>,
+    what: &str,
+) -> Result<Option<Vec<ContainerPort>>, String> {
     let mut out = Vec::new();
     if let Some(p) = port {
         out.push(ContainerPort {
@@ -996,7 +1019,9 @@ fn probe(p: ProbeArgs, what: &str) -> Result<Probe, String> {
 /// Build a probe from the `liveness_probe`/`readiness_probe`/`startup_probe`
 /// argument shape. Returns `Ok(None)` when `key` is absent.
 pub fn probe_from_args(args: &Value, key: &str) -> Result<Option<Probe>, String> {
-    opt::<ProbeArgs>(args, key)?.map(|p| probe(p, key)).transpose()
+    opt::<ProbeArgs>(args, key)?
+        .map(|p| probe(p, key))
+        .transpose()
 }
 
 fn handler(h: HandlerArgs, what: &str) -> Result<LifecycleHandler, String> {
@@ -1055,9 +1080,17 @@ fn profile(v: &Value, what: &str) -> Result<(String, Option<String>), String> {
                 .and_then(Value::as_str)
                 .map(str::to_string),
         ),
-        _ => return Err(format!("{what} must be a profile type or {{type, localhost_profile}}")),
+        _ => {
+            return Err(format!(
+                "{what} must be a profile type or {{type, localhost_profile}}"
+            ))
+        }
     };
-    check_enum(&type_, &["RuntimeDefault", "Localhost", "Unconfined"], &format!("{what}.type"))?;
+    check_enum(
+        &type_,
+        &["RuntimeDefault", "Localhost", "Unconfined"],
+        &format!("{what}.type"),
+    )?;
     if type_ == "Localhost" && localhost.is_none() {
         return Err(format!("{what}: Localhost profiles need localhost_profile"));
     }
@@ -1114,12 +1147,19 @@ fn is_empty_security(sc: &SecurityContext) -> bool {
 /// Build a container. `defaults` are the pod-wide container security
 /// defaults from the top-level `security_context`.
 fn container(c: ContainerArgs, what: &str, require_image: bool) -> Result<Container, String> {
-    let name = c.name.clone().ok_or_else(|| format!("{what}.name is required"))?;
+    let name = c
+        .name
+        .clone()
+        .ok_or_else(|| format!("{what}.name is required"))?;
     if require_image && c.image.as_deref().is_none_or(str::is_empty) {
         return Err(format!("{what}.image is required"));
     }
     if let Some(p) = &c.image_pull_policy {
-        check_enum(p, &["Always", "IfNotPresent", "Never"], &format!("{what}.image_pull_policy"))?;
+        check_enum(
+            p,
+            &["Always", "IfNotPresent", "Never"],
+            &format!("{what}.image_pull_policy"),
+        )?;
     }
     let security_context = match &c.security_context {
         Some(s) => {
@@ -1278,14 +1318,18 @@ fn volume(v: VolumeArgs, what: &str) -> Result<Volume, String> {
                     medium: e.medium,
                     size_limit: e
                         .size_limit
-                        .map(|s| scalar_string(&s, &format!("{what}.empty_dir.size_limit")).map(Quantity))
+                        .map(|s| {
+                            scalar_string(&s, &format!("{what}.empty_dir.size_limit")).map(Quantity)
+                        })
                         .transpose()?,
                 })
             })
             .transpose()?,
-        persistent_volume_claim: v.persistent_volume_claim.map(|p| PersistentVolumeClaimVolumeSource {
-            claim_name: p.claim_name,
-            read_only: p.read_only,
+        persistent_volume_claim: v.persistent_volume_claim.map(|p| {
+            PersistentVolumeClaimVolumeSource {
+                claim_name: p.claim_name,
+                read_only: p.read_only,
+            }
         }),
         projected: v
             .projected
@@ -1354,13 +1398,18 @@ fn volume(v: VolumeArgs, what: &str) -> Result<Volume, String> {
             read_only: c.read_only,
             volume_attributes: c.volume_attributes,
             fs_type: c.fs_type,
-            node_publish_secret_ref: c.node_publish_secret_ref.map(|name| LocalObjectReference { name }),
+            node_publish_secret_ref: c
+                .node_publish_secret_ref
+                .map(|name| LocalObjectReference { name }),
         }),
         ..Default::default()
     })
 }
 
-pub(crate) fn string_map(args: &Value, key: &str) -> Result<Option<BTreeMap<String, String>>, String> {
+pub(crate) fn string_map(
+    args: &Value,
+    key: &str,
+) -> Result<Option<BTreeMap<String, String>>, String> {
     match args.get(key) {
         None | Some(Value::Null) => Ok(None),
         Some(Value::Object(map)) => map
@@ -1513,7 +1562,10 @@ fn pod_fields(args: &Value, kind: WorkloadKind) -> Result<PodFields, String> {
         termination_grace_period_seconds: args
             .get("termination_grace_period_seconds")
             .and_then(Value::as_i64),
-        dns_policy: args.get("dns_policy").and_then(Value::as_str).map(str::to_string),
+        dns_policy: args
+            .get("dns_policy")
+            .and_then(Value::as_str)
+            .map(str::to_string),
         dns_config: passthrough::<PodDNSConfig>(args, "dns_config")?,
         host_aliases,
         runtime_class_name: args
@@ -1549,7 +1601,11 @@ fn shorthand_container(args: &Value, name: &str) -> Result<Option<ContainerArgs>
     parse(&Value::Object(map), "arguments").map(Some)
 }
 
-fn container_list(args: &Value, key: &str, require_image: bool) -> Result<Option<Vec<Container>>, String> {
+fn container_list(
+    args: &Value,
+    key: &str,
+    require_image: bool,
+) -> Result<Option<Vec<Container>>, String> {
     let Some(items) = opt::<Vec<Value>>(args, key)? else {
         return Ok(None);
     };
@@ -1581,9 +1637,11 @@ fn container_list(args: &Value, key: &str, require_image: bool) -> Result<Option
 fn apply_container_defaults(
     c: &mut Container,
     defaults: &SecurityContext,
-    pod_non_root: Option<bool>,
+    pod: Option<&PodSecurityContext>,
     secure: bool,
 ) {
+    let pod_non_root = pod.and_then(|p| p.run_as_non_root);
+    let pod_user = pod.and_then(|p| p.run_as_user);
     let mut sc = c.security_context.take().unwrap_or_default();
     if sc.read_only_root_filesystem.is_none() {
         sc.read_only_root_filesystem = defaults.read_only_root_filesystem;
@@ -1603,7 +1661,10 @@ fn apply_container_defaults(
             .capabilities
             .as_ref()
             .and_then(|c| c.add.as_ref())
-            .is_some_and(|add| add.iter().any(|a| crate::policy::normalize_capability(a) == "SYS_ADMIN"));
+            .is_some_and(|add| {
+                add.iter()
+                    .any(|a| crate::policy::normalize_capability(a) == "SYS_ADMIN")
+            });
         // Kubernetes rejects allowPrivilegeEscalation: false together with
         // privileged or CAP_SYS_ADMIN.
         if sc.allow_privilege_escalation.is_none() && !privileged && !adds_sys_admin {
@@ -1611,7 +1672,8 @@ fn apply_container_defaults(
         }
         // Drop every capability unless the caller asked to run as root (root
         // images usually need the runtime's default capabilities).
-        let non_root = sc.run_as_non_root.or(pod_non_root) != Some(false) && sc.run_as_user != Some(0);
+        let non_root = sc.run_as_non_root.or(pod_non_root) != Some(false)
+            && sc.run_as_user.or(pod_user) != Some(0);
         if non_root && !privileged {
             let caps = sc.capabilities.get_or_insert_with(Capabilities::default);
             if caps.drop.is_none() {
@@ -1627,7 +1689,12 @@ fn apply_container_defaults(
 /// Build a pod spec from a workload tool's arguments.
 ///
 /// `name` is the workload name: the default container name and `app` label.
-pub fn build_pod_spec(args: &Value, name: &str, kind: WorkloadKind, policy: &WorkloadPolicy) -> Result<PodSpec, String> {
+pub fn build_pod_spec(
+    args: &Value,
+    name: &str,
+    kind: WorkloadKind,
+    policy: &WorkloadPolicy,
+) -> Result<PodSpec, String> {
     let fields = pod_fields(args, kind)?;
     let mut spec = fields.spec;
 
@@ -1657,7 +1724,11 @@ pub fn build_pod_spec(args: &Value, name: &str, kind: WorkloadKind, policy: &Wor
     spec.init_containers = container_list(args, "init_containers", true)?;
 
     let mut names = std::collections::HashSet::new();
-    for c in spec.containers.iter().chain(spec.init_containers.iter().flatten()) {
+    for c in spec
+        .containers
+        .iter()
+        .chain(spec.init_containers.iter().flatten())
+    {
         if !names.insert(c.name.clone()) {
             return Err(format!("container name {:?} is used twice", c.name));
         }
@@ -1665,7 +1736,9 @@ pub fn build_pod_spec(args: &Value, name: &str, kind: WorkloadKind, policy: &Wor
 
     let secure = policy.secure_defaults;
     if secure {
-        let sc = spec.security_context.get_or_insert_with(PodSecurityContext::default);
+        let sc = spec
+            .security_context
+            .get_or_insert_with(PodSecurityContext::default);
         if sc.run_as_non_root.is_none() && sc.run_as_user != Some(0) {
             sc.run_as_non_root = Some(true);
         }
@@ -1679,13 +1752,13 @@ pub fn build_pod_spec(args: &Value, name: &str, kind: WorkloadKind, policy: &Wor
             spec.automount_service_account_token = Some(false);
         }
     }
-    let pod_non_root = spec.security_context.as_ref().and_then(|s| s.run_as_non_root);
+    let pod_security = spec.security_context.clone();
     for c in spec
         .containers
         .iter_mut()
         .chain(spec.init_containers.iter_mut().flatten())
     {
-        apply_container_defaults(c, &fields.container_defaults, pod_non_root, secure);
+        apply_container_defaults(c, &fields.container_defaults, pod_security.as_ref(), secure);
     }
     Ok(spec)
 }
@@ -1708,11 +1781,9 @@ pub struct TemplateMeta {
 pub fn build_meta(args: &Value, name: &str, kind: WorkloadKind) -> Result<TemplateMeta, String> {
     let mut labels = string_map(args, "labels")?.unwrap_or_default();
     match labels.get(APP_LABEL) {
-        Some(v) if v != name && kind.has_app_selector() => {
-            return Err(format!(
-                "labels.{APP_LABEL} is the selector label and must equal the workload name ({name:?})"
-            ))
-        }
+        Some(v) if v != name && kind.has_app_selector() => return Err(format!(
+            "labels.{APP_LABEL} is the selector label and must equal the workload name ({name:?})"
+        )),
         Some(_) => {}
         None => {
             labels.insert(APP_LABEL.to_string(), name.to_string());
@@ -1759,7 +1830,11 @@ pub fn build_template(
 
 /// Pick the container an update targets: `requested`, else the container
 /// named after the workload, else the only container.
-pub fn resolve_container(spec: Option<&PodSpec>, requested: Option<&str>, workload: &str) -> Result<String, String> {
+pub fn resolve_container(
+    spec: Option<&PodSpec>,
+    requested: Option<&str>,
+    workload: &str,
+) -> Result<String, String> {
     let names: Vec<&str> = spec
         .map(|s| s.containers.iter().map(|c| c.name.as_str()).collect())
         .unwrap_or_default();
@@ -1767,7 +1842,10 @@ pub fn resolve_container(spec: Option<&PodSpec>, requested: Option<&str>, worklo
         if names.contains(&r) {
             return Ok(r.to_string());
         }
-        return Err(format!("container {r:?} not found (containers: {})", names.join(", ")));
+        return Err(format!(
+            "container {r:?} not found (containers: {})",
+            names.join(", ")
+        ));
     }
     if names.contains(&workload) {
         return Ok(workload.to_string());
@@ -1786,10 +1864,17 @@ pub const UPDATE_EXTRA_KEYS: &[&str] = &["container"];
 
 /// Whether the update arguments touch any container field.
 pub fn touches_container(args: &Value) -> bool {
-    CONTAINER_SHORTHAND_KEYS.iter().any(|k| args.get(*k).is_some())
-        || ["privileged", "allow_privilege_escalation", "capabilities", "read_only_root_filesystem"]
-            .iter()
-            .any(|k| args["security_context"].get(*k).is_some())
+    CONTAINER_SHORTHAND_KEYS
+        .iter()
+        .any(|k| args.get(*k).is_some())
+        || [
+            "privileged",
+            "allow_privilege_escalation",
+            "capabilities",
+            "read_only_root_filesystem",
+        ]
+        .iter()
+        .any(|k| args["security_context"].get(*k).is_some())
 }
 
 /// Build a strategic-merge patch for a pod template from update arguments.
@@ -1877,7 +1962,11 @@ pub fn build_template_patch(args: &Value, target: Option<&str>) -> Result<Option
     if !spec.is_empty() {
         patch.insert("spec".into(), Value::Object(spec));
     }
-    Ok(if patch.is_empty() { None } else { Some(Value::Object(patch)) })
+    Ok(if patch.is_empty() {
+        None
+    } else {
+        Some(Value::Object(patch))
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -2099,9 +2188,18 @@ fn container_security_schema() -> Value {
 fn pod_security_schema() -> Value {
     let mut props = container_security_properties();
     props.insert("run_as_non_root".into(), json!({ "type": "boolean", "description": "Default true (with secure defaults on). Set false for images that must run as root; they then also keep the runtime's default capabilities" }));
-    props.insert("fs_group".into(), json!({ "type": "integer", "description": "Group that owns mounted volumes" }));
-    props.insert("fs_group_change_policy".into(), json!({ "type": "string", "enum": ["OnRootMismatch", "Always"] }));
-    props.insert("supplemental_groups".into(), json!({ "type": "array", "items": { "type": "integer" } }));
+    props.insert(
+        "fs_group".into(),
+        json!({ "type": "integer", "description": "Group that owns mounted volumes" }),
+    );
+    props.insert(
+        "fs_group_change_policy".into(),
+        json!({ "type": "string", "enum": ["OnRootMismatch", "Always"] }),
+    );
+    props.insert(
+        "supplemental_groups".into(),
+        json!({ "type": "array", "items": { "type": "integer" } }),
+    );
     props.insert("sysctls".into(), json!({
         "type": "array",
         "description": "Namespaced sysctls. Only the safe set is allowed without --allow-unconfined",
@@ -2122,8 +2220,8 @@ fn container_properties() -> Map<String, Value> {
         "image": { "type": "string", "description": "Container image" },
         "command": { "type": "array", "items": { "type": "string" }, "description": "Entrypoint (replaces the image's ENTRYPOINT)" },
         "args": { "type": "array", "items": { "type": "string" }, "description": "Arguments (replace the image's CMD)" },
-        "working_dir": { "type": "string" },
-        "image_pull_policy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] },
+        "working_dir": { "type": "string", "description": "Working directory" },
+        "image_pull_policy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"], "description": "When to pull the image (Kubernetes default: IfNotPresent, Always for :latest)" },
         "env": env_schema(),
         "env_from": env_from_schema(),
         "ports": ports_schema(),
@@ -2147,7 +2245,10 @@ fn container_properties() -> Map<String, Value> {
 
 fn container_item_schema(init: bool) -> Value {
     let mut props = container_properties();
-    props.insert("name".into(), json!({ "type": "string", "description": "Container name (unique in the pod)" }));
+    props.insert(
+        "name".into(),
+        json!({ "type": "string", "description": "Container name (unique in the pod)" }),
+    );
     props.insert("security_context".into(), container_security_schema());
     if init {
         props.insert("restart_policy".into(), json!({ "type": "string", "enum": ["Always"], "description": "Always makes this init container a native sidecar that keeps running next to the main containers" }));
@@ -2226,22 +2327,29 @@ fn string_map_schema(description: &str) -> Value {
 /// Pod-level properties shared by every workload tool.
 fn pod_properties(kind: WorkloadKind) -> Map<String, Value> {
     let restart = match kind {
-        WorkloadKind::Pod => json!({ "type": "string", "enum": ["Never", "OnFailure", "Always"], "description": "Restart policy (default: Never)" }),
-        WorkloadKind::Job => json!({ "type": "string", "enum": ["Never", "OnFailure"], "description": "Pod restart policy (default: Never)" }),
-        WorkloadKind::CronJob => json!({ "type": "string", "enum": ["Never", "OnFailure"], "description": "Pod restart policy (default: OnFailure)" }),
+        WorkloadKind::Pod => {
+            json!({ "type": "string", "enum": ["Never", "OnFailure", "Always"], "description": "Restart policy (default: Never)" })
+        }
+        WorkloadKind::Job => {
+            json!({ "type": "string", "enum": ["Never", "OnFailure"], "description": "Pod restart policy (default: Never)" })
+        }
+        WorkloadKind::CronJob => {
+            json!({ "type": "string", "enum": ["Never", "OnFailure"], "description": "Pod restart policy (default: OnFailure)" })
+        }
         _ => Value::Null,
     };
     let v = json!({
         "containers": { "type": "array", "description": "Containers, for multi-container pods. Use either this or the single-container arguments (image, command, …).", "items": container_item_schema(false) },
         "init_containers": { "type": "array", "description": "Init containers, run to completion before the main containers. restart_policy: Always makes one a native sidecar.", "items": container_item_schema(true) },
         "container_name": { "type": "string", "description": "Name of the single container (default: the workload name)" },
-        "volumes": { "type": "array", "items": volume_schema() },
+        "volumes": { "type": "array", "description": "Pod volumes, mounted with volume_mounts", "items": volume_schema() },
         "service_account_name": { "type": "string", "description": "Service account the pods run as. When unset, the service account token is not mounted (automountServiceAccountToken: false)" },
         "automount_service_account_token": { "type": "boolean", "description": "Mount the service account token (default: false unless service_account_name is set)" },
         "image_pull_secrets": { "type": "array", "items": { "type": "string" }, "description": "Names of image pull Secrets" },
         "node_selector": string_map_schema("Node labels the pods must match"),
         "tolerations": {
             "type": "array",
+            "description": "Taints the pods tolerate",
             "items": {
                 "type": "object",
                 "properties": {
@@ -2256,12 +2364,12 @@ fn pod_properties(kind: WorkloadKind) -> Map<String, Value> {
         },
         "affinity": { "type": "object", "description": "Kubernetes Affinity object (nodeAffinity, podAffinity, podAntiAffinity) as in the API; snake_case keys are accepted too" },
         "topology_spread_constraints": { "type": "array", "description": "Kubernetes TopologySpreadConstraint objects (maxSkew, topologyKey, whenUnsatisfiable, labelSelector, …)", "items": { "type": "object" } },
-        "priority_class_name": { "type": "string" },
-        "termination_grace_period_seconds": { "type": "integer" },
-        "dns_policy": { "type": "string", "enum": ["ClusterFirst", "ClusterFirstWithHostNet", "Default", "None"] },
+        "priority_class_name": { "type": "string", "description": "PriorityClass for scheduling and preemption" },
+        "termination_grace_period_seconds": { "type": "integer", "description": "Seconds to wait after SIGTERM before killing the pod (default: 30)" },
+        "dns_policy": { "type": "string", "enum": ["ClusterFirst", "ClusterFirstWithHostNet", "Default", "None"], "description": "DNS policy (default: ClusterFirst; None requires dns_config)" },
         "dns_config": { "type": "object", "description": "{nameservers, searches, options: [{name, value}]}" },
         "host_aliases": { "type": "array", "description": "Extra /etc/hosts entries", "items": { "type": "object", "properties": { "ip": { "type": "string" }, "hostnames": { "type": "array", "items": { "type": "string" } } }, "required": ["ip", "hostnames"], "additionalProperties": false } },
-        "runtime_class_name": { "type": "string" },
+        "runtime_class_name": { "type": "string", "description": "RuntimeClass, e.g. a sandboxed runtime such as gvisor or kata" },
         "host_network": { "type": "boolean", "description": "Gated: needs --allow-host-namespaces" },
         "host_pid": { "type": "boolean", "description": "Gated: needs --allow-host-namespaces" },
         "host_ipc": { "type": "boolean", "description": "Gated: needs --allow-host-namespaces" },
@@ -2274,7 +2382,10 @@ fn pod_properties(kind: WorkloadKind) -> Map<String, Value> {
         props.insert("restart_policy".into(), restart);
     }
     if kind != WorkloadKind::Pod {
-        props.insert("pod_annotations".into(), string_map_schema("Annotations for the pod template (e.g. prometheus.io/scrape)"));
+        props.insert(
+            "pod_annotations".into(),
+            string_map_schema("Annotations for the pod template (e.g. prometheus.io/scrape)"),
+        );
     }
     props
 }
@@ -2283,8 +2394,14 @@ fn pod_properties(kind: WorkloadKind) -> Map<String, Value> {
 /// single-container shorthand, pod fields, and the tool's own properties.
 pub fn workload_schema(kind: WorkloadKind, extra: Value, required: &[&str]) -> Value {
     let mut props = Map::new();
-    props.insert("namespace".into(), json!({ "type": "string", "description": "Kubernetes namespace" }));
-    props.insert("name".into(), json!({ "type": "string", "description": "Object name" }));
+    props.insert(
+        "namespace".into(),
+        json!({ "type": "string", "description": "Kubernetes namespace" }),
+    );
+    props.insert(
+        "name".into(),
+        json!({ "type": "string", "description": "Object name" }),
+    );
     props.extend(container_properties());
     props.insert("port".into(), json!({ "type": "integer", "description": "Single container port to expose (shorthand for ports: [port])" }));
     props.extend(pod_properties(kind));

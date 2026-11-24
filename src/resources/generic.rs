@@ -45,7 +45,7 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
     vec![
         serde_json::json!({
             "name": "apply_manifest",
-            "description": "Last resort: apply an arbitrary Kubernetes manifest, given as JSON, using server-side apply. Prefer the typed create_*/update_* tools (for example create_deployment, create_job, create_pod), which validate their input and enforce the server's guardrails; use apply_manifest only for resource types that have no typed tool. YAML is not accepted: convert it to JSON first. Returns the applied object's metadata (name, namespace, kind, resource_version).",
+            "description": "Last resort: apply an arbitrary Kubernetes manifest, given as JSON, using server-side apply. Prefer the typed create_*/update_* tools (for example create_deployment, create_job, create_pod, create_service, create_ingress), which validate their input and cover the common fields; use apply_manifest only for resource types or fields that have no typed tool. apply_manifest enforces the same guardrails as the typed tools: the pod security rules on every pod template (Pod, Deployment, StatefulSet, DaemonSet, ReplicaSet, Job, CronJob, …), the Service and Ingress rules, the namespace allowlist and the per-resource create/update permissions. RBAC objects, admission webhooks and policies, CRDs, Endpoints, other cluster-scoped kinds and custom resources are rejected unless the server operator allowlists them. YAML is not accepted: convert it to JSON first. Returns the applied object's metadata (name, namespace, kind, resource_version).",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -90,61 +90,38 @@ async fn apply_manifest(client: &K8sClient, args: &serde_json::Value) -> Result<
 
     // Parse the manifest string as JSON. If the input is YAML (not JSON),
     // this will fail with a clear error message.
-    let manifest: serde_json::Value = serde_json::from_str(manifest_str).map_err(|e| {
+    let mut manifest: serde_json::Value = serde_json::from_str(manifest_str).map_err(|e| {
         format!(
             "Failed to parse manifest as JSON: {e}. \
                  If providing YAML, please convert to JSON first."
         )
     })?;
-
-    // Extract required fields from the parsed manifest
-    let api_version = manifest["apiVersion"]
-        .as_str()
-        .ok_or("manifest must contain 'apiVersion'")?;
-    let kind = manifest["kind"]
-        .as_str()
-        .ok_or("manifest must contain 'kind'")?;
-    let resource_name = manifest["metadata"]["name"]
-        .as_str()
-        .ok_or("manifest must contain 'metadata.name'")?;
-    let namespace = manifest["metadata"]["namespace"].as_str();
-
-    // Check namespace access if present
-    if let Some(ns) = namespace {
-        if !client.is_namespace_allowed(ns) {
-            return Err(format!("Namespace '{ns}' is not in the allowed list"));
-        }
+    if !manifest.is_object() {
+        return Err("manifest must be a JSON object".to_string());
     }
 
-    // Resolve the GVK via API discovery
-    let (group, version) = parse_api_version(api_version);
-    let gvk = GroupVersionKind::gvk(group, version, kind);
-    let (ar, caps) = discovery::pinned_kind(client.inner(), &gvk)
-        .await
-        .map_err(|e| format!("Failed to discover resource {kind} ({api_version}): {e}"))?;
-
-    // Build the API handle based on scope
-    let api: Api<DynamicObject> = match (caps.scope, namespace) {
-        (Scope::Namespaced, Some(ns)) => Api::namespaced_with(client.inner().clone(), ns, &ar),
-        (Scope::Namespaced, None) => {
-            return Err(format!(
-                "Resource {kind} is namespaced but no namespace was provided in the manifest"
-            ));
-        }
-        (Scope::Cluster, _) => Api::all_with(client.inner().clone(), &ar),
-    };
+    // Same guardrails as the typed tools, plus the kind and custom resource
+    // gates for raw manifests; resolves the target API.
+    let target = crate::policy::admit_manifest(
+        client,
+        &mut manifest,
+        crate::policy::AdmissionOrigin::ApplyManifest,
+        None,
+    )
+    .await?;
 
     // Server-side apply with force
     let patch_params = PatchParams::apply("mcp-k8s").force();
-    let applied = api
-        .patch(resource_name, &patch_params, &Patch::Apply(&manifest))
+    let applied = target
+        .api
+        .patch(&target.name, &patch_params, &Patch::Apply(&manifest))
         .await
         .map_err(|e| format!("Failed to apply manifest: {e}"))?;
 
     let result = serde_json::json!({
         "name": applied.metadata.name,
         "namespace": applied.metadata.namespace,
-        "kind": kind,
+        "kind": target.kind,
         "resource_version": applied.metadata.resource_version,
     });
     serde_json::to_string_pretty(&result).map_err(|e| e.to_string())

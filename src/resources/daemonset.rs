@@ -176,7 +176,11 @@ fn daemonset_properties() -> Value {
 }
 
 fn create_daemonset_schema() -> Value {
-    podspec::workload_schema(WorkloadKind::DaemonSet, daemonset_properties(), &["namespace", "name"])
+    podspec::workload_schema(
+        WorkloadKind::DaemonSet,
+        daemonset_properties(),
+        &["namespace", "name"],
+    )
 }
 
 fn update_daemonset_schema() -> Value {
@@ -210,7 +214,11 @@ fn update_strategy(args: &Value) -> Result<Option<DaemonSetUpdateStrategy>, Stri
         return Ok(None);
     };
     let type_ = s.type_.unwrap_or_else(|| "RollingUpdate".to_string());
-    podspec::check_enum(&type_, &["RollingUpdate", "OnDelete"], "update_strategy.type")?;
+    podspec::check_enum(
+        &type_,
+        &["RollingUpdate", "OnDelete"],
+        "update_strategy.type",
+    )?;
     let max_unavailable = s
         .max_unavailable
         .map(|v| podspec::int_or_string(&v, "update_strategy.max_unavailable"))
@@ -220,7 +228,10 @@ fn update_strategy(args: &Value) -> Result<Option<DaemonSetUpdateStrategy>, Stri
         .map(|v| podspec::int_or_string(&v, "update_strategy.max_surge"))
         .transpose()?;
     if type_ == "OnDelete" && (max_unavailable.is_some() || max_surge.is_some()) {
-        return Err("update_strategy: max_unavailable and max_surge only apply to RollingUpdate".to_string());
+        return Err(
+            "update_strategy: max_unavailable and max_surge only apply to RollingUpdate"
+                .to_string(),
+        );
     }
     Ok(Some(DaemonSetUpdateStrategy {
         type_: Some(type_),
@@ -387,7 +398,11 @@ async fn update_daemonset(client: &K8sClient, args: &serde_json::Value) -> Resul
     let target = if podspec::touches_container(&args) {
         let current = ds_api.get(name).await.map_err(|e| e.to_string())?;
         let pod_spec = current.spec.as_ref().and_then(|s| s.template.spec.as_ref());
-        Some(podspec::resolve_container(pod_spec, args["container"].as_str(), name)?)
+        Some(podspec::resolve_container(
+            pod_spec,
+            args["container"].as_str(),
+            name,
+        )?)
     } else {
         None
     };

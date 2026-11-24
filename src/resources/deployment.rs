@@ -131,15 +131,27 @@ fn strategy_from_args(args: &Value) -> Result<Option<DeploymentStrategy>, String
         return Ok(None);
     };
     let obj = s.as_object().ok_or("strategy must be an object")?;
-    if let Some(k) = obj
-        .keys()
-        .find(|k| !["type", "max_surge", "max_unavailable", "maxSurge", "maxUnavailable"].contains(&k.as_str()))
-    {
-        return Err(format!("strategy: unknown field '{k}' (expected type, max_surge, max_unavailable)"));
+    if let Some(k) = obj.keys().find(|k| {
+        ![
+            "type",
+            "max_surge",
+            "max_unavailable",
+            "maxSurge",
+            "maxUnavailable",
+        ]
+        .contains(&k.as_str())
+    }) {
+        return Err(format!(
+            "strategy: unknown field '{k}' (expected type, max_surge, max_unavailable)"
+        ));
     }
     let type_ = s["type"].as_str().unwrap_or("RollingUpdate");
     podspec::check_enum(type_, &["RollingUpdate", "Recreate"], "strategy.type")?;
-    let get = |snake: &str, camel: &str| s.get(snake).or_else(|| s.get(camel)).filter(|v| !v.is_null());
+    let get = |snake: &str, camel: &str| {
+        s.get(snake)
+            .or_else(|| s.get(camel))
+            .filter(|v| !v.is_null())
+    };
     let max_surge = get("max_surge", "maxSurge")
         .map(|v| podspec::int_or_string(v, "strategy.max_surge"))
         .transpose()?;
@@ -147,7 +159,9 @@ fn strategy_from_args(args: &Value) -> Result<Option<DeploymentStrategy>, String
         .map(|v| podspec::int_or_string(v, "strategy.max_unavailable"))
         .transpose()?;
     if type_ == "Recreate" && (max_surge.is_some() || max_unavailable.is_some()) {
-        return Err("strategy: max_surge and max_unavailable only apply to RollingUpdate".to_string());
+        return Err(
+            "strategy: max_surge and max_unavailable only apply to RollingUpdate".to_string(),
+        );
     }
     Ok(Some(DeploymentStrategy {
         type_: Some(type_.to_string()),
@@ -459,7 +473,11 @@ async fn update_deployment(client: &K8sClient, args: &serde_json::Value) -> Resu
     let target = if podspec::touches_container(&args) {
         let current = dep_api.get(name).await.map_err(|e| e.to_string())?;
         let pod_spec = current.spec.as_ref().and_then(|s| s.template.spec.as_ref());
-        Some(podspec::resolve_container(pod_spec, args["container"].as_str(), name)?)
+        Some(podspec::resolve_container(
+            pod_spec,
+            args["container"].as_str(),
+            name,
+        )?)
     } else {
         None
     };
@@ -1005,26 +1023,127 @@ mod tests {
         assert_eq!(parsed["created_at"], "2025-01-01T00:00:00Z");
     }
 
-    #[test]
-    fn env_from_args_parses_object() {
-        let args = serde_json::json!({
-            "env": {
-                "FOO": "bar",
-                "BAZ": "qux"
-            }
-        });
-        let env = env_from_args(&args).unwrap();
-        assert_eq!(env.len(), 2);
+    /// The probe built from `args[key]`, as the JSON sent to the API server.
+    fn probe_from_args(args: &serde_json::Value, key: &str) -> Option<serde_json::Value> {
+        crate::resources::podspec::probe_from_args(args, key)
+            .expect("valid probe")
+            .map(|p| serde_json::to_value(p).unwrap())
+    }
 
+    fn built_container(args: serde_json::Value) -> k8s_openapi::api::core::v1::Container {
+        let policy = crate::policy::WorkloadPolicy::default();
+        let spec = crate::resources::podspec::build_pod_spec(
+            &args,
+            "web",
+            crate::resources::podspec::WorkloadKind::Deployment,
+            &policy,
+        )
+        .unwrap();
+        spec.containers.into_iter().next().unwrap()
+    }
+
+    #[test]
+    fn env_object_form_still_parses() {
+        // The original create_deployment env shape: {NAME: "value"}.
+        let c = built_container(serde_json::json!({
+            "image": "nginx",
+            "env": { "FOO": "bar", "BAZ": "qux" }
+        }));
+        let env = c.env.unwrap();
+        assert_eq!(env.len(), 2);
         let names: Vec<&str> = env.iter().map(|e| e.name.as_str()).collect();
         assert!(names.contains(&"FOO"));
         assert!(names.contains(&"BAZ"));
     }
 
     #[test]
-    fn env_from_args_returns_none_when_absent() {
-        let args = serde_json::json!({});
-        assert!(env_from_args(&args).is_none());
+    fn env_absent_means_no_env() {
+        let c = built_container(serde_json::json!({ "image": "nginx" }));
+        assert!(c.env.is_none());
+    }
+
+    #[test]
+    fn create_deployment_schema_keeps_the_original_arguments() {
+        let schema = create_deployment_schema();
+        let props = schema["properties"].as_object().unwrap();
+        for key in [
+            "namespace",
+            "name",
+            "image",
+            "replicas",
+            "port",
+            "env",
+            "env_from",
+        ] {
+            assert!(props.contains_key(key), "missing {key}");
+        }
+        for key in [
+            "strategy",
+            "min_ready_seconds",
+            "revision_history_limit",
+            "progress_deadline_seconds",
+            "liveness_probe",
+            "volumes",
+            "security_context",
+        ] {
+            assert!(props.contains_key(key), "missing {key}");
+        }
+        assert_eq!(schema["required"], serde_json::json!(["namespace", "name"]));
+    }
+
+    #[test]
+    fn update_deployment_schema_keeps_the_original_arguments() {
+        let schema = update_deployment_schema();
+        let props = schema["properties"].as_object().unwrap();
+        for key in [
+            "image",
+            "replicas",
+            "env",
+            "env_from",
+            "liveness_probe",
+            "readiness_probe",
+            "startup_probe",
+            "container",
+            "strategy",
+        ] {
+            assert!(props.contains_key(key), "missing {key}");
+        }
+        assert!(!props.contains_key("labels"), "labels have their own tool");
+    }
+
+    #[test]
+    fn strategy_parsing() {
+        let s = strategy_from_args(&serde_json::json!({
+            "strategy": { "type": "RollingUpdate", "max_surge": "50%", "max_unavailable": 0 }
+        }))
+        .unwrap()
+        .unwrap();
+        let ru = s.rolling_update.unwrap();
+        assert_eq!(
+            ru.max_surge,
+            Some(k8s_openapi::apimachinery::pkg::util::intstr::IntOrString::String("50%".into()))
+        );
+        assert_eq!(
+            ru.max_unavailable,
+            Some(k8s_openapi::apimachinery::pkg::util::intstr::IntOrString::Int(0))
+        );
+        let recreate =
+            strategy_from_args(&serde_json::json!({ "strategy": { "type": "Recreate" } }))
+                .unwrap()
+                .unwrap();
+        assert!(recreate.rolling_update.is_none());
+        assert!(strategy_from_args(
+            &serde_json::json!({ "strategy": { "type": "Recreate", "max_surge": 1 } })
+        )
+        .is_err());
+        assert!(
+            strategy_from_args(&serde_json::json!({ "strategy": { "type": "BlueGreen" } }))
+                .is_err()
+        );
+        assert!(strategy_from_args(
+            &serde_json::json!({ "strategy": { "maxSurge": 1, "bogus": 1 } })
+        )
+        .is_err());
     }
 
     #[test]
@@ -1170,9 +1289,9 @@ mod tests {
     }
 
     #[test]
-    fn probe_from_args_unknown_type_produces_empty_probe() {
-        // An unknown probe_type should produce a probe with only timing fields,
-        // no action field — callers decide whether to reject or pass through.
+    fn probe_from_args_grpc() {
+        // grpc used to be "unknown" and produced a probe without a handler,
+        // which the API server rejects; it is now supported.
         let args = serde_json::json!({
             "liveness_probe": {
                 "probe_type": "grpc",
@@ -1184,6 +1303,14 @@ mod tests {
         assert!(probe.get("httpGet").is_none());
         assert!(probe.get("tcpSocket").is_none());
         assert!(probe.get("exec").is_none());
+        assert_eq!(probe["grpc"]["port"], 50051);
         assert_eq!(probe["periodSeconds"], 5);
+    }
+
+    #[test]
+    fn probe_from_args_unknown_type_is_an_error() {
+        let args = serde_json::json!({ "liveness_probe": { "probe_type": "carrier-pigeon" } });
+        let err = crate::resources::podspec::probe_from_args(&args, "liveness_probe").unwrap_err();
+        assert!(err.contains("probe_type"), "{err}");
     }
 }

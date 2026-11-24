@@ -129,10 +129,17 @@ struct TlsArgs {
     secret_name: Option<String>,
 }
 
-fn backend(name: String, port: Option<i32>, port_name: Option<String>, what: &str) -> Result<IngressBackend, String> {
+fn backend(
+    name: String,
+    port: Option<i32>,
+    port_name: Option<String>,
+    what: &str,
+) -> Result<IngressBackend, String> {
     let port = match (port, port_name) {
         (Some(_), Some(_)) => {
-            return Err(format!("{what}: set service_port or service_port_name, not both"))
+            return Err(format!(
+                "{what}: set service_port or service_port_name, not both"
+            ))
         }
         (_, Some(n)) => ServiceBackendPort {
             name: Some(n),
@@ -197,7 +204,12 @@ fn rules_from_args(args: &Value) -> Result<Option<Vec<IngressRule>>, String> {
                     Ok(HTTPIngressPath {
                         path: Some(p.path.unwrap_or_else(|| "/".to_string())),
                         path_type: path_type(p.path_type, &format!("{what}.path_type"))?,
-                        backend: backend(p.service_name, p.service_port, p.service_port_name, &what)?,
+                        backend: backend(
+                            p.service_name,
+                            p.service_port,
+                            p.service_port_name,
+                            &what,
+                        )?,
                     })
                 })
                 .collect::<Result<Vec<_>, String>>()?;
@@ -227,7 +239,14 @@ fn tls_from_args(args: &Value) -> Result<Option<Vec<IngressTLS>>, String> {
 
 fn default_backend_from_args(args: &Value) -> Result<Option<IngressBackend>, String> {
     podspec::opt::<BackendArgs>(args, "default_backend")?
-        .map(|b| backend(b.service_name, b.service_port, b.service_port_name, "default_backend"))
+        .map(|b| {
+            backend(
+                b.service_name,
+                b.service_port,
+                b.service_port_name,
+                "default_backend",
+            )
+        })
         .transpose()
 }
 
@@ -238,7 +257,9 @@ fn ingress_from_args(args: &Value) -> Result<Ingress, String> {
     let rules = rules_from_args(args)?;
     let default_backend = default_backend_from_args(args)?;
     if rules.is_none() && default_backend.is_none() {
-        return Err("give rules, default_backend, or service_name (single-rule shorthand)".to_string());
+        return Err(
+            "give rules, default_backend, or service_name (single-rule shorthand)".to_string(),
+        );
     }
     let mut labels = podspec::string_map(args, "labels")?.unwrap_or_default();
     labels.insert(MANAGED_BY_LABEL.to_string(), MANAGED_BY_VALUE.to_string());
@@ -381,13 +402,22 @@ async fn update_ingress(client: &K8sClient, args: &serde_json::Value) -> Result<
 
     let mut spec = Map::new();
     if let Some(rules) = rules_from_args(&args)? {
-        spec.insert("rules".into(), serde_json::to_value(rules).map_err(|e| e.to_string())?);
+        spec.insert(
+            "rules".into(),
+            serde_json::to_value(rules).map_err(|e| e.to_string())?,
+        );
     }
     if let Some(tls) = tls_from_args(&args)? {
-        spec.insert("tls".into(), serde_json::to_value(tls).map_err(|e| e.to_string())?);
+        spec.insert(
+            "tls".into(),
+            serde_json::to_value(tls).map_err(|e| e.to_string())?,
+        );
     }
     if let Some(b) = default_backend_from_args(&args)? {
-        spec.insert("defaultBackend".into(), serde_json::to_value(b).map_err(|e| e.to_string())?);
+        spec.insert(
+            "defaultBackend".into(),
+            serde_json::to_value(b).map_err(|e| e.to_string())?,
+        );
     }
     if let Some(class) = args["ingress_class"].as_str() {
         spec.insert("ingressClassName".into(), json!(class));
@@ -454,9 +484,9 @@ mod tests {
     use std::collections::BTreeMap;
 
     #[test]
-    fn tool_definitions_returns_two_unique_tools() {
+    fn tool_definitions_returns_four_unique_tools() {
         let defs = tool_definitions();
-        assert_eq!(defs.len(), 2);
+        assert_eq!(defs.len(), 4);
 
         let names: Vec<&str> = defs.iter().map(|d| d["name"].as_str().unwrap()).collect();
 
@@ -466,7 +496,165 @@ mod tests {
         assert_eq!(names.len(), unique.len(), "tool names must be unique");
 
         assert!(names.contains(&"get_ingress"));
+        assert!(names.contains(&"create_ingress"));
+        assert!(names.contains(&"update_ingress"));
         assert!(names.contains(&"delete_ingress"));
+    }
+
+    fn policy() -> crate::policy::WorkloadPolicy {
+        crate::policy::WorkloadPolicy::default()
+    }
+
+    fn violations(ing: &Ingress) -> Vec<crate::policy::Violation> {
+        crate::policy::check_object(
+            &policy(),
+            &serde_json::to_value(ing).unwrap(),
+            crate::policy::Source::Typed,
+        )
+    }
+
+    #[test]
+    fn legacy_single_rule_arguments_build_the_same_ingress() {
+        // The original create_ingress arguments.
+        let ing = ingress_from_args(&json!({
+            "namespace": "web", "name": "site", "host": "site.example.com",
+            "service_name": "frontend", "service_port": 8080,
+            "ingress_class": "nginx",
+            "annotations": { "nginx.ingress.kubernetes.io/rewrite-target": "/" }
+        }))
+        .unwrap();
+        let spec = ing.spec.as_ref().unwrap();
+        assert_eq!(spec.ingress_class_name.as_deref(), Some("nginx"));
+        let rule = &spec.rules.as_ref().unwrap()[0];
+        assert_eq!(rule.host.as_deref(), Some("site.example.com"));
+        let path = &rule.http.as_ref().unwrap().paths[0];
+        assert_eq!(path.path.as_deref(), Some("/"));
+        assert_eq!(path.path_type, "Prefix");
+        let svc = path.backend.service.as_ref().unwrap();
+        assert_eq!(svc.name, "frontend");
+        assert_eq!(svc.port.as_ref().unwrap().number, Some(8080));
+        assert_eq!(
+            ing.metadata.labels.as_ref().unwrap()[MANAGED_BY_LABEL],
+            MANAGED_BY_VALUE
+        );
+        assert!(violations(&ing).is_empty());
+        assert_eq!(numbered_backends(&ing).get("frontend"), Some(&8080));
+    }
+
+    #[test]
+    fn rules_tls_and_default_backend() {
+        let ing = ingress_from_args(&json!({
+            "namespace": "web", "name": "site",
+            "rules": [
+                { "host": "a.example.com", "paths": [
+                    { "path": "/api", "path_type": "Prefix", "service_name": "api", "service_port_name": "http" },
+                    { "path": "/", "service_name": "ui", "service_port": 80 }
+                ]},
+                { "host": "b.example.com", "paths": [{ "path": "/exact", "path_type": "Exact", "service_name": "b" }] }
+            ],
+            "tls": [{ "hosts": ["a.example.com", "b.example.com"], "secret_name": "site-tls" }],
+            "default_backend": { "service_name": "fallback", "service_port": 8080 }
+        }))
+        .unwrap();
+        let spec = ing.spec.as_ref().unwrap();
+        let rules = spec.rules.as_ref().unwrap();
+        assert_eq!(rules.len(), 2);
+        let api = &rules[0].http.as_ref().unwrap().paths[0].backend;
+        assert_eq!(
+            api.service
+                .as_ref()
+                .unwrap()
+                .port
+                .as_ref()
+                .unwrap()
+                .name
+                .as_deref(),
+            Some("http")
+        );
+        assert_eq!(rules[1].http.as_ref().unwrap().paths[0].path_type, "Exact");
+        let tls = &spec.tls.as_ref().unwrap()[0];
+        assert_eq!(tls.secret_name.as_deref(), Some("site-tls"));
+        assert_eq!(tls.hosts.as_ref().unwrap().len(), 2);
+        assert_eq!(
+            spec.default_backend
+                .as_ref()
+                .unwrap()
+                .service
+                .as_ref()
+                .unwrap()
+                .name,
+            "fallback"
+        );
+        // Named ports can't be auto-created; numbered ones can.
+        let backends = numbered_backends(&ing);
+        assert!(!backends.contains_key("api"));
+        assert_eq!(backends.get("ui"), Some(&80));
+        assert_eq!(backends.get("fallback"), Some(&8080));
+    }
+
+    #[test]
+    fn ingress_argument_errors() {
+        let base = json!({ "namespace": "web", "name": "site" });
+        assert!(ingress_from_args(&base).unwrap_err().contains("rules"));
+        let mut both = base.clone();
+        both["rules"] = json!([{ "paths": [{ "service_name": "a" }] }]);
+        both["service_name"] = json!("b");
+        assert!(ingress_from_args(&both).unwrap_err().contains("not both"));
+        let mut bad_type = base.clone();
+        bad_type["rules"] = json!([{ "paths": [{ "service_name": "a", "path_type": "Regex" }] }]);
+        assert!(ingress_from_args(&bad_type)
+            .unwrap_err()
+            .contains("path_type"));
+        let mut two_ports = base.clone();
+        two_ports["rules"] = json!([{ "paths": [{ "service_name": "a", "service_port": 1, "service_port_name": "x" }] }]);
+        assert!(ingress_from_args(&two_ports)
+            .unwrap_err()
+            .contains("not both"));
+        let mut empty = base;
+        empty["rules"] = json!([{ "paths": [] }]);
+        assert!(ingress_from_args(&empty).unwrap_err().contains("empty"));
+    }
+
+    #[test]
+    fn snippet_annotation_is_rejected_by_the_typed_tool() {
+        let ing = ingress_from_args(&json!({
+            "namespace": "web", "name": "site", "service_name": "frontend",
+            "annotations": { "nginx.ingress.kubernetes.io/configuration-snippet": "more_set_headers \"X: y\";" }
+        }))
+        .unwrap();
+        let v = violations(&ing);
+        assert_eq!(v.len(), 1, "{v:?}");
+        assert_eq!(v[0].flag().cli, "--allow-ingress-snippets");
+    }
+
+    #[test]
+    fn ingress_schemas() {
+        let create = create_ingress_schema();
+        let props = create["properties"].as_object().unwrap();
+        for key in [
+            "namespace",
+            "name",
+            "host",
+            "service_name",
+            "service_port",
+            "path",
+            "path_type",
+            "ingress_class",
+            "annotations",
+            "rules",
+            "tls",
+            "default_backend",
+            "create_missing_services",
+        ] {
+            assert!(props.contains_key(key), "create_ingress is missing {key}");
+        }
+        assert_eq!(create["required"], json!(["namespace", "name"]));
+        let update = update_ingress_schema();
+        assert!(!update["properties"]
+            .as_object()
+            .unwrap()
+            .contains_key("create_missing_services"));
+        assert_eq!(update["additionalProperties"], false);
     }
 
     #[test]

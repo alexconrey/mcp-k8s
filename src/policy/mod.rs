@@ -22,10 +22,9 @@ mod rbac;
 use std::fmt;
 
 pub(crate) use admission::{
-    add_managed_by_label, admit_manifest, bound_role_violations, check_typed, patch_checked,
-    resource_key, AdmissionOrigin, PatchKind,
+    admit_manifest, bound_role_violations, check_typed, patch_checked, AdmissionOrigin, PatchKind,
 };
-pub use manifest::{check_object, is_builtin_group, Source};
+pub use manifest::{check_object, is_builtin_group, kind_not_allowed, Source};
 pub use network::{check_ingress, check_service};
 pub use pod::{check_pod_spec, normalize_image, BASELINE_CAPABILITIES, SAFE_VOLUME_TYPES};
 pub use rbac::{check_binding, check_namespace_labels, check_rules, check_secret};
@@ -287,7 +286,12 @@ macro_rules! flag {
 /// Every policy setting, for error messages and documentation.
 pub mod flags {
     use super::PolicyFlag;
-    flag!(ALLOW_PRIVILEGED, "--allow-privileged", "MCP_K8S_ALLOW_PRIVILEGED", "allow_privileged");
+    flag!(
+        ALLOW_PRIVILEGED,
+        "--allow-privileged",
+        "MCP_K8S_ALLOW_PRIVILEGED",
+        "allow_privileged"
+    );
     flag!(
         ALLOW_PRIVILEGE_ESCALATION,
         "--allow-privilege-escalation",
@@ -300,9 +304,24 @@ pub mod flags {
         "MCP_K8S_ALLOW_HOST_NAMESPACES",
         "allow_host_namespaces"
     );
-    flag!(ALLOW_HOST_PATH, "--allow-host-path", "MCP_K8S_ALLOW_HOST_PATH", "allow_host_path");
-    flag!(ALLOW_HOST_PORTS, "--allow-host-ports", "MCP_K8S_ALLOW_HOST_PORTS", "allow_host_ports");
-    flag!(ALLOW_UNCONFINED, "--allow-unconfined", "MCP_K8S_ALLOW_UNCONFINED", "allow_unconfined");
+    flag!(
+        ALLOW_HOST_PATH,
+        "--allow-host-path",
+        "MCP_K8S_ALLOW_HOST_PATH",
+        "allow_host_path"
+    );
+    flag!(
+        ALLOW_HOST_PORTS,
+        "--allow-host-ports",
+        "MCP_K8S_ALLOW_HOST_PORTS",
+        "allow_host_ports"
+    );
+    flag!(
+        ALLOW_UNCONFINED,
+        "--allow-unconfined",
+        "MCP_K8S_ALLOW_UNCONFINED",
+        "allow_unconfined"
+    );
     flag!(
         ALLOW_CAPABILITIES,
         "--allow-capabilities",
@@ -321,7 +340,12 @@ pub mod flags {
         "MCP_K8S_ALLOWED_REGISTRIES",
         "allowed_registries"
     );
-    flag!(ALLOW_NODEPORT, "--allow-nodeport", "MCP_K8S_ALLOW_NODEPORT", "allow_node_port");
+    flag!(
+        ALLOW_NODEPORT,
+        "--allow-nodeport",
+        "MCP_K8S_ALLOW_NODEPORT",
+        "allow_node_port"
+    );
     flag!(
         ALLOW_LOADBALANCER,
         "--allow-loadbalancer",
@@ -370,7 +394,12 @@ pub mod flags {
         "MCP_K8S_ALLOW_RBAC_ESCALATION",
         "allow_rbac_escalation"
     );
-    flag!(NO_SECURE_DEFAULTS, "--no-secure-defaults", "MCP_K8S_NO_SECURE_DEFAULTS", "secure_defaults");
+    flag!(
+        NO_SECURE_DEFAULTS,
+        "--no-secure-defaults",
+        "MCP_K8S_NO_SECURE_DEFAULTS",
+        "secure_defaults"
+    );
 
     /// All settings, in documentation order.
     pub const ALL: &[&PolicyFlag] = &[
@@ -441,7 +470,11 @@ pub struct Violation {
 }
 
 impl Violation {
-    pub(crate) fn new(location: impl Into<String>, reason: impl Into<String>, remedy: Remedy) -> Self {
+    pub(crate) fn new(
+        location: impl Into<String>,
+        reason: impl Into<String>,
+        remedy: Remedy,
+    ) -> Self {
         Self {
             location: location.into(),
             reason: reason.into(),

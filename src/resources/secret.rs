@@ -254,6 +254,7 @@ async fn create_secret(client: &K8sClient, args: &serde_json::Value) -> Result<S
         string_data: Some(string_data),
         ..Default::default()
     };
+    crate::policy::check_typed(client, &secret)?;
 
     let secrets_api = api(client, ns)?;
     let created = secrets_api

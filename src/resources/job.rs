@@ -288,7 +288,11 @@ pub(crate) fn job_properties(with_suspend: bool) -> Value {
 }
 
 fn create_job_schema() -> Value {
-    podspec::workload_schema(WorkloadKind::Job, job_properties(true), &["namespace", "name"])
+    podspec::workload_schema(
+        WorkloadKind::Job,
+        job_properties(true),
+        &["namespace", "name"],
+    )
 }
 
 fn opt_i32(args: &Value, key: &str) -> Result<Option<i32>, String> {
@@ -316,7 +320,11 @@ pub(crate) fn job_spec_from_args(
         podspec::check_enum(mode, &["NonIndexed", "Indexed"], "completion_mode")?;
     }
     if let Some(p) = args.get("pod_replacement_policy").and_then(Value::as_str) {
-        podspec::check_enum(p, &["TerminatingOrFailed", "Failed"], "pod_replacement_policy")?;
+        podspec::check_enum(
+            p,
+            &["TerminatingOrFailed", "Failed"],
+            "pod_replacement_policy",
+        )?;
     }
     Ok(JobSpec {
         template,
@@ -515,6 +523,7 @@ mod tests {
     use super::*;
     use k8s_openapi::api::batch::v1::JobCondition;
     use k8s_openapi::api::batch::v1::JobStatus;
+    use k8s_openapi::api::core::v1::{Container, PodSpec};
     use k8s_openapi::apimachinery::pkg::apis::meta::v1::Time;
     use k8s_openapi::jiff;
 
@@ -574,15 +583,23 @@ mod tests {
         let rule = &spec.pod_failure_policy.unwrap().rules[0];
         assert_eq!(rule.action, "FailJob");
         assert_eq!(rule.on_exit_codes.as_ref().unwrap().values, vec![42]);
-        assert_eq!(spec.success_policy.unwrap().rules[0].succeeded_count, Some(3));
+        assert_eq!(
+            spec.success_policy.unwrap().rules[0].succeeded_count,
+            Some(3)
+        );
         assert_eq!(spec.pod_replacement_policy.as_deref(), Some("Failed"));
         assert_eq!(spec.suspend, Some(true));
     }
 
     #[test]
     fn job_spec_defaults_and_validation() {
-        let spec = job_spec_from_args(&json!({}), PodTemplateSpec::default(), Some(6), true).unwrap();
-        assert_eq!(spec.backoff_limit, Some(6), "create_job keeps its default of 6");
+        let spec =
+            job_spec_from_args(&json!({}), PodTemplateSpec::default(), Some(6), true).unwrap();
+        assert_eq!(
+            spec.backoff_limit,
+            Some(6),
+            "create_job keeps its default of 6"
+        );
         assert!(spec.completion_mode.is_none());
         let err = job_spec_from_args(
             &json!({"completion_mode": "Sometimes"}),
@@ -593,9 +610,13 @@ mod tests {
         .unwrap_err();
         assert!(err.contains("completion_mode"), "{err}");
         // A CronJob's suspend belongs to the CronJob, not its job template.
-        let spec =
-            job_spec_from_args(&json!({"suspend": true}), PodTemplateSpec::default(), None, false)
-                .unwrap();
+        let spec = job_spec_from_args(
+            &json!({"suspend": true}),
+            PodTemplateSpec::default(),
+            None,
+            false,
+        )
+        .unwrap();
         assert_eq!(spec.suspend, None);
     }
 

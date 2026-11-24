@@ -260,6 +260,14 @@ async fn create_clusterrolebinding(
         },
         subjects: Some(subjects),
     };
+    crate::policy::check_typed(client, &crb)?;
+    let bound = crate::policy::bound_role_violations(
+        client,
+        None,
+        &serde_json::to_value(&crb.role_ref).map_err(|e| e.to_string())?,
+    )
+    .await?;
+    crate::policy::into_result(bound).map_err(|e| e.to_string())?;
 
     let crb_api = api(client);
     let created = crb_api
