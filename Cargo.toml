@@ -9,6 +9,7 @@ publish = false
 [[bin]]
 name = "mcp-k8s"
 path = "src/main.rs"
+required-features = ["server"]
 
 [lib]
 name = "mcp_k8s"
@@ -22,22 +23,46 @@ serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-util", "net", "sync"] }
 thiserror = "2"
 http = "1"
-axum = "0.8"
+axum = { version = "0.8", optional = true }
 futures = "0.3"
-tower-http = { version = "0.6", features = ["cors"] }
-clap = { version = "4", features = ["derive", "env"] }
+tower-http = { version = "0.6", features = ["cors"], optional = true }
+clap = { version = "4", features = ["derive", "env"], optional = true }
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"], optional = true }
 metrics = "0.24"
-metrics-exporter-prometheus = { version = "0.17", default-features = false }
-uuid = { version = "1", features = ["v4"] }
-utoipa = { version = "5", features = ["axum_extras"] }
-utoipa-swagger-ui = { version = "9", features = ["axum"] }
-axum-server = { version = "0.7", features = ["tls-rustls"] }
-rustls = { version = "0.23", features = ["ring"] }
-subtle = "2"
+metrics-exporter-prometheus = { version = "0.17", default-features = false, optional = true }
+uuid = { version = "1", features = ["v4"], optional = true }
+utoipa = { version = "5", features = ["axum_extras"], optional = true }
+utoipa-swagger-ui = { version = "9", features = ["axum"], optional = true }
+axum-server = { version = "0.7", features = ["tls-rustls"], optional = true }
+rustls = { version = "0.23", features = ["ring"], optional = true }
+subtle = { version = "2", optional = true }
+
+[features]
+default = ["server"]
+# Everything only the standalone HTTP server binary (src/main.rs) needs.
+# Library users such as deckwatch should depend with `default-features = false`
+# so they don't compile these, in particular utoipa-swagger-ui, whose build
+# script downloads the Swagger UI bundle and unpacks it with the `zip` crate.
+server = [
+    "dep:axum",
+    "dep:axum-server",
+    "dep:clap",
+    "dep:metrics-exporter-prometheus",
+    "dep:rustls",
+    "dep:subtle",
+    "dep:tower-http",
+    "dep:tracing-subscriber",
+    "dep:utoipa",
+    "dep:utoipa-swagger-ui",
+    "dep:uuid",
+]
 
 [dev-dependencies]
+# Unit tests capture metrics with the Prometheus recorder, also without `server`.
+metrics-exporter-prometheus = { version = "0.17", default-features = false }
+# The k3s integration tests install the rustls crypto provider for kube's client.
+rustls = { version = "0.23", features = ["ring"] }
 tower-test = "0.4"
 tokio-test = "0.4"
 testcontainers = "0.27"
