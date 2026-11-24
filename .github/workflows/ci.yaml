@@ -220,6 +220,8 @@ jobs:
           push: true
           cache-from: type=gha,scope=ci-docker
           cache-to: type=gha,scope=ci-docker,mode=max
+          # :main and :<sha> only. :latest is published by release.yaml, so it
+          # always means the newest release.
           tags: |
-            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/${{ github.repository }}:main
             ghcr.io/${{ github.repository }}:${{ github.sha }}

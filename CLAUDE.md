@@ -506,6 +506,12 @@ need has to ship in one.
 - **Downstream pins the tag**, e.g. deckwatch:
   `mcp-k8s = { git = "https://github.com/alexconrey/mcp-k8s.git", tag = "vX.Y.Z", default-features = false }`.
 - **Only the maintainer creates tags and releases.**
+- **Cadence:** release on demand, and at least monthly while `main` has
+  unreleased changes, so fixes don't sit in `main` (releases stalled for
+  almost four months after v0.3.1).
+- **Tag a merge commit of `main` after its CI passed.** The `ci-passed` job in
+  `release.yaml` checks that commit's CI run on `main` (waiting up to 45
+  minutes if it's still running) and refuses to publish otherwise.
 
 Cutting a new release (maintainer):
 
@@ -516,24 +522,26 @@ git push origin v0.X.Y
 ```
 
 This triggers three workflows:
-1. **Release** (`release.yaml`) — builds Docker image, packages + pushes Helm
-   chart to GHCR OCI registry, creates a GitHub Release with auto-generated
-   release notes (commit log, artifact links, quick start, tool/test counts)
+1. **Release** (`release.yaml`) — after `verify-version` and `ci-passed`,
+   builds and pushes the Docker image, packages and pushes the Helm chart to
+   the GHCR OCI registry, and creates a GitHub Release. The release body is
+   the version's CHANGELOG section plus artifact links and a quick start,
+   after GitHub's generated PR list
 2. **Docs** (`docs.yaml`) — builds mdBook and deploys to GitHub Pages under
    `/vX.Y.Z/` and updates `/latest/`
 3. **Pages build** — GitHub deploys the updated `gh-pages` branch
 
 Artifacts produced per release:
-- Docker image: `ghcr.io/alexconrey/mcp-k8s:vX.Y.Z` (the release also moves
-  `:latest`; pushes to `main` publish `:latest` and `:<sha>` too, so `:latest`
-  is not a release)
+- Docker image: `ghcr.io/alexconrey/mcp-k8s:vX.Y.Z`, and the release moves
+  `:vX.Y` and `:latest`. Pushes to `main` publish only `:main` and `:<sha>`,
+  so `:latest` is always the newest release.
 - Helm chart: `oci://ghcr.io/alexconrey/charts/mcp-k8s:X.Y.Z`
 - Versioned docs: `https://alexconrey.github.io/mcp-k8s/vX.Y.Z/`
 - GitHub Release with release notes: `https://github.com/alexconrey/mcp-k8s/releases/tag/vX.Y.Z`
 
-The release workflow uses `softprops/action-gh-release@v3` with
-`generate_release_notes: true` for GitHub's auto-generated changelog
-plus a custom body with commit log, artifact table, and quick start.
+The Helm chart's `image.tag` defaults to `v<appVersion>`, so a chart
+installs the image released with it. Don't reintroduce a `latest` default:
+through v0.5.1 it made every chart install pull whatever `main` built last.
 
 ## Helm Chart
 
