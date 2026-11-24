@@ -12,12 +12,27 @@ release workflow refuses a tag that doesn't match `Cargo.toml`,
 
 ## [Unreleased]
 
+### Fixed
+- The Helm chart defaulted `image.tag` to `latest`, which every push to `main`
+  overwrote, so installing a chart release ran an unreleased `main` build.
+  `image.tag` now defaults to `v<appVersion>`, the image released with the
+  chart.
+
 ### Changed
+- **Image tags:** pushes to `main` publish `:main` and `:<sha>` and no longer
+  move `:latest`. Releases publish `:vX.Y.Z`, `:vX.Y` and `:latest`, so
+  `:latest` is always the newest release. If you followed `main` through
+  `:latest`, switch to `:main`.
+- GitHub Release notes now carry the version's CHANGELOG section, plus a
+  Cargo snippet for pinning the tag. They no longer have a raw commit log or
+  the broken tool count.
 - The crate declares `rust-version = "1.95"` (the MSRV, kube 5's minimum).
   Builds from a checkout use the toolchain in `rust-toolchain.toml` (1.99,
   the same as the release image).
 
 ### Internal
+- `release.yaml` publishes only after CI passed on the tagged commit (new
+  `ci-passed` job).
 - CI hardening:
   - `rust-toolchain.toml` pins the toolchain, and CI fails if the Dockerfile's
     `rust:` tag drifts from it;

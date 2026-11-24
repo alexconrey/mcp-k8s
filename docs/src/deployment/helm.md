@@ -43,7 +43,7 @@ helm install mcp-k8s ./helm/mcp-k8s \
 | Key | Default | Description |
 |-----|---------|-------------|
 | `image.repository` | `ghcr.io/alexconrey/mcp-k8s` | Container image repository |
-| `image.tag` | `latest` | Image tag |
+| `image.tag` | `""` (the chart's `appVersion`, as `v<appVersion>`) | Image tag. Leave empty to run the image released with the chart; set `main` for unreleased builds |
 | `image.pullPolicy` | `IfNotPresent` | Image pull policy |
 
 ### Replicas
