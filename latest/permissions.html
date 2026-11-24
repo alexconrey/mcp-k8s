@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b748ad96.js";
+            window.path_to_searchindex_js = "searchindex-64b8b2b9.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-caea04ac.js"></script>
@@ -198,7 +198,7 @@
 <tr><th>Action</th><th>Tool Prefixes</th><th>Examples</th></tr>
 </thead>
 <tbody>
-<tr><td><strong>Read</strong></td><td><code>list_</code>, <code>get_</code>, <code>*_logs</code>, <code>*_metrics</code>, <code>can_i</code>, <code>whoami</code>, <code>list_my_permissions</code>, <code>get_resource_yaml</code></td><td><code>list_deployments</code>, <code>get_pod_logs</code>, <code>get_metrics</code></td></tr>
+<tr><td><strong>Read</strong></td><td><code>list_</code>, <code>get_</code>, <code>*_logs</code>, <code>*_metrics</code>, <code>can_i</code>, <code>whoami</code>, <code>list_my_permissions</code>, <code>get_resource_json</code> (and its deprecated alias <code>get_resource_yaml</code>)</td><td><code>list_deployments</code>, <code>get_pod_logs</code>, <code>get_metrics</code></td></tr>
 <tr><td><strong>Create</strong></td><td><code>create_</code>, <code>apply_manifest</code></td><td><code>create_deployment</code>, <code>create_pod</code>, <code>apply_manifest</code></td></tr>
 <tr><td><strong>Update</strong></td><td><code>update_</code>, <code>scale_</code>, <code>restart_</code>, <code>rollback_</code>, <code>approve_</code>, <code>deny_</code>, <code>cordon_</code>, <code>uncordon_</code>, <code>drain_</code></td><td><code>update_deployment</code>, <code>scale_deployment</code>, <code>cordon_node</code></td></tr>
 <tr><td><strong>Delete</strong></td><td><code>delete_</code>, <code>evict_</code></td><td><code>delete_pod</code>, <code>evict_pod</code></td></tr>
@@ -264,7 +264,7 @@
   clusterrolebinding-delete
 </code></pre>
 <h2 id="apply_manifest-guardrails"><a class="header" href="#apply_manifest-guardrails"><code>apply_manifest</code> Guardrails</a></h2>
-<p><code>apply_manifest</code> is the most powerful tool in mcp-k8s. It uses Kubernetes server-side apply to create or update <strong>any</strong> resource from raw YAML/JSON, making it capable of both create and update operations in a single tool. Because of this dual nature, it requires special consideration:</p>
+<p><code>apply_manifest</code> is the most powerful tool in mcp-k8s. It uses Kubernetes server-side apply to create or update <strong>any</strong> resource from a raw JSON manifest, making it capable of both create and update operations in a single tool. Because of this dual nature, it requires special consideration:</p>
 <ul>
 <li><strong><code>--disable-create</code></strong> removes <code>apply_manifest</code> (since it is classified as a Create action), but this also disables all other create tools.</li>
 <li><strong><code>--disable-apply-manifest</code></strong> / <code>DISABLE_APPLY_MANIFEST</code> is a dedicated kill-switch that blocks <code>apply_manifest</code> without affecting other create tools like <code>create_deployment</code> or <code>create_service</code>.</li>

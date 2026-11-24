@@ -37,7 +37,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b748ad96.js";
+            window.path_to_searchindex_js = "searchindex-64b8b2b9.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-caea04ac.js"></script>
@@ -185,7 +185,7 @@
 <p>mcp-k8s bridges the gap between AI assistants and Kubernetes clusters. It translates natural-language requests from an MCP client into Kubernetes API calls, returning structured, token-efficient responses. Instead of raw Kubernetes JSON objects (which can be hundreds of lines), mcp-k8s returns focused summaries containing only the fields relevant to the caller.</p>
 <h2 id="key-features"><a class="header" href="#key-features">Key Features</a></h2>
 <ul>
-<li><strong>209 tools</strong> across 49 resource modules covering every GA Kubernetes resource type – Deployments, Pods, Services, Ingresses, ConfigMaps, Secrets, StatefulSets, DaemonSets, CronJobs, Jobs, RBAC resources, Nodes, PVs, PVCs, HPAs, PDBs, NetworkPolicies, admission controllers, CSI resources, and more.</li>
+<li><strong>210 tools</strong> across 49 resource modules covering every GA Kubernetes resource type – Deployments, Pods, Services, Ingresses, ConfigMaps, Secrets, StatefulSets, DaemonSets, CronJobs, Jobs, RBAC resources, Nodes, PVs, PVCs, HPAs, PDBs, NetworkPolicies, admission controllers, CSI resources, and more.</li>
 <li><strong>Two runtime modes</strong> – stdio for local use with Claude Code, and HTTP for in-cluster deployment as a Kubernetes pod.</li>
 <li><strong>SSE transport</strong> – <code>POST /mcp/sse</code> endpoint for Server-Sent Events streaming alongside the standard <code>POST /mcp</code> JSON-RPC endpoint.</li>
 <li><strong>MCP resources</strong> – <code>resources/list</code> and <code>resources/read</code> support for direct resource access via <code>k8s://</code> URIs (pods, deployments, services, configmaps, secrets, statefulsets, daemonsets, jobs, cronjobs, ingresses, nodes, namespaces).</li>
@@ -197,7 +197,7 @@
 <li><strong>Multi-cluster support</strong> – Load multiple kubeconfig contexts with <code>--contexts</code> and switch between clusters at runtime using <code>list_clusters</code>, <code>switch_cluster</code>, and <code>get_active_cluster</code> tools.</li>
 <li><strong>Watch/subscribe</strong> – <code>watch_resource</code> tool watches any resource type for ADDED, MODIFIED, and DELETED events over a configurable time window.</li>
 <li><strong>CRD discovery</strong> – <code>list_crds</code>, <code>get_crd</code>, <code>list_custom_resources</code>, <code>get_custom_resource</code>, <code>create_custom_resource</code>, <code>update_custom_resource</code>, and <code>delete_custom_resource</code> tools provide full lifecycle management of any installed CRD via dynamic API discovery.</li>
-<li><strong>Generic tools</strong> – <code>apply_manifest</code> (server-side apply) and <code>get_resource_yaml</code> work with any Kubernetes resource type, including CRDs.</li>
+<li><strong>Generic tools</strong> – <code>apply_manifest</code> (server-side apply, a last resort behind the typed tools) and <code>get_resource_json</code> work with any Kubernetes resource type, including CRDs.</li>
 <li><strong>Auth introspection</strong> – <code>whoami</code>, <code>can_i</code>, and <code>list_my_permissions</code> tools let the AI understand its own access level.</li>
 <li><strong>TLS and bearer token auth</strong> – Optional <code>--tls-cert</code>/<code>--tls-key</code> for HTTPS and <code>--auth-token</code> for bearer token authentication on the HTTP server.</li>
 <li><strong>Swagger UI</strong> – Interactive API documentation at <code>GET /swagger-ui</code> with OpenAPI spec at <code>GET /openapi.json</code>.</li>
@@ -273,7 +273,7 @@
 <li><a href="#installation">Installation</a> – Build from source or pull the Docker image</li>
 <li><a href="#configuration">Configuration</a> – CLI args, environment variables, and permission flags</li>
 <li><a href="#quick-start">Quick Start</a> – Get up and running in minutes</li>
-<li><a href="#tools-overview">Tools Reference</a> – Complete reference for all 209 tools</li>
+<li><a href="#tools-overview">Tools Reference</a> – Complete reference for all 210 tools</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="installation"><a class="header" href="#installation">Installation</a></h1>
@@ -820,12 +820,12 @@ CACHE_TTL=60 mcp-k8s
 <h2 id="next-steps-1"><a class="header" href="#next-steps-1">Next Steps</a></h2>
 <ul>
 <li><a href="#configuration">Configuration</a> – Fine-tune namespace restrictions and permission controls</li>
-<li><a href="#tools-overview">Tools Reference</a> – Browse all 209 available tools</li>
+<li><a href="#tools-overview">Tools Reference</a> – Browse all 210 available tools</li>
 <li><a href="#permissions">Permissions</a> – Lock down operations for production environments</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="tools-overview"><a class="header" href="#tools-overview">Tools Overview</a></h1>
-<p>mcp-k8s exposes 209 tools covering every GA Kubernetes resource type plus CRDs, multi-cluster management, and resource watching. Each tool corresponds to a specific Kubernetes API operation. Tools are categorized by action type:</p>
+<p>mcp-k8s exposes 210 tools (including one deprecated alias) covering every GA Kubernetes resource type plus CRDs, multi-cluster management, and resource watching. Each tool corresponds to a specific Kubernetes API operation. Tools are categorized by action type:</p>
 <ul>
 <li><strong>Read</strong> – List, get, and inspect resources. Always available regardless of permission configuration.</li>
 <li><strong>Create</strong> – Create new resources. Disabled by <code>--disable-create</code>.</li>
@@ -1124,8 +1124,9 @@ CACHE_TTL=60 mcp-k8s
 <tr><th>Tool</th><th>Action</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>apply_manifest</code></td><td>Create</td><td>Apply any YAML/JSON manifest via server-side apply</td></tr>
-<tr><td><code>get_resource_yaml</code></td><td>Read</td><td>Get any resource as raw JSON via API discovery</td></tr>
+<tr><td><code>apply_manifest</code></td><td>Create</td><td>Last resort: apply any JSON manifest via server-side apply (prefer the typed tools)</td></tr>
+<tr><td><code>get_resource_json</code></td><td>Read</td><td>Get any resource as JSON via API discovery</td></tr>
+<tr><td><code>get_resource_yaml</code></td><td>Read</td><td>Deprecated alias for <code>get_resource_json</code> (returns JSON)</td></tr>
 </tbody>
 </table>
 </div>
@@ -3563,46 +3564,51 @@ CACHE_TTL=60 mcp-k8s
 </div>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="generic-tools"><a class="header" href="#generic-tools">Generic Tools</a></h1>
-<p>mcp-k8s provides two generic tools that work with any Kubernetes resource type, including Custom Resource Definitions (CRDs). These tools use Kubernetes API discovery to resolve resource types at runtime.</p>
+<p>mcp-k8s provides generic tools that work with any Kubernetes resource type, including Custom Resource Definitions (CRDs). These tools use Kubernetes API discovery to resolve resource types at runtime.</p>
 <h2 id="apply_manifest"><a class="header" href="#apply_manifest">apply_manifest</a></h2>
-<p>Apply an arbitrary Kubernetes YAML or JSON manifest using server-side apply. Accepts any resource type. Returns the applied object’s metadata (name, namespace, kind, resource_version).</p>
+<p><strong>Last resort.</strong> Apply an arbitrary Kubernetes manifest, given as <strong>JSON</strong>, using server-side apply. Accepts any resource type.</p>
+<blockquote>
+<p>Prefer the typed tools (<code>create_deployment</code>, <code>create_job</code>, <code>create_pod</code>, <code>update_*</code>, …). They validate their input and enforce mcp-k8s’s guardrails, whereas <code>apply_manifest</code> sends the raw object to the API server. Use it only for resource types that have no typed tool, and consider disabling it with <code>--disable-apply-manifest</code> (see <a href="#permissions">Permissions</a>).</p>
+</blockquote>
+<p>It returns the applied object’s metadata (name, namespace, kind, resource_version).</p>
+<p>YAML is <strong>not</strong> accepted: convert it to JSON first (for example <code>yq -o=json manifest.yaml</code>). The output of <a href="#get_resource_json"><code>get_resource_json</code></a> can be edited and passed straight back.</p>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>manifest</code></td><td>string</td><td>Yes</td><td>The Kubernetes manifest as a YAML or JSON string</td></tr>
+<tr><td><code>manifest</code></td><td>string</td><td>Yes</td><td>The Kubernetes manifest as a JSON string (YAML is not accepted)</td></tr>
 </tbody>
 </table>
 </div>
 <p>The manifest string is parsed, the resource type is resolved via API discovery, and the object is applied using server-side apply with the field manager <code>mcp-k8s</code>.</p>
 <h3 id="example-apply-a-configmap"><a class="header" href="#example-apply-a-configmap">Example: Apply a ConfigMap</a></h3>
 <pre><code class="language-json">{
-  "manifest": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: my-config\n  namespace: default\ndata:\n  database_url: postgres://localhost:5432/mydb\n  log_level: info"
+  "manifest": "{\"apiVersion\":\"v1\",\"kind\":\"ConfigMap\",\"metadata\":{\"name\":\"my-config\",\"namespace\":\"default\"},\"data\":{\"database_url\":\"postgres://localhost:5432/mydb\",\"log_level\":\"info\"}}"
 }
 </code></pre>
 <h3 id="example-apply-a-deployment"><a class="header" href="#example-apply-a-deployment">Example: Apply a Deployment</a></h3>
 <pre><code class="language-json">{
-  "manifest": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n  namespace: default\nspec:\n  replicas: 3\n  selector:\n    matchLabels:\n      app: web\n  template:\n    metadata:\n      labels:\n        app: web\n    spec:\n      containers:\n      - name: web\n        image: nginx:1.25\n        ports:\n        - containerPort: 80"
+  "manifest": "{\"apiVersion\":\"apps/v1\",\"kind\":\"Deployment\",\"metadata\":{\"name\":\"web\",\"namespace\":\"default\"},\"spec\":{\"replicas\":3,\"selector\":{\"matchLabels\":{\"app\":\"web\"}},\"template\":{\"metadata\":{\"labels\":{\"app\":\"web\"}},\"spec\":{\"containers\":[{\"name\":\"web\",\"image\":\"nginx:1.25\",\"ports\":[{\"containerPort\":80}]}]}}}}"
 }
 </code></pre>
 <h3 id="example-apply-a-crd-instance"><a class="header" href="#example-apply-a-crd-instance">Example: Apply a CRD Instance</a></h3>
 <pre><code class="language-json">{
-  "manifest": "apiVersion: monitoring.coreos.com/v1\nkind: ServiceMonitor\nmetadata:\n  name: my-app\n  namespace: monitoring\nspec:\n  selector:\n    matchLabels:\n      app: my-app\n  endpoints:\n  - port: metrics\n    interval: 30s"
+  "manifest": "{\"apiVersion\":\"monitoring.coreos.com/v1\",\"kind\":\"ServiceMonitor\",\"metadata\":{\"name\":\"my-app\",\"namespace\":\"monitoring\"},\"spec\":{\"selector\":{\"matchLabels\":{\"app\":\"my-app\"}},\"endpoints\":[{\"port\":\"metrics\",\"interval\":\"30s\"}]}}"
 }
 </code></pre>
 <h3 id="notes"><a class="header" href="#notes">Notes</a></h3>
 <ul>
 <li><code>apply_manifest</code> is classified as a <strong>create</strong> action. It is disabled when <code>--disable-create</code> is set.</li>
-<li>The manifest can be YAML or JSON. Multi-document YAML (separated by <code>---</code>) is not supported; apply one resource per call.</li>
+<li>The manifest must be a single JSON object. YAML (including multi-document <code>---</code> files) is rejected with a parse error; convert it to JSON and apply one resource per call.</li>
 <li>If the resource already exists, it is updated (server-side apply merges fields).</li>
 <li>For CRDs, the API group must be installed in the cluster for discovery to succeed.</li>
 <li>The RBAC rules for the mcp-k8s service account must include the API groups and resources referenced in the manifest. See <a href="#rbac-setup">RBAC Setup</a> for details.</li>
 </ul>
 <hr>
-<h2 id="get_resource_yaml"><a class="header" href="#get_resource_yaml">get_resource_yaml</a></h2>
-<p>Get any Kubernetes resource as raw JSON output. Accepts apiVersion, kind, name, and optional namespace. Uses API discovery to resolve the resource type.</p>
+<h2 id="get_resource_json"><a class="header" href="#get_resource_json">get_resource_json</a></h2>
+<p>Get any Kubernetes resource as JSON, the object as the API server returns it. Accepts apiVersion, kind, name, and optional namespace. Uses API discovery to resolve the resource type. The output can be edited and passed back to <code>apply_manifest</code>; if a person needs YAML, convert it client-side (for example <code>yq -P</code>).</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -3641,10 +3647,11 @@ CACHE_TTL=60 mcp-k8s
 </code></pre>
 <h3 id="notes-1"><a class="header" href="#notes-1">Notes</a></h3>
 <ul>
-<li><code>get_resource_yaml</code> is classified as a <strong>read</strong> action and is always available regardless of permission configuration.</li>
-<li>Despite the name, the output is JSON (not YAML). The name is kept for compatibility.</li>
+<li><code>get_resource_json</code> is classified as a <strong>read</strong> action and is always available regardless of permission configuration.</li>
 <li>This tool returns the full Kubernetes object, unlike the typed tools which return focused summaries. Use it when you need complete object details or when working with resource types that do not have dedicated tools.</li>
 </ul>
+<h3 id="get_resource_yaml-deprecated"><a class="header" href="#get_resource_yaml-deprecated"><code>get_resource_yaml</code> (deprecated)</a></h3>
+<p><code>get_resource_yaml</code> is a <strong>deprecated alias</strong> for <code>get_resource_json</code>. It takes the same arguments and returns the same <strong>JSON</strong>; despite its name it never returned YAML. It remains for compatibility in 0.4.x and will be removed in the next minor release. Switch to <code>get_resource_json</code>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="permissions"><a class="header" href="#permissions">Permissions</a></h1>
 <p>mcp-k8s includes a built-in permission system that controls which CRUD actions are available to MCP clients. This is separate from Kubernetes RBAC – it controls which tools are exposed by the MCP server, while Kubernetes RBAC controls what the server’s service account can actually do in the cluster.</p>
@@ -3663,7 +3670,7 @@ CACHE_TTL=60 mcp-k8s
 <tr><th>Action</th><th>Tool Prefixes</th><th>Examples</th></tr>
 </thead>
 <tbody>
-<tr><td><strong>Read</strong></td><td><code>list_</code>, <code>get_</code>, <code>*_logs</code>, <code>*_metrics</code>, <code>can_i</code>, <code>whoami</code>, <code>list_my_permissions</code>, <code>get_resource_yaml</code></td><td><code>list_deployments</code>, <code>get_pod_logs</code>, <code>get_metrics</code></td></tr>
+<tr><td><strong>Read</strong></td><td><code>list_</code>, <code>get_</code>, <code>*_logs</code>, <code>*_metrics</code>, <code>can_i</code>, <code>whoami</code>, <code>list_my_permissions</code>, <code>get_resource_json</code> (and its deprecated alias <code>get_resource_yaml</code>)</td><td><code>list_deployments</code>, <code>get_pod_logs</code>, <code>get_metrics</code></td></tr>
 <tr><td><strong>Create</strong></td><td><code>create_</code>, <code>apply_manifest</code></td><td><code>create_deployment</code>, <code>create_pod</code>, <code>apply_manifest</code></td></tr>
 <tr><td><strong>Update</strong></td><td><code>update_</code>, <code>scale_</code>, <code>restart_</code>, <code>rollback_</code>, <code>approve_</code>, <code>deny_</code>, <code>cordon_</code>, <code>uncordon_</code>, <code>drain_</code></td><td><code>update_deployment</code>, <code>scale_deployment</code>, <code>cordon_node</code></td></tr>
 <tr><td><strong>Delete</strong></td><td><code>delete_</code>, <code>evict_</code></td><td><code>delete_pod</code>, <code>evict_pod</code></td></tr>
@@ -3729,7 +3736,7 @@ CACHE_TTL=60 mcp-k8s
   clusterrolebinding-delete
 </code></pre>
 <h2 id="apply_manifest-guardrails"><a class="header" href="#apply_manifest-guardrails"><code>apply_manifest</code> Guardrails</a></h2>
-<p><code>apply_manifest</code> is the most powerful tool in mcp-k8s. It uses Kubernetes server-side apply to create or update <strong>any</strong> resource from raw YAML/JSON, making it capable of both create and update operations in a single tool. Because of this dual nature, it requires special consideration:</p>
+<p><code>apply_manifest</code> is the most powerful tool in mcp-k8s. It uses Kubernetes server-side apply to create or update <strong>any</strong> resource from a raw JSON manifest, making it capable of both create and update operations in a single tool. Because of this dual nature, it requires special consideration:</p>
 <ul>
 <li><strong><code>--disable-create</code></strong> removes <code>apply_manifest</code> (since it is classified as a Create action), but this also disables all other create tools.</li>
 <li><strong><code>--disable-apply-manifest</code></strong> / <code>DISABLE_APPLY_MANIFEST</code> is a dedicated kill-switch that blocks <code>apply_manifest</code> without affecting other create tools like <code>create_deployment</code> or <code>create_service</code>.</li>
@@ -4655,7 +4662,7 @@ rules:
   # --------------------------------------------------------------------------
   # Generic / apply_manifest
   # --------------------------------------------------------------------------
-  # The apply_manifest and get_resource_yaml tools use API discovery and can
+  # The apply_manifest and get_resource_json (and its deprecated alias get_resource_yaml) tools use API discovery and can
   # operate on any resource type. The rules above cover all built-in tools.
   # If you use apply_manifest to manage custom resources, add rules for those
   # API groups here.

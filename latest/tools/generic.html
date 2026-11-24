@@ -36,7 +36,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-b748ad96.js";
+            window.path_to_searchindex_js = "../searchindex-64b8b2b9.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-caea04ac.js"></script>
@@ -182,46 +182,51 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="generic-tools"><a class="header" href="#generic-tools">Generic Tools</a></h1>
-<p>mcp-k8s provides two generic tools that work with any Kubernetes resource type, including Custom Resource Definitions (CRDs). These tools use Kubernetes API discovery to resolve resource types at runtime.</p>
+<p>mcp-k8s provides generic tools that work with any Kubernetes resource type, including Custom Resource Definitions (CRDs). These tools use Kubernetes API discovery to resolve resource types at runtime.</p>
 <h2 id="apply_manifest"><a class="header" href="#apply_manifest">apply_manifest</a></h2>
-<p>Apply an arbitrary Kubernetes YAML or JSON manifest using server-side apply. Accepts any resource type. Returns the applied object’s metadata (name, namespace, kind, resource_version).</p>
+<p><strong>Last resort.</strong> Apply an arbitrary Kubernetes manifest, given as <strong>JSON</strong>, using server-side apply. Accepts any resource type.</p>
+<blockquote>
+<p>Prefer the typed tools (<code>create_deployment</code>, <code>create_job</code>, <code>create_pod</code>, <code>update_*</code>, …). They validate their input and enforce mcp-k8s’s guardrails, whereas <code>apply_manifest</code> sends the raw object to the API server. Use it only for resource types that have no typed tool, and consider disabling it with <code>--disable-apply-manifest</code> (see <a href="../permissions.html">Permissions</a>).</p>
+</blockquote>
+<p>It returns the applied object’s metadata (name, namespace, kind, resource_version).</p>
+<p>YAML is <strong>not</strong> accepted: convert it to JSON first (for example <code>yq -o=json manifest.yaml</code>). The output of <a href="#get_resource_json"><code>get_resource_json</code></a> can be edited and passed straight back.</p>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>manifest</code></td><td>string</td><td>Yes</td><td>The Kubernetes manifest as a YAML or JSON string</td></tr>
+<tr><td><code>manifest</code></td><td>string</td><td>Yes</td><td>The Kubernetes manifest as a JSON string (YAML is not accepted)</td></tr>
 </tbody>
 </table>
 </div>
 <p>The manifest string is parsed, the resource type is resolved via API discovery, and the object is applied using server-side apply with the field manager <code>mcp-k8s</code>.</p>
 <h3 id="example-apply-a-configmap"><a class="header" href="#example-apply-a-configmap">Example: Apply a ConfigMap</a></h3>
 <pre><code class="language-json">{
-  "manifest": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: my-config\n  namespace: default\ndata:\n  database_url: postgres://localhost:5432/mydb\n  log_level: info"
+  "manifest": "{\"apiVersion\":\"v1\",\"kind\":\"ConfigMap\",\"metadata\":{\"name\":\"my-config\",\"namespace\":\"default\"},\"data\":{\"database_url\":\"postgres://localhost:5432/mydb\",\"log_level\":\"info\"}}"
 }
 </code></pre>
 <h3 id="example-apply-a-deployment"><a class="header" href="#example-apply-a-deployment">Example: Apply a Deployment</a></h3>
 <pre><code class="language-json">{
-  "manifest": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n  namespace: default\nspec:\n  replicas: 3\n  selector:\n    matchLabels:\n      app: web\n  template:\n    metadata:\n      labels:\n        app: web\n    spec:\n      containers:\n      - name: web\n        image: nginx:1.25\n        ports:\n        - containerPort: 80"
+  "manifest": "{\"apiVersion\":\"apps/v1\",\"kind\":\"Deployment\",\"metadata\":{\"name\":\"web\",\"namespace\":\"default\"},\"spec\":{\"replicas\":3,\"selector\":{\"matchLabels\":{\"app\":\"web\"}},\"template\":{\"metadata\":{\"labels\":{\"app\":\"web\"}},\"spec\":{\"containers\":[{\"name\":\"web\",\"image\":\"nginx:1.25\",\"ports\":[{\"containerPort\":80}]}]}}}}"
 }
 </code></pre>
 <h3 id="example-apply-a-crd-instance"><a class="header" href="#example-apply-a-crd-instance">Example: Apply a CRD Instance</a></h3>
 <pre><code class="language-json">{
-  "manifest": "apiVersion: monitoring.coreos.com/v1\nkind: ServiceMonitor\nmetadata:\n  name: my-app\n  namespace: monitoring\nspec:\n  selector:\n    matchLabels:\n      app: my-app\n  endpoints:\n  - port: metrics\n    interval: 30s"
+  "manifest": "{\"apiVersion\":\"monitoring.coreos.com/v1\",\"kind\":\"ServiceMonitor\",\"metadata\":{\"name\":\"my-app\",\"namespace\":\"monitoring\"},\"spec\":{\"selector\":{\"matchLabels\":{\"app\":\"my-app\"}},\"endpoints\":[{\"port\":\"metrics\",\"interval\":\"30s\"}]}}"
 }
 </code></pre>
 <h3 id="notes"><a class="header" href="#notes">Notes</a></h3>
 <ul>
 <li><code>apply_manifest</code> is classified as a <strong>create</strong> action. It is disabled when <code>--disable-create</code> is set.</li>
-<li>The manifest can be YAML or JSON. Multi-document YAML (separated by <code>---</code>) is not supported; apply one resource per call.</li>
+<li>The manifest must be a single JSON object. YAML (including multi-document <code>---</code> files) is rejected with a parse error; convert it to JSON and apply one resource per call.</li>
 <li>If the resource already exists, it is updated (server-side apply merges fields).</li>
 <li>For CRDs, the API group must be installed in the cluster for discovery to succeed.</li>
 <li>The RBAC rules for the mcp-k8s service account must include the API groups and resources referenced in the manifest. See <a href="../deployment/rbac.html">RBAC Setup</a> for details.</li>
 </ul>
 <hr>
-<h2 id="get_resource_yaml"><a class="header" href="#get_resource_yaml">get_resource_yaml</a></h2>
-<p>Get any Kubernetes resource as raw JSON output. Accepts apiVersion, kind, name, and optional namespace. Uses API discovery to resolve the resource type.</p>
+<h2 id="get_resource_json"><a class="header" href="#get_resource_json">get_resource_json</a></h2>
+<p>Get any Kubernetes resource as JSON, the object as the API server returns it. Accepts apiVersion, kind, name, and optional namespace. Uses API discovery to resolve the resource type. The output can be edited and passed back to <code>apply_manifest</code>; if a person needs YAML, convert it client-side (for example <code>yq -P</code>).</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -260,10 +265,11 @@
 </code></pre>
 <h3 id="notes-1"><a class="header" href="#notes-1">Notes</a></h3>
 <ul>
-<li><code>get_resource_yaml</code> is classified as a <strong>read</strong> action and is always available regardless of permission configuration.</li>
-<li>Despite the name, the output is JSON (not YAML). The name is kept for compatibility.</li>
+<li><code>get_resource_json</code> is classified as a <strong>read</strong> action and is always available regardless of permission configuration.</li>
 <li>This tool returns the full Kubernetes object, unlike the typed tools which return focused summaries. Use it when you need complete object details or when working with resource types that do not have dedicated tools.</li>
 </ul>
+<h3 id="get_resource_yaml-deprecated"><a class="header" href="#get_resource_yaml-deprecated"><code>get_resource_yaml</code> (deprecated)</a></h3>
+<p><code>get_resource_yaml</code> is a <strong>deprecated alias</strong> for <code>get_resource_json</code>. It takes the same arguments and returns the same <strong>JSON</strong>; despite its name it never returned YAML. It remains for compatibility in 0.4.x and will be removed in the next minor release. Switch to <code>get_resource_json</code>.</p>
 
                     </main>
 
