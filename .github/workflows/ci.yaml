@@ -118,6 +118,53 @@ jobs:
       - name: Check the library on the MSRV
         run: cargo "+$MSRV" check --locked --lib --no-default-features --features k8s-openapi/v1_33
 
+  # End-to-end tests against a real k3s cluster in Docker (testcontainers):
+  # the only coverage of the real kube API paths, including the namespace
+  # allowlist. Each test starts its own cluster; 2 threads, because 4 caused
+  # port-mapping flakes. Always name the test target: a bare
+  # `cargo test -- --ignored` would run every ignored test in the crate.
+  k3s:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Rust toolchain from rust-toolchain.toml
+        run: rustup toolchain install --no-self-update
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          save-if: ${{ github.event_name == 'push' }}
+      - name: k3s integration tests
+        run: cargo test --locked --test k3s_integration -- --ignored --test-threads=2
+
+  # Library API compatibility against the last release tag, in the library-only
+  # configuration deckwatch builds. K8S_OPENAPI_ENABLED_VERSION picks the
+  # k8s-openapi version, because semver-checks can't enable a dependency's
+  # feature. Warn-only: PRs don't bump the version (release PRs do), so a
+  # breaking change fails this check as a signal that the next release must be
+  # a minor bump (see CLAUDE.md "Releasing"). Don't make it a required check.
+  semver:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Install Rust toolchain from rust-toolchain.toml
+        run: rustup toolchain install --no-self-update
+      - uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
+        with:
+          tool: cargo-semver-checks
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          save-if: ${{ github.event_name == 'push' }}
+      - name: cargo semver-checks against the last release
+        env:
+          K8S_OPENAPI_ENABLED_VERSION: "1.33"
+        run: |
+          baseline=$(git describe --tags --abbrev=0 --match 'v[0-9]*')
+          echo "Baseline: $baseline"
+          cargo semver-checks check-release --baseline-rev "$baseline" --only-explicit-features
+
   # cargo deny with deny.toml. Bans, licenses and sources must pass. The
   # advisories leg only warns: a new RustSec advisory shows as a failed
   # `deny (advisories)` check without failing the run, so it doesn't block
@@ -154,7 +201,7 @@ jobs:
 
   docker:
     runs-on: ubuntu-latest
-    needs: [check, msrv, deny]
+    needs: [check, msrv, deny, k3s]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       contents: read

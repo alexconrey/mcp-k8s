@@ -65,52 +65,60 @@ impl ClusterManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use http::{Request, Response};
+    use kube::client::Body;
 
-    // ClusterManager tests require a real kube::Client (K8sClient wraps one),
-    // so they are integration-level tests gated behind `#[ignore]`.
-    // The manager logic itself is straightforward HashMap + RwLock bookkeeping.
+    // ClusterManager is HashMap + RwLock bookkeeping and never calls the API,
+    // so an unconnected mock kube::Client is enough. (These tests used to load
+    // the developer's kubeconfig behind #[ignore], so `cargo test -- --ignored`
+    // could reach a real cluster.)
+    fn mock_client() -> K8sClient {
+        let (svc, _handle) = tower_test::mock::pair::<Request<Body>, Response<Body>>();
+        K8sClient::new(
+            kube::Client::new(svc, "default"),
+            vec![],
+            Default::default(),
+        )
+    }
 
     async fn make_manager() -> ClusterManager {
-        let kube_client = kube::Client::try_default()
-            .await
-            .expect("requires kubeconfig");
-        let client = K8sClient::new(kube_client, vec![], Default::default());
-        ClusterManager::new(client, "test-cluster".to_string()).await
+        ClusterManager::new(mock_client(), "test-cluster".to_string()).await
     }
 
     #[tokio::test]
-    #[ignore = "requires kubeconfig"]
     async fn test_active_name_defaults_to_initial() {
         let mgr = make_manager().await;
         assert_eq!(mgr.active_name().await, "test-cluster");
+        assert!(mgr.active_client().await.is_some());
     }
 
     #[tokio::test]
-    #[ignore = "requires kubeconfig"]
     async fn test_list_clusters_contains_default() {
         let mgr = make_manager().await;
         let clusters = mgr.list_clusters().await;
-        assert!(clusters.contains(&"test-cluster".to_string()));
+        assert_eq!(clusters, vec!["test-cluster".to_string()]);
     }
 
     #[tokio::test]
-    #[ignore = "requires kubeconfig"]
     async fn test_switch_nonexistent_returns_error() {
         let mgr = make_manager().await;
         let result = mgr.switch("nonexistent").await;
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("not found"));
+        assert_eq!(mgr.active_name().await, "test-cluster");
     }
 
     #[tokio::test]
-    #[ignore = "requires kubeconfig"]
     async fn test_add_and_switch() {
         let mgr = make_manager().await;
-        let kube_client = kube::Client::try_default()
-            .await
-            .expect("requires kubeconfig");
-        let client2 = K8sClient::new(kube_client, vec![], Default::default());
-        mgr.add_cluster("second".to_string(), client2).await;
+        mgr.add_cluster("second".to_string(), mock_client()).await;
+
+        let mut clusters = mgr.list_clusters().await;
+        clusters.sort();
+        assert_eq!(
+            clusters,
+            vec!["second".to_string(), "test-cluster".to_string()]
+        );
 
         assert!(mgr.switch("second").await.is_ok());
         assert_eq!(mgr.active_name().await, "second");

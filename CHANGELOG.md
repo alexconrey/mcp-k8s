@@ -109,6 +109,13 @@ release workflow refuses a tag that doesn't match `Cargo.toml`,
   `opentelemetry-appender-tracing` (0.33), `tracing-opentelemetry` (0.34) and
   `reqwest` 0.13 (`blocking`, `rustls-no-provider`). The library-only build
   (`--no-default-features`) has no new dependencies.
+- CI runs the k3s integration tests on every PR (`k3s` job), and
+  `cargo semver-checks` of the library API against the last release (`semver`
+  job, warn-only).
+- The k3s tests wait for the API server to serve the `default` namespace and
+  ServiceAccount before running, which fixes intermittent failures under load.
+- The `cluster.rs` unit tests use a mock client and no longer need a
+  kubeconfig, so `cargo test -- --ignored` can't reach a real cluster.
 
 ### Deprecated (announced)
 - The Prometheus metrics `mcp_k8s_tool_calls_total`,
