@@ -15,6 +15,7 @@ use serde::Deserialize;
 
 use crate::client::K8sClient;
 use crate::extract;
+use crate::telemetry;
 
 /// Try to handle a tool call. Returns `Some(result)` if the tool name is
 /// recognized, `None` if the caller should handle it.
@@ -23,7 +24,32 @@ use crate::extract;
 /// `mcp_k8s_tool_call_duration_seconds{tool}` into the global `metrics`
 /// recorder for every recognized call. `status` is `ok`, `error`, or
 /// `denied` (for permission-blocked requests).
+///
+/// Also instruments the call with [`crate::telemetry::ToolCall`]: it records
+/// into the current request span from [`crate::telemetry::server_span`] (or
+/// creates one) and emits the `mcp.server.operation.duration` metric event
+/// and a `tool call finished` log event. Inside a running `ToolCall` (an
+/// embedder wrapping its own tool around this function) it reports into that
+/// call instead. Unknown tools (`None`) emit no telemetry.
 pub async fn handle_tool(
+    client: &K8sClient,
+    name: &str,
+    args: &serde_json::Value,
+) -> Option<Result<String, String>> {
+    if telemetry::tool_call_active() || !telemetry::is_known_tool(name) {
+        return handle_tool_metered(client, name, args).await;
+    }
+    let call = telemetry::ToolCall::start(name, args);
+    let result = call.run(handle_tool_metered(client, name, args)).await;
+    match &result {
+        Some(r) => call.finish(r),
+        None => call.abandon(),
+    }
+    result
+}
+
+/// Permission check, dispatch and the `metrics` counters.
+async fn handle_tool_metered(
     client: &K8sClient,
     name: &str,
     args: &serde_json::Value,
@@ -32,6 +58,9 @@ pub async fn handle_tool(
         let action = crate::permissions::ActionPermissions::action_for_tool(name);
         counter!("mcp_k8s_tool_calls_total", "tool" => name.to_owned(), "status" => "denied")
             .increment(1);
+        if let Some(rule) = client.permissions().denied_by(name) {
+            telemetry::record_denial(&rule);
+        }
         return Some(Err(format!(
             "action '{action}' is not allowed on this tool: {name}"
         )));

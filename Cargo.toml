@@ -44,6 +44,21 @@ utoipa-swagger-ui = { version = "10", features = ["axum"], optional = true }
 axum-server = { version = "0.9", features = ["tls-rustls"], optional = true }
 rustls = { version = "0.23", features = ["ring"], optional = true }
 subtle = { version = "2", optional = true }
+# OpenTelemetry export, for the binary only (see the `otel` feature). The
+# library emits plain `tracing` and must never depend on these: OTel's global
+# providers are statics inside the `opentelemetry` crate, so an embedder on a
+# different 0.x version would silently get no telemetry from us.
+opentelemetry = { version = "0.33", optional = true }
+opentelemetry_sdk = { version = "0.33", features = ["spec_unstable_metrics_views"], optional = true }
+# OTLP over http/protobuf only (no `grpc-tonic`), with the blocking reqwest
+# client the SDK's batch processors are designed for.
+opentelemetry-otlp = { version = "0.33", default-features = false, features = ["http-proto", "reqwest-blocking-client", "trace", "metrics", "logs", "internal-logs"], optional = true }
+opentelemetry-appender-tracing = { version = "0.33", optional = true }
+tracing-opentelemetry = { version = "0.34", optional = true }
+# TLS for the OTLP exporter through rustls with *no* bundled crypto provider:
+# reqwest's `rustls` feature would add aws-lc-rs, while `rustls-no-provider`
+# uses the process-wide ring provider that main() installs at startup.
+reqwest = { version = "0.13", default-features = false, features = ["blocking", "rustls-no-provider"], optional = true }
 
 [features]
 default = ["server"]
@@ -66,6 +81,20 @@ server = [
     "dep:utoipa",
     "dep:utoipa-swagger-ui",
     "dep:uuid",
+    # Graceful shutdown on SIGTERM/SIGINT, so telemetry is flushed.
+    "tokio/signal",
+    "otel",
+]
+# The binary's OpenTelemetry pipeline (OTLP traces, metrics and logs), enabled
+# by `server`. Library code never uses these crates; it only emits `tracing`
+# (see `mcp_k8s::telemetry`).
+otel = [
+    "dep:opentelemetry",
+    "dep:opentelemetry_sdk",
+    "dep:opentelemetry-otlp",
+    "dep:opentelemetry-appender-tracing",
+    "dep:tracing-opentelemetry",
+    "dep:reqwest",
 ]
 
 [dev-dependencies]
@@ -75,6 +104,10 @@ k8s-openapi = { version = "0.29", features = ["v1_33"] }
 metrics-exporter-prometheus = { version = "0.18", default-features = false }
 # The k3s integration tests install the rustls crypto provider for kube's client.
 rustls = { version = "0.23", features = ["ring"] }
+# Capturing `tracing` layer for the library telemetry tests (also without `server`).
+tracing-subscriber = { version = "0.3", default-features = false, features = ["registry", "std"] }
+# In-memory span/metric/log exporters for the binary's telemetry tests.
+opentelemetry_sdk = { version = "0.33", features = ["testing"] }
 # Router tests in src/main.rs (`oneshot`).
 tower = { version = "0.5", features = ["util"] }
 tower-test = "0.4"
