@@ -12,6 +12,12 @@ release workflow refuses a tag that doesn't match `Cargo.toml`,
 
 ## [Unreleased]
 
+### Fixed
+- Docs listed the old metric names (`mcp_tool_calls_total`,
+  `mcp_tool_call_errors_total`). The tool metrics are
+  `mcp_k8s_tool_calls_total{tool,status}` and
+  `mcp_k8s_tool_call_duration_seconds{tool}`. The tool count is 209, not 202.
+
 ## [0.4.0] - 2026-11-24
 
 ### Added

@@ -1,6 +1,6 @@
 # Tools Overview
 
-mcp-k8s exposes 202 tools covering every GA Kubernetes resource type plus CRDs, multi-cluster management, and resource watching. Each tool corresponds to a specific Kubernetes API operation. Tools are categorized by action type:
+mcp-k8s exposes 209 tools covering every GA Kubernetes resource type plus CRDs, multi-cluster management, and resource watching. Each tool corresponds to a specific Kubernetes API operation. Tools are categorized by action type:
 
 - **Read** -- List, get, and inspect resources. Always available regardless of permission configuration.
 - **Create** -- Create new resources. Disabled by `--disable-create`.

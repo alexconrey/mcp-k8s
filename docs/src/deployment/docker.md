@@ -150,7 +150,7 @@ When running in HTTP mode, the following endpoints are available:
 | `/mcp` | POST | MCP JSON-RPC 2.0 endpoint |
 | `/mcp/sse` | POST | MCP JSON-RPC 2.0 via Server-Sent Events transport |
 | `/healthz` | GET | Health check (returns `ok`) |
-| `/metrics` | GET | Prometheus metrics (`mcp_requests_total`, `mcp_tool_calls_total`, `mcp_tool_call_duration_seconds`) |
+| `/metrics` | GET | Prometheus metrics (`mcp_requests_total`, `mcp_k8s_tool_calls_total`, `mcp_k8s_tool_call_duration_seconds`) |
 | `/swagger-ui` | GET | OpenAPI / Swagger UI |
 | `/openapi.json` | GET | OpenAPI JSON spec |
 
@@ -171,9 +171,8 @@ Exposed metrics:
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
 | `mcp_requests_total` | Counter | `method` | Total MCP JSON-RPC requests by method |
-| `mcp_tool_calls_total` | Counter | `tool` | Total tool calls by tool name |
-| `mcp_tool_call_duration_seconds` | Histogram | `tool` | Tool call duration in seconds |
-| `mcp_tool_call_errors_total` | Counter | `tool` | Total tool call errors by tool name |
+| `mcp_k8s_tool_calls_total` | Counter | `tool`, `status` | Total tool calls by tool name. `status` is `ok`, `error` or `denied` (blocked by permissions) |
+| `mcp_k8s_tool_call_duration_seconds` | Histogram | `tool` | Tool call duration in seconds |
 
 ## Health Checks
 
