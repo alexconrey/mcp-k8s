@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use k8s_openapi::api::rbac::v1::ClusterRole;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use kube::api::{DeleteParams, ListParams, Patch, PatchParams, PostParams};
@@ -109,6 +107,8 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
             "inputSchema": {
                 "type": "object",
                 "properties": {
+                    "labels": { "type": "object", "description": "Labels (app.kubernetes.io/managed-by: mcp-k8s is added)", "additionalProperties": { "type": "string" } },
+                    "annotations": { "type": "object", "description": "Annotations", "additionalProperties": { "type": "string" } },
                     "name": { "type": "string", "description": "ClusterRole name" },
                     "rules": {
                         "type": "array",
@@ -269,16 +269,13 @@ async fn create_clusterrole(
 
     let rules = parse_policy_rules(rules_value)?;
 
-    let mut labels = BTreeMap::new();
-    labels.insert(
-        "app.kubernetes.io/managed-by".to_string(),
-        "mcp-k8s".to_string(),
-    );
+    let labels = crate::resources::podspec::object_labels(args)?;
 
     let cr = ClusterRole {
         metadata: ObjectMeta {
             name: Some(name.to_string()),
             labels: Some(labels),
+            annotations: crate::resources::podspec::string_map(args, "annotations")?,
             ..Default::default()
         },
         rules: Some(rules),

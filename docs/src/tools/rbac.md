@@ -90,6 +90,8 @@ Create a Role.
 | `namespace` | string | Yes | Kubernetes namespace |
 | `name` | string | Yes | Role name |
 | `rules` | array | Yes | Policy rules: `{api_groups, resources, verbs, resource_names}`; escalation primitives are rejected (see above) |
+| `labels` | object | No | Labels (`app.kubernetes.io/managed-by: mcp-k8s` is added) |
+| `annotations` | object | No | Annotations |
 
 ### update_role
 
@@ -142,6 +144,8 @@ Create a RoleBinding.
 | `name` | string | Yes | RoleBinding name |
 | `role_name` | string | Yes | Name of the Role to bind |
 | `subjects` | array | Yes | Subjects (users, groups, or service accounts) |
+| `labels` | object | No | Labels (`app.kubernetes.io/managed-by: mcp-k8s` is added) |
+| `annotations` | object | No | Annotations |
 
 ### delete_rolebinding
 
@@ -180,6 +184,8 @@ Create a ClusterRole.
 |-----------|------|----------|-------------|
 | `name` | string | Yes | ClusterRole name |
 | `rules` | array | Yes | Policy rules: `{api_groups, resources, verbs, resource_names}`; escalation primitives are rejected (see above) |
+| `labels` | object | No | Labels (`app.kubernetes.io/managed-by: mcp-k8s` is added) |
+| `annotations` | object | No | Annotations |
 
 ### update_clusterrole
 
@@ -227,6 +233,8 @@ Create a ClusterRoleBinding.
 | `name` | string | Yes | ClusterRoleBinding name |
 | `role_name` | string | Yes | Name of the ClusterRole to bind |
 | `subjects` | array | Yes | Subjects (users, groups, or service accounts) |
+| `labels` | object | No | Labels (`app.kubernetes.io/managed-by: mcp-k8s` is added) |
+| `annotations` | object | No | Annotations |
 
 ### delete_clusterrolebinding
 

@@ -173,6 +173,9 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
             "inputSchema": {
                 "type": "object",
                 "properties": {
+                    "labels": { "type": "object", "description": "Labels (app.kubernetes.io/managed-by: mcp-k8s is added)", "additionalProperties": { "type": "string" } },
+                    "annotations": { "type": "object", "description": "Annotations", "additionalProperties": { "type": "string" } },
+                    "unhealthy_pod_eviction_policy": { "type": "string", "enum": ["IfHealthyBudget", "AlwaysAllow"], "description": "Whether pods that aren't ready can be evicted regardless of the budget" },
                     "namespace": { "type": "string", "description": "Kubernetes namespace" },
                     "name": { "type": "string", "description": "PDB name" },
                     "min_available": {
@@ -205,6 +208,7 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
             "inputSchema": {
                 "type": "object",
                 "properties": {
+                    "unhealthy_pod_eviction_policy": { "type": "string", "enum": ["IfHealthyBudget", "AlwaysAllow"] },
                     "namespace": { "type": "string", "description": "Kubernetes namespace" },
                     "name": { "type": "string", "description": "PDB name" },
                     "min_available": {
@@ -312,6 +316,23 @@ async fn get_pdb(client: &K8sClient, args: &serde_json::Value) -> Result<String,
         .map_err(|e| e.to_string())
 }
 
+fn eviction_policy(args: &serde_json::Value) -> Result<Option<String>, String> {
+    match args
+        .get("unhealthy_pod_eviction_policy")
+        .and_then(|v| v.as_str())
+    {
+        Some(p) => {
+            crate::resources::podspec::check_enum(
+                p,
+                &["IfHealthyBudget", "AlwaysAllow"],
+                "unhealthy_pod_eviction_policy",
+            )?;
+            Ok(Some(p.to_string()))
+        }
+        None => Ok(None),
+    }
+}
+
 async fn create_pdb(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
@@ -330,22 +351,23 @@ async fn create_pdb(client: &K8sClient, args: &serde_json::Value) -> Result<Stri
         .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
         .collect();
 
-    let mut labels = BTreeMap::new();
-    labels.insert(
-        "app.kubernetes.io/managed-by".to_string(),
-        "mcp-k8s".to_string(),
-    );
+    let labels = crate::resources::podspec::object_labels(args)?;
 
     let pdb = Pdb {
         metadata: ObjectMeta {
             name: Some(name.to_string()),
             namespace: Some(ns.to_string()),
             labels: Some(labels),
+            annotations: crate::resources::podspec::string_map(args, "annotations")?,
             ..Default::default()
         },
+        // `..Default::default()` keeps this compiling if a later Kubernetes
+        // version adds spec fields (the consumer picks the version).
+        #[allow(clippy::needless_update)]
         spec: Some(PodDisruptionBudgetSpec {
             min_available,
             max_unavailable,
+            unhealthy_pod_eviction_policy: eviction_policy(args)?,
             selector: Some(LabelSelector {
                 match_labels: Some(match_labels),
                 ..Default::default()
@@ -395,6 +417,12 @@ async fn update_pdb(client: &K8sClient, args: &serde_json::Value) -> Result<Stri
         }
     }
 
+    if let Some(policy) = eviction_policy(args)? {
+        spec_patch.insert(
+            "unhealthyPodEvictionPolicy".to_string(),
+            serde_json::json!(policy),
+        );
+    }
     let patch = serde_json::json!({ "spec": spec_patch });
 
     let pdb_api = api(client, ns)?;

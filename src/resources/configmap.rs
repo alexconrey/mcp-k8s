@@ -74,6 +74,10 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
             "inputSchema": {
                 "type": "object",
                 "properties": {
+                    "labels": { "type": "object", "description": "Labels (app.kubernetes.io/managed-by: mcp-k8s is added)", "additionalProperties": { "type": "string" } },
+                    "annotations": { "type": "object", "description": "Annotations", "additionalProperties": { "type": "string" } },
+                    "binary_data": { "type": "object", "description": "Binary values, base64-encoded", "additionalProperties": { "type": "string" } },
+                    "immutable": { "type": "boolean", "description": "Make the ConfigMap immutable" },
                     "namespace": { "type": "string", "description": "Kubernetes namespace" },
                     "name": { "type": "string", "description": "ConfigMap name" },
                     "data": {
@@ -82,7 +86,7 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
                         "additionalProperties": { "type": "string" }
                     }
                 },
-                "required": ["namespace", "name", "data"],
+                "required": ["namespace", "name"],
                 "additionalProperties": false
             }
         }),
@@ -187,25 +191,33 @@ async fn get_configmap(client: &K8sClient, args: &serde_json::Value) -> Result<S
 async fn create_configmap(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
-    let data: BTreeMap<String, String> =
-        serde_json::from_value(args.get("data").ok_or("data is required")?.clone())
-            .map_err(|e| e.to_string())?;
+    let data: Option<BTreeMap<String, String>> = args
+        .get("data")
+        .map(|v| serde_json::from_value(v.clone()))
+        .transpose()
+        .map_err(|e| format!("data: {e}"))?;
+    let binary_data: Option<BTreeMap<String, k8s_openapi::ByteString>> = args
+        .get("binary_data")
+        .map(|v| serde_json::from_value(v.clone()))
+        .transpose()
+        .map_err(|e| format!("binary_data (base64 values): {e}"))?;
+    if data.is_none() && binary_data.is_none() {
+        return Err("data or binary_data is required".to_string());
+    }
 
-    let mut labels = BTreeMap::new();
-    labels.insert(
-        "app.kubernetes.io/managed-by".to_string(),
-        "mcp-k8s".to_string(),
-    );
+    let labels = crate::resources::podspec::object_labels(args)?;
 
     let cm = ConfigMap {
         metadata: ObjectMeta {
             name: Some(name.to_string()),
             namespace: Some(ns.to_string()),
             labels: Some(labels),
+            annotations: crate::resources::podspec::string_map(args, "annotations")?,
             ..Default::default()
         },
-        data: Some(data),
-        ..Default::default()
+        data,
+        binary_data,
+        immutable: args.get("immutable").and_then(|v| v.as_bool()),
     };
 
     let cm_api = api(client, ns)?;

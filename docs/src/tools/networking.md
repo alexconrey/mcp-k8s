@@ -147,6 +147,8 @@ Create a NetworkPolicy.
 | `ingress_rules` | array | No | Ingress rules |
 | `egress_rules` | array | No | Egress rules |
 | `policy_types` | string[] | No | Policy types: `Ingress`, `Egress` |
+| `labels` | object | No | Labels (`app.kubernetes.io/managed-by: mcp-k8s` is added) |
+| `annotations` | object | No | Annotations |
 
 ### update_networkpolicy
 

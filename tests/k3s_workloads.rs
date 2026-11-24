@@ -634,3 +634,96 @@ async fn k3s_guardrails() {
     )
     .await;
 }
+
+#[tokio::test]
+#[ignore] // requires Docker
+async fn k3s_typed_resource_tools() {
+    let (kube_client, _container) = start_k3s().await;
+    let client = K8sClient::new(kube_client, vec![], ActionPermissions::default());
+    let ns = "resources";
+    ok(&client, "create_namespace", json!({ "name": ns })).await;
+    wait_for_default_sa(&client, ns).await;
+
+    ok(&client, "create_configmap", json!({ "namespace": ns, "name": "cfg", "data": { "a": "1" }, "binary_data": { "b.bin": "AAEC" }, "immutable": true, "labels": { "team": "web" } })).await;
+    let raw = get_json(&client, "v1", "ConfigMap", ns, "cfg").await;
+    assert_eq!(
+        (raw["immutable"].clone(), raw["binaryData"]["b.bin"].clone()),
+        (json!(true), json!("AAEC"))
+    );
+
+    ok(&client, "create_secret", json!({ "namespace": ns, "name": "s", "data": { "token": "c2VjcmV0" }, "immutable": true, "annotations": { "owner": "me" } })).await;
+    let raw = get_json(&client, "v1", "Secret", ns, "s").await;
+    assert_eq!(raw["immutable"], true);
+    assert_eq!(raw["metadata"]["annotations"]["owner"], "me");
+
+    ok(&client, "create_serviceaccount", json!({ "namespace": ns, "name": "builder", "image_pull_secrets": ["regcred"], "labels": { "team": "ci" } })).await;
+    let raw = get_json(&client, "v1", "ServiceAccount", ns, "builder").await;
+    assert_eq!(raw["imagePullSecrets"][0]["name"], "regcred");
+
+    ok(&client, "create_pvc", json!({ "namespace": ns, "name": "data", "storage": "16Mi", "volume_mode": "Filesystem", "labels": { "app": "db" } })).await;
+    let raw = get_json(&client, "v1", "PersistentVolumeClaim", ns, "data").await;
+    assert_eq!(raw["spec"]["volumeMode"], "Filesystem");
+
+    ok(
+        &client,
+        "create_deployment",
+        json!({ "namespace": ns, "name": "web", "image": PAUSE }),
+    )
+    .await;
+    ok(
+        &client,
+        "create_hpa",
+        json!({
+            "namespace": ns, "name": "web",
+            "scale_target_kind": "Deployment", "scale_target_name": "web", "scale_target_api_version": "apps/v1",
+            "min_replicas": 1, "max_replicas": 5,
+            "target_cpu_utilization": 70, "target_memory_utilization": 80,
+            "behavior": { "scale_down": { "stabilization_window_seconds": 120 } }
+        }),
+    )
+    .await;
+    let raw = get_json(
+        &client,
+        "autoscaling/v2",
+        "HorizontalPodAutoscaler",
+        ns,
+        "web",
+    )
+    .await;
+    assert_eq!(raw["spec"]["metrics"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        raw["spec"]["behavior"]["scaleDown"]["stabilizationWindowSeconds"],
+        120
+    );
+    ok(
+        &client,
+        "update_hpa",
+        json!({ "namespace": ns, "name": "web", "target_memory_utilization": 60 }),
+    )
+    .await;
+    let raw = get_json(
+        &client,
+        "autoscaling/v2",
+        "HorizontalPodAutoscaler",
+        ns,
+        "web",
+    )
+    .await;
+    assert_eq!(raw["spec"]["metrics"][0]["resource"]["name"], "memory");
+
+    ok(&client, "create_pdb", json!({ "namespace": ns, "name": "web", "min_available": 1, "selector": { "app": "web" }, "unhealthy_pod_eviction_policy": "AlwaysAllow" })).await;
+    let raw = get_json(&client, "policy/v1", "PodDisruptionBudget", ns, "web").await;
+    assert_eq!(raw["spec"]["unhealthyPodEvictionPolicy"], "AlwaysAllow");
+
+    ok(&client, "create_role", json!({ "namespace": ns, "name": "reader", "rules": [{ "api_groups": [""], "resources": ["pods"], "verbs": ["get"], "resource_names": ["web"] }], "labels": { "team": "a" } })).await;
+    let raw = get_json(
+        &client,
+        "rbac.authorization.k8s.io/v1",
+        "Role",
+        ns,
+        "reader",
+    )
+    .await;
+    assert_eq!(raw["rules"][0]["resourceNames"][0], "web");
+    assert_eq!(raw["metadata"]["labels"]["team"], "a");
+}

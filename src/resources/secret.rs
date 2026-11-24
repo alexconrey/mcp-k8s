@@ -93,12 +93,16 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
             "inputSchema": {
                 "type": "object",
                 "properties": {
+                    "labels": { "type": "object", "description": "Labels (app.kubernetes.io/managed-by: mcp-k8s is added)", "additionalProperties": { "type": "string" } },
+                    "annotations": { "type": "object", "description": "Annotations", "additionalProperties": { "type": "string" } },
+                    "data": { "type": "object", "description": "Values already base64-encoded (instead of or in addition to string_data)", "additionalProperties": { "type": "string" } },
+                    "immutable": { "type": "boolean", "description": "Make the Secret immutable" },
                     "namespace": { "type": "string", "description": "Kubernetes namespace" },
                     "name": { "type": "string", "description": "Secret name" },
                     "type": { "type": "string", "description": "Secret type (default: Opaque)" },
                     "string_data": { "type": "object", "description": "Key-value pairs of secret data", "additionalProperties": { "type": "string" } }
                 },
-                "required": ["namespace", "name", "string_data"],
+                "required": ["namespace", "name"],
                 "additionalProperties": false
             }
         }),
@@ -230,28 +234,37 @@ async fn create_secret(client: &K8sClient, args: &serde_json::Value) -> Result<S
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
     let secret_type_str = args["type"].as_str().unwrap_or("Opaque");
-    let string_data: BTreeMap<String, String> = serde_json::from_value(
-        args.get("string_data")
-            .ok_or("string_data is required")?
-            .clone(),
-    )
-    .map_err(|e| e.to_string())?;
+    let string_data: Option<BTreeMap<String, String>> = args
+        .get("string_data")
+        .map(|v| serde_json::from_value(v.clone()))
+        .transpose()
+        .map_err(|e| format!("string_data: {e}"))?;
+    let data: Option<BTreeMap<String, ByteString>> = args
+        .get("data")
+        .map(|v| serde_json::from_value(v.clone()))
+        .transpose()
+        .map_err(|e| format!("data (base64 values): {e}"))?;
+    if string_data.is_none() && data.is_none() {
+        return Err("string_data or data is required".to_string());
+    }
 
-    let mut labels = BTreeMap::new();
-    labels.insert(
-        "app.kubernetes.io/managed-by".to_string(),
-        "mcp-k8s".to_string(),
-    );
+    let labels = crate::resources::podspec::object_labels(args)?;
 
+    // `..Default::default()` keeps this compiling if a later Kubernetes
+    // version adds fields (the consumer picks the version).
+    #[allow(clippy::needless_update)]
     let secret = Secret {
         metadata: ObjectMeta {
             name: Some(name.to_string()),
             namespace: Some(ns.to_string()),
             labels: Some(labels),
+            annotations: crate::resources::podspec::string_map(args, "annotations")?,
             ..Default::default()
         },
         type_: Some(secret_type_str.to_string()),
-        string_data: Some(string_data),
+        string_data,
+        data,
+        immutable: args.get("immutable").and_then(|v| v.as_bool()),
         ..Default::default()
     };
     crate::policy::check_typed(client, &secret)?;

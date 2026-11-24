@@ -372,6 +372,10 @@ Create a configmap in a namespace with the given data key-value pairs.
 | `namespace` | string | Yes | Kubernetes namespace |
 | `name` | string | Yes | ConfigMap name |
 | `data` | object | Yes | Key-value string pairs for the configmap data |
+| `labels` | object | No | Labels (`app.kubernetes.io/managed-by: mcp-k8s` is added) |
+| `annotations` | object | No | Annotations |
+| `binary_data` | object | No | Base64-encoded binary values (`data` or `binary_data` is required) |
+| `immutable` | boolean | No | Make the ConfigMap immutable |
 
 ### update_configmap
 
@@ -428,6 +432,10 @@ Create a Kubernetes Secret. Accepts string_data as key-value pairs. `type: kuber
 | `name` | string | Yes | Secret name |
 | `type` | string | No | Secret type (default: `Opaque`) |
 | `string_data` | object | Yes | Key-value pairs of secret data |
+| `labels` | object | No | Labels (`app.kubernetes.io/managed-by: mcp-k8s` is added) |
+| `annotations` | object | No | Annotations |
+| `data` | object | No | Base64-encoded values (`string_data` or `data` is required) |
+| `immutable` | boolean | No | Make the Secret immutable |
 
 ### update_secret
 
@@ -522,6 +530,8 @@ Create a service account.
 |-----------|------|----------|-------------|
 | `namespace` | string | Yes | Kubernetes namespace |
 | `name` | string | Yes | ServiceAccount name |
+| `labels` | object | No | Labels |
+| `image_pull_secrets` | string[] | No | Image pull Secrets for pods using this service account |
 
 ### delete_serviceaccount
 
