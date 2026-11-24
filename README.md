@@ -1,13 +1,13 @@
 # mcp-k8s
 
-A Kubernetes MCP (Model Context Protocol) server that exposes **202 tools**
+A Kubernetes MCP (Model Context Protocol) server that exposes **209 tools**
 covering all GA Kubernetes API resources, CRDs, multi-cluster management, and
 resource watching. Works as a stdio server for Claude Code or as an HTTP
 endpoint for in-cluster deployment.
 
 ## Features
 
-- **202 MCP tools** across 49 resource modules covering every GA Kubernetes API group
+- **209 MCP tools** across 49 resource modules covering every GA Kubernetes API group
 - **Two runtime modes**: stdio (for Claude Code) and HTTP (for in-cluster deployment)
 - **SSE transport**: `POST /mcp/sse` endpoint for Server-Sent Events streaming
 - **Multi-cluster support**: load multiple kubeconfig contexts and switch between clusters at runtime

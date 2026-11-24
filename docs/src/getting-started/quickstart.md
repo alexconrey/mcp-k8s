@@ -270,5 +270,5 @@ This calls `get_active_cluster` and returns `production`.
 ## Next Steps
 
 - [Configuration](./configuration.md) -- Fine-tune namespace restrictions and permission controls
-- [Tools Reference](../tools/overview.md) -- Browse all 202 available tools
+- [Tools Reference](../tools/overview.md) -- Browse all 209 available tools
 - [Permissions](../permissions.md) -- Lock down operations for production environments
