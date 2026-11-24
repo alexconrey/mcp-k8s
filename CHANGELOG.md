@@ -12,6 +12,25 @@ release workflow refuses a tag that doesn't match `Cargo.toml`,
 
 ## [Unreleased]
 
+### Changed
+- The crate declares `rust-version = "1.95"` (the MSRV, kube 5's minimum).
+  Builds from a checkout use the toolchain in `rust-toolchain.toml` (1.99,
+  the same as the release image).
+
+### Internal
+- CI hardening:
+  - `rust-toolchain.toml` pins the toolchain, and CI fails if the Dockerfile's
+    `rust:` tag drifts from it;
+  - a new `msrv` job checks the library build on 1.95;
+  - the release image is now built on every PR (`docker-build`, not pushed);
+  - superseded PR runs are cancelled;
+  - jobs default to `contents: read`;
+  - Cargo commands use `--locked` and the dev profile has no debug info;
+  - the rust cache is saved only from `main`;
+  - every action is pinned to a commit SHA;
+  - `docs.yaml` installs a pinned, checksum-verified mdBook (v0.5.4) instead of
+    resolving "latest" through the GitHub API.
+
 ## [0.5.1] - 2026-11-24
 
 Security and dependency release. No library API changes.

@@ -299,6 +299,7 @@ mcp-k8s/
 ├── CHANGELOG.md            # Keep a Changelog; checked by the release workflow
 ├── deny.toml               # cargo-deny config (advisories, licenses, bans, sources)
 ├── .pre-commit-config.yaml # fmt + clippy pre-commit hooks
+├── rust-toolchain.toml     # Pinned toolchain; must match the Dockerfile rust: tag
 ├── Cargo.toml
 └── README.md
 ```
@@ -350,20 +351,41 @@ make deny                   # cargo deny check (advisories, licenses, bans, sour
 
 ### What CI does and doesn't cover
 
-`ci.yaml` runs the binary-file check, `fmt --check`, both clippy
-configurations, a check that the library's k8s-openapi dependency enables no
-version feature, `build --release`, and `cargo test` with and without default
-features on every PR. A separate `deny` job runs `cargo deny` with `deny.toml`
-(advisories only warn; see [Dependencies and advisories](#dependencies-and-advisories)). Gaps to cover yourself:
+`ci.yaml` runs these on every PR:
+
+- **`check`:** the toolchain/Dockerfile match, the binary-file check,
+  `fmt --check`, both clippy configurations, a check that the library's
+  k8s-openapi dependency enables no version feature, `build --release`, and
+  `cargo test` with and without default features. Cargo commands use
+  `--locked`, so commit `Cargo.lock` changes.
+- **`msrv`:** checks the library-only build on Cargo.toml's `rust-version`.
+- **`deny`:** runs `cargo deny` with `deny.toml`. Advisories only warn; see
+  [Dependencies and advisories](#dependencies-and-advisories).
+- **`docker-build`:** builds the release image without pushing it.
+
+Runs on `main` publish the image instead (`docker` job). A new push to a PR
+cancels its outdated run; runs on `main` are never cancelled. Every action is
+pinned to a commit SHA with a version comment, and Dependabot keeps them
+current.
+
+**Toolchain:**
+- `rust-toolchain.toml` pins the toolchain CI and local builds use (currently
+  1.99), and CI installs exactly that.
+- The Dockerfile's `rust:` tag must have the same minor version, and the
+  `check` job fails if they differ. Dependabot's docker PRs bump only the
+  Dockerfile, so push a `rust-toolchain.toml` bump to the same PR before
+  merging it.
+- `rust-version` in Cargo.toml (1.95, kube 5's minimum) is the MSRV for
+  library consumers. Raise it only when a dependency requires it, since it's
+  a breaking change for consumers on an older rustc.
+
+Gaps to cover yourself:
 
 - **The k3s integration tests are `#[ignore]`d and never run in CI.** Run
   `cargo test --test k3s_integration -- --ignored` (needs Docker) when you
   change kube API paths, API versions or the namespace allowlist. Plain
   `cargo test -- --ignored` also runs the `cluster.rs` tests, which load your
   kubeconfig.
-- **The Dockerfile is only built on pushes to `main`**, not on PRs. Run
-  `docker build .` when you change it or bump the toolchain. CI uses floating
-  `stable`, but the Dockerfile pins `rust:1.99` (kube 5 needs at least 1.95).
 - **The `default` ruleset has no required status checks**, so red CI doesn't
   block a merge. Check `gh pr checks` is green before handing a PR over.
 
