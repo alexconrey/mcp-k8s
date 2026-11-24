@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-9e9ab823.js";
+            window.path_to_searchindex_js = "searchindex-b748ad96.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-caea04ac.js"></script>
@@ -187,12 +187,12 @@
 <p>mcp-k8s bridges the gap between AI assistants and Kubernetes clusters. It translates natural-language requests from an MCP client into Kubernetes API calls, returning structured, token-efficient responses. Instead of raw Kubernetes JSON objects (which can be hundreds of lines), mcp-k8s returns focused summaries containing only the fields relevant to the caller.</p>
 <h2 id="key-features"><a class="header" href="#key-features">Key Features</a></h2>
 <ul>
-<li><strong>202 tools</strong> across 49 resource modules covering every GA Kubernetes resource type – Deployments, Pods, Services, Ingresses, ConfigMaps, Secrets, StatefulSets, DaemonSets, CronJobs, Jobs, RBAC resources, Nodes, PVs, PVCs, HPAs, PDBs, NetworkPolicies, admission controllers, CSI resources, and more.</li>
+<li><strong>209 tools</strong> across 49 resource modules covering every GA Kubernetes resource type – Deployments, Pods, Services, Ingresses, ConfigMaps, Secrets, StatefulSets, DaemonSets, CronJobs, Jobs, RBAC resources, Nodes, PVs, PVCs, HPAs, PDBs, NetworkPolicies, admission controllers, CSI resources, and more.</li>
 <li><strong>Two runtime modes</strong> – stdio for local use with Claude Code, and HTTP for in-cluster deployment as a Kubernetes pod.</li>
 <li><strong>SSE transport</strong> – <code>POST /mcp/sse</code> endpoint for Server-Sent Events streaming alongside the standard <code>POST /mcp</code> JSON-RPC endpoint.</li>
 <li><strong>MCP resources</strong> – <code>resources/list</code> and <code>resources/read</code> support for direct resource access via <code>k8s://</code> URIs (pods, deployments, services, configmaps, secrets, statefulsets, daemonsets, jobs, cronjobs, ingresses, nodes, namespaces).</li>
 <li><strong>MCP prompts</strong> – Built-in diagnostic prompts (<code>diagnose-pod</code>, <code>review-namespace-rbac</code>, <code>cluster-health-check</code>, <code>resource-usage-report</code>) that guide the AI through multi-step investigation workflows.</li>
-<li><strong>Prometheus metrics</strong> – <code>GET /metrics</code> endpoint exposing <code>mcp_requests_total</code>, <code>mcp_tool_calls_total</code>, and <code>mcp_tool_call_duration_seconds</code> with per-tool labels.</li>
+<li><strong>Prometheus metrics</strong> – <code>GET /metrics</code> endpoint exposing <code>mcp_requests_total</code>, <code>mcp_k8s_tool_calls_total</code>, and <code>mcp_k8s_tool_call_duration_seconds</code> with per-tool labels.</li>
 <li><strong>Fine-grained permission controls</strong> – Global and per-resource flags to disable create, update, or delete operations. Read operations are always allowed. Disabled tools are filtered from <code>tools/list</code> responses and rejected in <code>tools/call</code>.</li>
 <li><strong>Namespace allowlisting</strong> – Restrict tool operations to a set of allowed namespaces.</li>
 <li><strong>Token-efficient responses</strong> – Focused summary and detail types strip irrelevant fields from Kubernetes API responses, reducing context window consumption.</li>
@@ -275,7 +275,7 @@
 <li><a href="./getting-started/installation.html">Installation</a> – Build from source or pull the Docker image</li>
 <li><a href="./getting-started/configuration.html">Configuration</a> – CLI args, environment variables, and permission flags</li>
 <li><a href="./getting-started/quickstart.html">Quick Start</a> – Get up and running in minutes</li>
-<li><a href="./tools/overview.html">Tools Reference</a> – Complete reference for all 202 tools</li>
+<li><a href="./tools/overview.html">Tools Reference</a> – Complete reference for all 209 tools</li>
 </ul>
 
                     </main>

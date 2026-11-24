@@ -36,7 +36,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-9e9ab823.js";
+            window.path_to_searchindex_js = "../searchindex-b748ad96.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-caea04ac.js"></script>
@@ -300,7 +300,7 @@ docker build -t mcp-k8s .
 <tr><td><code>/mcp</code></td><td>POST</td><td>MCP JSON-RPC 2.0 endpoint</td></tr>
 <tr><td><code>/mcp/sse</code></td><td>POST</td><td>MCP JSON-RPC 2.0 via Server-Sent Events transport</td></tr>
 <tr><td><code>/healthz</code></td><td>GET</td><td>Health check (returns <code>ok</code>)</td></tr>
-<tr><td><code>/metrics</code></td><td>GET</td><td>Prometheus metrics (<code>mcp_requests_total</code>, <code>mcp_tool_calls_total</code>, <code>mcp_tool_call_duration_seconds</code>)</td></tr>
+<tr><td><code>/metrics</code></td><td>GET</td><td>Prometheus metrics (<code>mcp_requests_total</code>, <code>mcp_k8s_tool_calls_total</code>, <code>mcp_k8s_tool_call_duration_seconds</code>)</td></tr>
 <tr><td><code>/swagger-ui</code></td><td>GET</td><td>OpenAPI / Swagger UI</td></tr>
 <tr><td><code>/openapi.json</code></td><td>GET</td><td>OpenAPI JSON spec</td></tr>
 </tbody>
@@ -322,9 +322,8 @@ scrape_configs:
 </thead>
 <tbody>
 <tr><td><code>mcp_requests_total</code></td><td>Counter</td><td><code>method</code></td><td>Total MCP JSON-RPC requests by method</td></tr>
-<tr><td><code>mcp_tool_calls_total</code></td><td>Counter</td><td><code>tool</code></td><td>Total tool calls by tool name</td></tr>
-<tr><td><code>mcp_tool_call_duration_seconds</code></td><td>Histogram</td><td><code>tool</code></td><td>Tool call duration in seconds</td></tr>
-<tr><td><code>mcp_tool_call_errors_total</code></td><td>Counter</td><td><code>tool</code></td><td>Total tool call errors by tool name</td></tr>
+<tr><td><code>mcp_k8s_tool_calls_total</code></td><td>Counter</td><td><code>tool</code>, <code>status</code></td><td>Total tool calls by tool name. <code>status</code> is <code>ok</code>, <code>error</code> or <code>denied</code> (blocked by permissions)</td></tr>
+<tr><td><code>mcp_k8s_tool_call_duration_seconds</code></td><td>Histogram</td><td><code>tool</code></td><td>Tool call duration in seconds</td></tr>
 </tbody>
 </table>
 </div>

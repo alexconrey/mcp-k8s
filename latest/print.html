@@ -37,7 +37,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-9e9ab823.js";
+            window.path_to_searchindex_js = "searchindex-b748ad96.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-caea04ac.js"></script>
@@ -185,12 +185,12 @@
 <p>mcp-k8s bridges the gap between AI assistants and Kubernetes clusters. It translates natural-language requests from an MCP client into Kubernetes API calls, returning structured, token-efficient responses. Instead of raw Kubernetes JSON objects (which can be hundreds of lines), mcp-k8s returns focused summaries containing only the fields relevant to the caller.</p>
 <h2 id="key-features"><a class="header" href="#key-features">Key Features</a></h2>
 <ul>
-<li><strong>202 tools</strong> across 49 resource modules covering every GA Kubernetes resource type – Deployments, Pods, Services, Ingresses, ConfigMaps, Secrets, StatefulSets, DaemonSets, CronJobs, Jobs, RBAC resources, Nodes, PVs, PVCs, HPAs, PDBs, NetworkPolicies, admission controllers, CSI resources, and more.</li>
+<li><strong>209 tools</strong> across 49 resource modules covering every GA Kubernetes resource type – Deployments, Pods, Services, Ingresses, ConfigMaps, Secrets, StatefulSets, DaemonSets, CronJobs, Jobs, RBAC resources, Nodes, PVs, PVCs, HPAs, PDBs, NetworkPolicies, admission controllers, CSI resources, and more.</li>
 <li><strong>Two runtime modes</strong> – stdio for local use with Claude Code, and HTTP for in-cluster deployment as a Kubernetes pod.</li>
 <li><strong>SSE transport</strong> – <code>POST /mcp/sse</code> endpoint for Server-Sent Events streaming alongside the standard <code>POST /mcp</code> JSON-RPC endpoint.</li>
 <li><strong>MCP resources</strong> – <code>resources/list</code> and <code>resources/read</code> support for direct resource access via <code>k8s://</code> URIs (pods, deployments, services, configmaps, secrets, statefulsets, daemonsets, jobs, cronjobs, ingresses, nodes, namespaces).</li>
 <li><strong>MCP prompts</strong> – Built-in diagnostic prompts (<code>diagnose-pod</code>, <code>review-namespace-rbac</code>, <code>cluster-health-check</code>, <code>resource-usage-report</code>) that guide the AI through multi-step investigation workflows.</li>
-<li><strong>Prometheus metrics</strong> – <code>GET /metrics</code> endpoint exposing <code>mcp_requests_total</code>, <code>mcp_tool_calls_total</code>, and <code>mcp_tool_call_duration_seconds</code> with per-tool labels.</li>
+<li><strong>Prometheus metrics</strong> – <code>GET /metrics</code> endpoint exposing <code>mcp_requests_total</code>, <code>mcp_k8s_tool_calls_total</code>, and <code>mcp_k8s_tool_call_duration_seconds</code> with per-tool labels.</li>
 <li><strong>Fine-grained permission controls</strong> – Global and per-resource flags to disable create, update, or delete operations. Read operations are always allowed. Disabled tools are filtered from <code>tools/list</code> responses and rejected in <code>tools/call</code>.</li>
 <li><strong>Namespace allowlisting</strong> – Restrict tool operations to a set of allowed namespaces.</li>
 <li><strong>Token-efficient responses</strong> – Focused summary and detail types strip irrelevant fields from Kubernetes API responses, reducing context window consumption.</li>
@@ -273,7 +273,7 @@
 <li><a href="#installation">Installation</a> – Build from source or pull the Docker image</li>
 <li><a href="#configuration">Configuration</a> – CLI args, environment variables, and permission flags</li>
 <li><a href="#quick-start">Quick Start</a> – Get up and running in minutes</li>
-<li><a href="#tools-overview">Tools Reference</a> – Complete reference for all 202 tools</li>
+<li><a href="#tools-overview">Tools Reference</a> – Complete reference for all 209 tools</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="installation"><a class="header" href="#installation">Installation</a></h1>
@@ -820,12 +820,12 @@ CACHE_TTL=60 mcp-k8s
 <h2 id="next-steps-1"><a class="header" href="#next-steps-1">Next Steps</a></h2>
 <ul>
 <li><a href="#configuration">Configuration</a> – Fine-tune namespace restrictions and permission controls</li>
-<li><a href="#tools-overview">Tools Reference</a> – Browse all 202 available tools</li>
+<li><a href="#tools-overview">Tools Reference</a> – Browse all 209 available tools</li>
 <li><a href="#permissions">Permissions</a> – Lock down operations for production environments</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="tools-overview"><a class="header" href="#tools-overview">Tools Overview</a></h1>
-<p>mcp-k8s exposes 202 tools covering every GA Kubernetes resource type plus CRDs, multi-cluster management, and resource watching. Each tool corresponds to a specific Kubernetes API operation. Tools are categorized by action type:</p>
+<p>mcp-k8s exposes 209 tools covering every GA Kubernetes resource type plus CRDs, multi-cluster management, and resource watching. Each tool corresponds to a specific Kubernetes API operation. Tools are categorized by action type:</p>
 <ul>
 <li><strong>Read</strong> – List, get, and inspect resources. Always available regardless of permission configuration.</li>
 <li><strong>Create</strong> – Create new resources. Disabled by <code>--disable-create</code>.</li>
@@ -3911,7 +3911,7 @@ docker build -t mcp-k8s .
 <tr><td><code>/mcp</code></td><td>POST</td><td>MCP JSON-RPC 2.0 endpoint</td></tr>
 <tr><td><code>/mcp/sse</code></td><td>POST</td><td>MCP JSON-RPC 2.0 via Server-Sent Events transport</td></tr>
 <tr><td><code>/healthz</code></td><td>GET</td><td>Health check (returns <code>ok</code>)</td></tr>
-<tr><td><code>/metrics</code></td><td>GET</td><td>Prometheus metrics (<code>mcp_requests_total</code>, <code>mcp_tool_calls_total</code>, <code>mcp_tool_call_duration_seconds</code>)</td></tr>
+<tr><td><code>/metrics</code></td><td>GET</td><td>Prometheus metrics (<code>mcp_requests_total</code>, <code>mcp_k8s_tool_calls_total</code>, <code>mcp_k8s_tool_call_duration_seconds</code>)</td></tr>
 <tr><td><code>/swagger-ui</code></td><td>GET</td><td>OpenAPI / Swagger UI</td></tr>
 <tr><td><code>/openapi.json</code></td><td>GET</td><td>OpenAPI JSON spec</td></tr>
 </tbody>
@@ -3933,9 +3933,8 @@ scrape_configs:
 </thead>
 <tbody>
 <tr><td><code>mcp_requests_total</code></td><td>Counter</td><td><code>method</code></td><td>Total MCP JSON-RPC requests by method</td></tr>
-<tr><td><code>mcp_tool_calls_total</code></td><td>Counter</td><td><code>tool</code></td><td>Total tool calls by tool name</td></tr>
-<tr><td><code>mcp_tool_call_duration_seconds</code></td><td>Histogram</td><td><code>tool</code></td><td>Tool call duration in seconds</td></tr>
-<tr><td><code>mcp_tool_call_errors_total</code></td><td>Counter</td><td><code>tool</code></td><td>Total tool call errors by tool name</td></tr>
+<tr><td><code>mcp_k8s_tool_calls_total</code></td><td>Counter</td><td><code>tool</code>, <code>status</code></td><td>Total tool calls by tool name. <code>status</code> is <code>ok</code>, <code>error</code> or <code>denied</code> (blocked by permissions)</td></tr>
+<tr><td><code>mcp_k8s_tool_call_duration_seconds</code></td><td>Histogram</td><td><code>tool</code></td><td>Tool call duration in seconds</td></tr>
 </tbody>
 </table>
 </div>
