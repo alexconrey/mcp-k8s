@@ -58,6 +58,13 @@ release workflow refuses a tag that doesn't match `Cargo.toml`,
 - The release workflow verifies that the tag matches `Cargo.toml`,
   `Chart.yaml` and this changelog before publishing.
 
+### Fixed
+- Docs listed the old metric names (`mcp_tool_calls_total`,
+  `mcp_tool_call_errors_total`). The tool metrics are
+  `mcp_k8s_tool_calls_total{tool,status}` and
+  `mcp_k8s_tool_call_duration_seconds{tool}`. The documented tool
+  count was also stale (202). (#15)
+
 ## [0.3.1] - 2026-08-05
 
 See the [GitHub release](https://github.com/alexconrey/mcp-k8s/releases/tag/v0.3.1).
