@@ -36,7 +36,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-0f3c10b4.js";
+            window.path_to_searchindex_js = "../searchindex-fb00c07e.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-8f6ebf8b.js"></script>
@@ -212,7 +212,7 @@ cd mcp-k8s
 </thead>
 <tbody>
 <tr><td><code>image.repository</code></td><td><code>ghcr.io/alexconrey/mcp-k8s</code></td><td>Container image repository</td></tr>
-<tr><td><code>image.tag</code></td><td><code>latest</code></td><td>Image tag</td></tr>
+<tr><td><code>image.tag</code></td><td><code>""</code> (the chart’s <code>appVersion</code>, as <code>v&lt;appVersion&gt;</code>)</td><td>Image tag. Leave empty to run the image released with the chart; set <code>main</code> for unreleased builds</td></tr>
 <tr><td><code>image.pullPolicy</code></td><td><code>IfNotPresent</code></td><td>Image pull policy</td></tr>
 </tbody>
 </table>

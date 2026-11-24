@@ -37,7 +37,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-0f3c10b4.js";
+            window.path_to_searchindex_js = "searchindex-fb00c07e.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-8f6ebf8b.js"></script>
@@ -4107,7 +4107,21 @@ will say when.</p>
 <h2 id="image"><a class="header" href="#image">Image</a></h2>
 <pre><code>ghcr.io/alexconrey/mcp-k8s:latest
 </code></pre>
-<p>The image is built on <code>gcr.io/distroless/cc-debian12:nonroot</code> and runs the <code>mcp-k8s --http</code> command on port 8080 by default.</p>
+<p>Tags:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Tag</th><th>Meaning</th></tr>
+</thead>
+<tbody>
+<tr><td><code>vX.Y.Z</code></td><td>A release. Pin this in production.</td></tr>
+<tr><td><code>vX.Y</code></td><td>The newest patch release of <code>X.Y</code>.</td></tr>
+<tr><td><code>latest</code></td><td>The newest release.</td></tr>
+<tr><td><code>main</code>, <code>&lt;commit sha&gt;</code></td><td>Builds of the <code>main</code> branch. Unreleased; for testing only.</td></tr>
+</tbody>
+</table>
+</div>
+<p>The image is a static musl binary in a <code>scratch</code> image, running as UID 65534. It runs <code>mcp-k8s --http</code> on port 8080 by default.</p>
 <h2 id="building-the-image"><a class="header" href="#building-the-image">Building the Image</a></h2>
 <pre><code class="language-bash">git clone https://github.com/alexconrey/mcp-k8s.git
 cd mcp-k8s
@@ -4320,7 +4334,7 @@ cd mcp-k8s
 </thead>
 <tbody>
 <tr><td><code>image.repository</code></td><td><code>ghcr.io/alexconrey/mcp-k8s</code></td><td>Container image repository</td></tr>
-<tr><td><code>image.tag</code></td><td><code>latest</code></td><td>Image tag</td></tr>
+<tr><td><code>image.tag</code></td><td><code>""</code> (the chart’s <code>appVersion</code>, as <code>v&lt;appVersion&gt;</code>)</td><td>Image tag. Leave empty to run the image released with the chart; set <code>main</code> for unreleased builds</td></tr>
 <tr><td><code>image.pullPolicy</code></td><td><code>IfNotPresent</code></td><td>Image pull policy</td></tr>
 </tbody>
 </table>
