@@ -1,6 +1,6 @@
 # Tools Overview
 
-mcp-k8s exposes 209 tools covering every GA Kubernetes resource type plus CRDs, multi-cluster management, and resource watching. Each tool corresponds to a specific Kubernetes API operation. Tools are categorized by action type:
+mcp-k8s exposes 210 tools (including one deprecated alias) covering every GA Kubernetes resource type plus CRDs, multi-cluster management, and resource watching. Each tool corresponds to a specific Kubernetes API operation. Tools are categorized by action type:
 
 - **Read** -- List, get, and inspect resources. Always available regardless of permission configuration.
 - **Create** -- Create new resources. Disabled by `--disable-create`.
@@ -261,7 +261,8 @@ See [Cluster Resources](./cluster.md) for full parameter details.
 
 | Tool | Action | Description |
 |------|--------|-------------|
-| `apply_manifest` | Create | Apply any YAML/JSON manifest via server-side apply |
-| `get_resource_yaml` | Read | Get any resource as raw JSON via API discovery |
+| `apply_manifest` | Create | Last resort: apply any JSON manifest via server-side apply (prefer the typed tools) |
+| `get_resource_json` | Read | Get any resource as JSON via API discovery |
+| `get_resource_yaml` | Read | Deprecated alias for `get_resource_json` (returns JSON) |
 
 See [Generic Tools](./generic.md) for full parameter details.

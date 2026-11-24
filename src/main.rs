@@ -634,7 +634,7 @@ async fn read_k8s_resource(client: &K8sClient, uri: &str) -> Result<String, Stri
         args["namespace"] = serde_json::Value::String(ns_or_cluster.to_string());
     }
 
-    mcp_k8s::resources::generic::handle_tool(client, "get_resource_yaml", &args)
+    mcp_k8s::resources::generic::handle_tool(client, "get_resource_json", &args)
         .await
         .unwrap_or_else(|| Err("tool not found".to_string()))
 }

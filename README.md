@@ -1,13 +1,13 @@
 # mcp-k8s
 
-A Kubernetes MCP (Model Context Protocol) server that exposes **209 tools**
+A Kubernetes MCP (Model Context Protocol) server that exposes **210 tools**
 covering all GA Kubernetes API resources, CRDs, multi-cluster management, and
 resource watching. Works as a stdio server for Claude Code or as an HTTP
 endpoint for in-cluster deployment.
 
 ## Features
 
-- **209 MCP tools** across 49 resource modules covering every GA Kubernetes API group
+- **210 MCP tools** across 49 resource modules covering every GA Kubernetes API group
 - **Two runtime modes**: stdio (for Claude Code) and HTTP (for in-cluster deployment)
 - **SSE transport**: `POST /mcp/sse` endpoint for Server-Sent Events streaming
 - **Multi-cluster support**: load multiple kubeconfig contexts and switch between clusters at runtime
@@ -66,7 +66,7 @@ helm install mcp-k8s ./helm/mcp-k8s
 | **Certificates** | CertificateSigningRequests (list, get, approve, deny) |
 | **Admission** | MutatingWebhookConfigs, ValidatingWebhookConfigs, ValidatingAdmissionPolicies |
 | **Auth** | `can_i`, `whoami`, `list_my_permissions` |
-| **Generic** | `apply_manifest` (server-side apply), `get_resource_yaml` (raw JSON) |
+| **Generic** | `apply_manifest` (server-side apply), `get_resource_json` (full object as JSON; `get_resource_yaml` is a deprecated alias) |
 | **Metrics** | Pod and node CPU/memory from metrics-server |
 | **CRDs** | `list_crds`, `get_crd`, `list_custom_resources`, `get_custom_resource`, `create_custom_resource`, `update_custom_resource`, `delete_custom_resource` |
 | **Watch** | `watch_resource` (observe ADDED/MODIFIED/DELETED events over a time window) |

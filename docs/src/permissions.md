@@ -15,7 +15,7 @@ Every tool is classified into one of four CRUD actions:
 
 | Action | Tool Prefixes | Examples |
 |--------|--------------|----------|
-| **Read** | `list_`, `get_`, `*_logs`, `*_metrics`, `can_i`, `whoami`, `list_my_permissions`, `get_resource_yaml` | `list_deployments`, `get_pod_logs`, `get_metrics` |
+| **Read** | `list_`, `get_`, `*_logs`, `*_metrics`, `can_i`, `whoami`, `list_my_permissions`, `get_resource_json` (and its deprecated alias `get_resource_yaml`) | `list_deployments`, `get_pod_logs`, `get_metrics` |
 | **Create** | `create_`, `apply_manifest` | `create_deployment`, `create_pod`, `apply_manifest` |
 | **Update** | `update_`, `scale_`, `restart_`, `rollback_`, `approve_`, `deny_`, `cordon_`, `uncordon_`, `drain_` | `update_deployment`, `scale_deployment`, `cordon_node` |
 | **Delete** | `delete_`, `evict_` | `delete_pod`, `evict_pod` |
@@ -111,7 +111,7 @@ mcp-k8s --disable \
 
 ## `apply_manifest` Guardrails
 
-`apply_manifest` is the most powerful tool in mcp-k8s. It uses Kubernetes server-side apply to create or update **any** resource from raw YAML/JSON, making it capable of both create and update operations in a single tool. Because of this dual nature, it requires special consideration:
+`apply_manifest` is the most powerful tool in mcp-k8s. It uses Kubernetes server-side apply to create or update **any** resource from a raw JSON manifest, making it capable of both create and update operations in a single tool. Because of this dual nature, it requires special consideration:
 
 - **`--disable-create`** removes `apply_manifest` (since it is classified as a Create action), but this also disables all other create tools.
 - **`--disable-apply-manifest`** / `DISABLE_APPLY_MANIFEST` is a dedicated kill-switch that blocks `apply_manifest` without affecting other create tools like `create_deployment` or `create_service`.

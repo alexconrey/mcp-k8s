@@ -1,7 +1,7 @@
 # mcp-k8s
 
 Kubernetes MCP (Model Context Protocol) server and library. Exposes
-209 Kubernetes cluster operations as MCP tools consumable by Claude Code
+210 Kubernetes cluster operations as MCP tools consumable by Claude Code
 and other MCP clients. Supports multi-cluster management, CRD discovery,
 watch/subscribe, and all GA + alpha/beta K8s API groups.
 
@@ -53,7 +53,7 @@ src/
     ├── endpoints.rs     # Endpoints (read-only, legacy)
     ├── endpointslice.rs # EndpointSlice (read-only)
     ├── flowcontrol.rs   # FlowSchema + PriorityLevelConfiguration (read-only)
-    ├── generic.rs       # apply_manifest (server-side apply), get_resource_yaml
+    ├── generic.rs       # apply_manifest (server-side apply, last resort), get_resource_json (+ deprecated get_resource_yaml alias)
     ├── hpa.rs           # HorizontalPodAutoscaler CRUD
     ├── ingress.rs       # Ingress get + delete
     ├── ingressclass.rs  # IngressClass (read-only, cluster-scoped)
@@ -319,7 +319,7 @@ CI workflow (build, test, clippy, fmt) runs against them before merge.
 
 ```bash
 cargo build --release       # Build
-cargo test                  # 423 unit + 8 integration tests
+cargo test                  # 425 unit + 8 integration tests
 cargo test -- --ignored     # Run k3s integration tests (needs Docker)
 cargo clippy --all-targets -- -D warnings  # Lint
 cargo clippy --lib --no-default-features -- -D warnings  # Library-only build (what deckwatch compiles)

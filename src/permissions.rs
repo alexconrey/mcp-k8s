@@ -103,7 +103,11 @@ impl ActionPermissions {
     pub fn action_for_tool(tool_name: &str) -> Action {
         // Exact-match read tools
         match tool_name {
-            "can_i" | "whoami" | "list_my_permissions" | "get_resource_yaml" => {
+            "can_i"
+            | "whoami"
+            | "list_my_permissions"
+            | "get_resource_json"
+            | "get_resource_yaml" => {
                 return Action::Read;
             }
             "apply_manifest" => return Action::Create,
@@ -157,7 +161,7 @@ impl ActionPermissions {
     /// Best-effort resource extraction from a tool name.
     ///
     /// `"create_deployment"` → `"deployment"`, `"scale_deployment"` → `"deployment"`,
-    /// `"apply_manifest"` → `"manifest"`, `"get_resource_yaml"` → `"resource_yaml"`.
+    /// `"apply_manifest"` → `"manifest"`, `"get_resource_json"` → `"resource_json"`.
     fn resource_from_tool(tool_name: &str) -> String {
         let prefixes = [
             "list_",
@@ -353,6 +357,11 @@ mod tests {
             Action::Read
         );
         assert_eq!(
+            ActionPermissions::action_for_tool("get_resource_json"),
+            Action::Read
+        );
+        // Deprecated alias keeps the same classification.
+        assert_eq!(
             ActionPermissions::action_for_tool("get_resource_yaml"),
             Action::Read
         );
@@ -520,6 +529,7 @@ mod tests {
         assert!(perms.is_tool_allowed("get_pod_logs"));
         assert!(perms.is_tool_allowed("can_i"));
         assert!(perms.is_tool_allowed("whoami"));
+        assert!(perms.is_tool_allowed("get_resource_json"));
         assert!(perms.is_tool_allowed("get_resource_yaml"));
         assert!(perms.is_tool_allowed("get_metrics"));
         assert!(perms.is_tool_allowed("get_events"));
