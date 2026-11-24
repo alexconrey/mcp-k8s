@@ -339,6 +339,13 @@ async fn auth_middleware(
 // HTTP mode
 // ---------------------------------------------------------------------------
 
+/// `/openapi.json` and the Swagger UI at `/swagger-ui`.
+fn docs_router<S: Clone + Send + Sync + 'static>() -> axum::Router<S> {
+    SwaggerUi::new("/swagger-ui")
+        .url("/openapi.json", ApiDoc::openapi())
+        .into()
+}
+
 fn build_router(
     manager: ClusterManager,
     auth_token: Option<String>,
@@ -353,7 +360,7 @@ fn build_router(
         .route("/mcp/sse", axum::routing::post(handle_mcp_sse))
         .route("/healthz", axum::routing::get(healthz))
         .route("/metrics", axum::routing::get(metrics_handler))
-        .merge(SwaggerUi::new("/swagger-ui").url("/openapi.json", ApiDoc::openapi()))
+        .merge(docs_router())
         .layer(axum::middleware::from_fn_with_state(
             auth_state,
             auth_middleware,
@@ -768,4 +775,44 @@ fn handle_prompts_get(request: &JsonRpcRequest) -> JsonRpcResponse {
             "messages": messages
         }),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tower::ServiceExt;
+
+    async fn get(path: &str) -> (axum::http::StatusCode, String) {
+        let response = docs_router::<()>()
+            .oneshot(
+                axum::http::Request::get(path)
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let status = response.status();
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        (status, String::from_utf8_lossy(&body).into_owned())
+    }
+
+    #[tokio::test]
+    async fn openapi_json_documents_the_mcp_endpoints() {
+        let (status, body) = get("/openapi.json").await;
+        assert_eq!(status, axum::http::StatusCode::OK);
+        let spec: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(spec["info"]["version"], env!("CARGO_PKG_VERSION"));
+        assert!(spec["paths"]["/mcp"].is_object(), "{spec}");
+        assert!(spec["paths"]["/healthz"].is_object(), "{spec}");
+        assert!(spec["components"]["schemas"]["JsonRpcRequest"].is_object());
+    }
+
+    #[tokio::test]
+    async fn swagger_ui_is_served() {
+        let (status, body) = get("/swagger-ui/index.html").await;
+        assert_eq!(status, axum::http::StatusCode::OK);
+        assert!(body.contains("swagger"), "{body}");
+    }
 }

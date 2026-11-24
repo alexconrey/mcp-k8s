@@ -1,0 +1,20 @@
+name: Security audit
+# Weekly RustSec advisory scan of Cargo.lock (normal, build and dev
+# dependencies), so new advisories surface even when no PRs are open.
+# CI's `deny` job runs the same check on every PR and push to main.
+on:
+  schedule:
+    - cron: "0 7 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  advisories:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check advisories
