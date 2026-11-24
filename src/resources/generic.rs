@@ -14,17 +14,44 @@ fn parse_api_version(api_version: &str) -> (&str, &str) {
     }
 }
 
+/// Input schema shared by `get_resource_json` and its deprecated alias.
+fn resource_ref_schema() -> serde_json::Value {
+    serde_json::json!({
+        "type": "object",
+        "properties": {
+            "api_version": {
+                "type": "string",
+                "description": "API version (e.g. 'v1', 'apps/v1', 'networking.k8s.io/v1')"
+            },
+            "kind": {
+                "type": "string",
+                "description": "Resource kind (e.g. 'Pod', 'Deployment', 'Service')"
+            },
+            "name": {
+                "type": "string",
+                "description": "Resource name"
+            },
+            "namespace": {
+                "type": "string",
+                "description": "Kubernetes namespace (omit for cluster-scoped resources)"
+            }
+        },
+        "required": ["api_version", "kind", "name"],
+        "additionalProperties": false
+    })
+}
+
 pub fn tool_definitions() -> Vec<serde_json::Value> {
     vec![
         serde_json::json!({
             "name": "apply_manifest",
-            "description": "Apply an arbitrary Kubernetes YAML or JSON manifest using server-side apply. Accepts any resource type. Returns the applied object's metadata (name, namespace, kind, resource_version).",
+            "description": "Last resort: apply an arbitrary Kubernetes manifest, given as JSON, using server-side apply. Prefer the typed create_*/update_* tools (for example create_deployment, create_job, create_pod), which validate their input and enforce the server's guardrails; use apply_manifest only for resource types that have no typed tool. YAML is not accepted: convert it to JSON first. Returns the applied object's metadata (name, namespace, kind, resource_version).",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "manifest": {
                         "type": "string",
-                        "description": "The Kubernetes manifest as a YAML or JSON string"
+                        "description": "The Kubernetes manifest as a JSON string (YAML is not accepted)"
                     }
                 },
                 "required": ["manifest"],
@@ -32,31 +59,14 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
             }
         }),
         serde_json::json!({
+            "name": "get_resource_json",
+            "description": "Get any Kubernetes resource as JSON, the object as the API server returns it. Accepts apiVersion, kind, name, and optional namespace. Uses API discovery to resolve the resource type. The output can be edited and passed back to apply_manifest; convert it to YAML yourself if a person needs YAML.",
+            "inputSchema": resource_ref_schema()
+        }),
+        serde_json::json!({
             "name": "get_resource_yaml",
-            "description": "Get any Kubernetes resource as raw JSON output. Accepts apiVersion, kind, name, and optional namespace. Uses API discovery to resolve the resource type.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "api_version": {
-                        "type": "string",
-                        "description": "API version (e.g. 'v1', 'apps/v1', 'networking.k8s.io/v1')"
-                    },
-                    "kind": {
-                        "type": "string",
-                        "description": "Resource kind (e.g. 'Pod', 'Deployment', 'Service')"
-                    },
-                    "name": {
-                        "type": "string",
-                        "description": "Resource name"
-                    },
-                    "namespace": {
-                        "type": "string",
-                        "description": "Kubernetes namespace (omit for cluster-scoped resources)"
-                    }
-                },
-                "required": ["api_version", "kind", "name"],
-                "additionalProperties": false
-            }
+            "description": "Deprecated alias for get_resource_json, kept for compatibility. It returns JSON, not YAML. Use get_resource_json instead; this alias will be removed in the next minor release.",
+            "inputSchema": resource_ref_schema()
         }),
     ]
 }
@@ -68,7 +78,8 @@ pub async fn handle_tool(
 ) -> Option<Result<String, String>> {
     let result = match name {
         "apply_manifest" => apply_manifest(client, args).await,
-        "get_resource_yaml" => get_resource_json(client, args).await,
+        // get_resource_yaml is a deprecated alias: the output has always been JSON.
+        "get_resource_json" | "get_resource_yaml" => get_resource_json(client, args).await,
         _ => return None,
     };
     Some(result)
@@ -186,9 +197,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn tool_definitions_returns_two_tools() {
+    fn tool_definitions_returns_three_tools() {
         let defs = tool_definitions();
-        assert_eq!(defs.len(), 2);
+        assert_eq!(defs.len(), 3);
 
         let names: Vec<&str> = defs.iter().map(|d| d["name"].as_str().unwrap()).collect();
 
@@ -198,6 +209,7 @@ mod tests {
         assert_eq!(names.len(), unique.len(), "tool names must be unique");
 
         assert!(names.contains(&"apply_manifest"));
+        assert!(names.contains(&"get_resource_json"));
         assert!(names.contains(&"get_resource_yaml"));
     }
 
@@ -274,5 +286,42 @@ mod tests {
         assert!(props.contains_key("kind"));
         assert!(props.contains_key("name"));
         assert!(props.contains_key("namespace"));
+    }
+
+    #[test]
+    fn get_resource_yaml_is_a_documented_deprecated_alias() {
+        let defs = tool_definitions();
+        let def = |name: &str| defs.iter().find(|d| d["name"] == name).cloned().unwrap();
+        let json = def("get_resource_json");
+        let yaml = def("get_resource_yaml");
+        // Same arguments, so callers can switch names without other changes.
+        assert_eq!(json["inputSchema"], yaml["inputSchema"]);
+        let desc = yaml["description"].as_str().unwrap();
+        assert!(desc.starts_with("Deprecated"), "{desc}");
+        assert!(desc.contains("get_resource_json"), "{desc}");
+        assert!(desc.contains("returns JSON"), "{desc}");
+    }
+
+    #[test]
+    fn apply_manifest_does_not_claim_yaml_support() {
+        // The parser only accepts JSON (serde_json); the description must say so.
+        let defs = tool_definitions();
+        let def = defs.iter().find(|d| d["name"] == "apply_manifest").unwrap();
+        let desc = def["description"].as_str().unwrap();
+        let param = def["inputSchema"]["properties"]["manifest"]["description"]
+            .as_str()
+            .unwrap();
+        assert!(!desc.contains("YAML or JSON"), "{desc}");
+        assert!(desc.contains("YAML is not accepted"), "{desc}");
+        // Agents must be steered to the typed tools, which carry the guardrails.
+        assert!(desc.starts_with("Last resort"), "{desc}");
+        assert!(
+            desc.contains("Prefer the typed create_*/update_* tools"),
+            "{desc}"
+        );
+        assert!(
+            param.contains("JSON") && param.contains("not accepted"),
+            "{param}"
+        );
     }
 }

@@ -8,7 +8,7 @@ mcp-k8s bridges the gap between AI assistants and Kubernetes clusters. It transl
 
 ## Key Features
 
-- **209 tools** across 49 resource modules covering every GA Kubernetes resource type -- Deployments, Pods, Services, Ingresses, ConfigMaps, Secrets, StatefulSets, DaemonSets, CronJobs, Jobs, RBAC resources, Nodes, PVs, PVCs, HPAs, PDBs, NetworkPolicies, admission controllers, CSI resources, and more.
+- **210 tools** across 49 resource modules covering every GA Kubernetes resource type -- Deployments, Pods, Services, Ingresses, ConfigMaps, Secrets, StatefulSets, DaemonSets, CronJobs, Jobs, RBAC resources, Nodes, PVs, PVCs, HPAs, PDBs, NetworkPolicies, admission controllers, CSI resources, and more.
 - **Two runtime modes** -- stdio for local use with Claude Code, and HTTP for in-cluster deployment as a Kubernetes pod.
 - **SSE transport** -- `POST /mcp/sse` endpoint for Server-Sent Events streaming alongside the standard `POST /mcp` JSON-RPC endpoint.
 - **MCP resources** -- `resources/list` and `resources/read` support for direct resource access via `k8s://` URIs (pods, deployments, services, configmaps, secrets, statefulsets, daemonsets, jobs, cronjobs, ingresses, nodes, namespaces).
@@ -20,7 +20,7 @@ mcp-k8s bridges the gap between AI assistants and Kubernetes clusters. It transl
 - **Multi-cluster support** -- Load multiple kubeconfig contexts with `--contexts` and switch between clusters at runtime using `list_clusters`, `switch_cluster`, and `get_active_cluster` tools.
 - **Watch/subscribe** -- `watch_resource` tool watches any resource type for ADDED, MODIFIED, and DELETED events over a configurable time window.
 - **CRD discovery** -- `list_crds`, `get_crd`, `list_custom_resources`, `get_custom_resource`, `create_custom_resource`, `update_custom_resource`, and `delete_custom_resource` tools provide full lifecycle management of any installed CRD via dynamic API discovery.
-- **Generic tools** -- `apply_manifest` (server-side apply) and `get_resource_yaml` work with any Kubernetes resource type, including CRDs.
+- **Generic tools** -- `apply_manifest` (server-side apply, a last resort behind the typed tools) and `get_resource_json` work with any Kubernetes resource type, including CRDs.
 - **Auth introspection** -- `whoami`, `can_i`, and `list_my_permissions` tools let the AI understand its own access level.
 - **TLS and bearer token auth** -- Optional `--tls-cert`/`--tls-key` for HTTPS and `--auth-token` for bearer token authentication on the HTTP server.
 - **Swagger UI** -- Interactive API documentation at `GET /swagger-ui` with OpenAPI spec at `GET /openapi.json`.
@@ -101,4 +101,4 @@ mcp-k8s implements [MCP specification version 2025-11-25](https://spec.modelcont
 - [Installation](./getting-started/installation.md) -- Build from source or pull the Docker image
 - [Configuration](./getting-started/configuration.md) -- CLI args, environment variables, and permission flags
 - [Quick Start](./getting-started/quickstart.md) -- Get up and running in minutes
-- [Tools Reference](./tools/overview.md) -- Complete reference for all 209 tools
+- [Tools Reference](./tools/overview.md) -- Complete reference for all 210 tools

@@ -72,12 +72,6 @@ kube 5 / k8s-openapi 0.29. Requires Kubernetes 1.33 or newer.
 ### Changed
 - `kube` 4 → 5.1, `k8s-openapi` 0.28 → 0.29.
 
-### Fixed
-- Docs listed the old metric names (`mcp_tool_calls_total`,
-  `mcp_tool_call_errors_total`). The tool metrics are
-  `mcp_k8s_tool_calls_total{tool,status}` and
-  `mcp_k8s_tool_call_duration_seconds{tool}`. The tool count is 209, not 202.
-
 ### Internal
 - CI checks that the library's own k8s-openapi dependency enables no version
   feature, lints the library-only build with `--features k8s-openapi/v1_33`,
@@ -92,6 +86,9 @@ kube 5 / k8s-openapi 0.29. Requires Kubernetes 1.33 or newer.
 ## [0.4.0] - 2026-11-24
 
 ### Added
+- **`get_resource_json`**, the honest name for the generic "get any resource"
+  tool: it returns the full object as JSON. Edit the output and pass it back to
+  `apply_manifest`, or convert it to YAML client-side if a person needs YAML.
 - **`server` feature** (on by default). The standalone HTTP server's
   dependencies (`axum`, `axum-server`, `clap`, `tower-http`,
   `tracing-subscriber`, the Prometheus exporter, `utoipa`,
@@ -105,7 +102,21 @@ kube 5 / k8s-openapi 0.29. Requires Kubernetes 1.33 or newer.
 - `update_deployment_labels`, `update_deployment_annotations` and
   `update_deployment_affinity` tools. (#9)
 
+### Deprecated
+- **`get_resource_yaml`** is now an alias for `get_resource_json`, with the
+  same arguments and output. Despite its name it always returned JSON. It will
+  be removed in the next minor release.
+
 ### Changed
+- **`apply_manifest` is described as a last resort.** Its description now
+  steers agents to the typed `create_*`/`update_*` tools, which validate input
+  and enforce mcp-k8s's guardrails, whereas `apply_manifest` sends raw objects.
+  It also states correctly that only **JSON** manifests are accepted. It
+  previously claimed "YAML or JSON", but the parser has always rejected YAML.
+  The documentation's YAML examples, which could never have worked, are now
+  JSON.
+- The documented tool count is corrected to 210, including the alias. It said
+  202 while the code already had 209.
 - Tool-call metrics are recorded inside the library's `handle_tool()`, so
   library consumers get `mcp_k8s_tool_calls_total` and friends without
   wrapping every call. (#7)
@@ -117,6 +128,13 @@ kube 5 / k8s-openapi 0.29. Requires Kubernetes 1.33 or newer.
 - CI lints the library-only build (`cargo clippy --lib --no-default-features`). (#12)
 - The release workflow verifies that the tag matches `Cargo.toml`,
   `Chart.yaml` and this changelog before publishing.
+
+### Fixed
+- Docs listed the old metric names (`mcp_tool_calls_total`,
+  `mcp_tool_call_errors_total`). The tool metrics are
+  `mcp_k8s_tool_calls_total{tool,status}` and
+  `mcp_k8s_tool_call_duration_seconds{tool}`. The documented tool
+  count was also stale (202). (#15)
 
 ## [0.3.1] - 2026-08-05
 
