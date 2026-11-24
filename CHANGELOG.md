@@ -82,12 +82,55 @@ release workflow refuses a tag that doesn't match `Cargo.toml`,
 - In stdio mode, logs went to stdout and mixed with the JSON-RPC stream. They
   go to stderr now; HTTP mode still logs to stdout.
 
+### Internal
+- Dependabot groups the OpenTelemetry crates (`otel-stack`), which have to
+  move together.
+- New dependencies, all behind `server` (via the new `otel` feature):
+  `opentelemetry`, `opentelemetry_sdk`, `opentelemetry-otlp`,
+  `opentelemetry-appender-tracing` (0.33), `tracing-opentelemetry` (0.34) and
+  `reqwest` 0.13 (`blocking`, `rustls-no-provider`). The library-only build
+  (`--no-default-features`) has no new dependencies.
+
 ### Deprecated (announced)
 - The Prometheus metrics `mcp_k8s_tool_calls_total`,
   `mcp_k8s_tool_call_duration_seconds` and `mcp_requests_total` are
   unchanged in this release. A later release will deprecate them in favour
   of the OpenTelemetry metric `mcp.server.operation.duration`, and the one
   after that will remove them.
+
+## [0.5.1] - 2026-11-24
+
+Security and dependency release. No library API changes.
+
+### Security
+- Lockfile updates for RustSec advisories: `h2` 0.4.21 (RUSTSEC-2026-0258),
+  `rustls` 0.23.46 (RUSTSEC-2026-0285, -0346, -0348, -0349),
+  `rustls-webpki` 0.103.17 (RUSTSEC-2026-0382), `webpki-root-certs` 1.0.12
+  (RUSTSEC-2026-0383), `tokio` 1.54.1 (RUSTSEC-2026-0386, unsound),
+  `url` 2.5.9 (RUSTSEC-2026-0592), and yanked `chacha20` 0.10.1 → 0.10.2.
+- `utoipa` 5 → 6 and `utoipa-swagger-ui` 9 → 10 (server feature only). This
+  replaces the build-time `zip` 3.0.0 dependency, which had six advisories
+  (RUSTSEC-2026-0367, -0368, -0369, -0429, -0545, -0548), with `zip` 9. No API
+  changes were needed.
+
+### Changed
+- Dependency updates from Dependabot: `tower-http` 0.6 → 0.7 and
+  `axum-server` 0.7 → 0.9 (#21), `metrics-exporter-prometheus` 0.17 → 0.18
+  (#22), and minor/patch bumps of `serde_json`, `thiserror`, `http`,
+  `futures`, `clap`, `uuid` and `tokio-test` (#20). All of these are
+  server-feature or dev dependencies except `serde_json`, `thiserror`, `http`
+  and `futures`.
+- The container image builds with `rust:1.99` (was 1.95). (#19)
+
+### Internal
+- Dependabot for cargo, Docker base images and GitHub Actions, plus Dependabot
+  alerts and security updates.
+- CI runs `cargo deny` (`deny` job): bans, licenses and sources block, and
+  advisories only warn. `audit.yaml` runs the advisory check weekly and fails
+  on findings. `deny.toml` now denies yanked crates, wildcard versions and
+  unknown registries and git sources, and allows `CDLA-Permissive-2.0`
+  (Mozilla CA data in `webpki-root-certs`). (#18, #23)
+- Router tests for `/openapi.json` and the Swagger UI. (#18)
 
 ## [0.5.0] - 2026-11-24
 

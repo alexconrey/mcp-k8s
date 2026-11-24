@@ -1,0 +1,77 @@
+# Dependabot version + security updates for mcp-k8s.
+#
+# Security updates (triggered by GitHub advisories) are opened as soon as an
+# advisory lands and ignore the schedule/cooldown below. The schedule only
+# governs routine version bumps, which are grouped to keep PR noise down.
+#
+# Release note: dependency PRs must NOT bump the crate or chart version.
+# Version bumps stay in dedicated release PRs (see CLAUDE.md "Releasing").
+version: 2
+
+updates:
+  # ── Rust crates ───────────────────────────────────────────────────────────
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+    # Wait a few days after a release before proposing it. This guards against
+    # yanked or compromised releases. Security updates bypass this.
+    cooldown:
+      default-days: 3
+      semver-major-days: 7
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      # The binary's OpenTelemetry crates move together: each
+      # tracing-opentelemetry release pins one opentelemetry 0.x minor, and
+      # it usually ships after the opentelemetry release. Listed before
+      # cargo-minor-patch, which would otherwise take these 0.x minors one by
+      # one. If CI fails, wait for tracing-opentelemetry to catch up.
+      otel-stack:
+        patterns: ["opentelemetry", "opentelemetry-*", "opentelemetry_*", "tracing-opentelemetry"]
+        update-types: [major, minor]
+      cargo-minor-patch:
+        update-types: [minor, patch]
+      # kube and k8s-openapi are part of the public library API
+      # (K8sClient::new takes a kube::Client), so a major bump is a breaking
+      # release coordinated with deckwatch. A k8s-openapi major can also raise
+      # the minimum Kubernetes version (the `v1_*` feature). Land them as one PR.
+      kube-stack:
+        patterns: ["kube", "kube-*", "k8s-openapi"]
+        update-types: [major]
+      axum-stack:
+        patterns: ["axum", "axum-*", "tower", "tower-*", "hyper", "hyper-*"]
+        update-types: [major]
+      # utoipa-swagger-ui must match the utoipa major.
+      utoipa:
+        patterns: ["utoipa", "utoipa-*"]
+        update-types: [major]
+
+  # ── Container base images (Dockerfile) ────────────────────────────────────
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+    commit-message:
+      prefix: "chore(docker)"
+    groups:
+      docker-base-images:
+        patterns: ["*"]
+
+  # ── GitHub Actions used by CI/release/docs workflows ──────────────────────
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+    commit-message:
+      prefix: "chore(ci)"
+    groups:
+      github-actions:
+        patterns: ["*"]

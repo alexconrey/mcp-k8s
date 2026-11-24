@@ -309,7 +309,7 @@ page have the full recipe; the binary's `src/otel.rs` is a working example.
 ## Testing
 
 ```bash
-cargo test                                      # 449 unit, 9 binary, 8 integration tests
+cargo test                                      # 449 unit + 11 binary + 8 integration tests
 cargo test --no-default-features                # the same, as library consumers build it
 cargo test --test k3s_integration -- --ignored  # 13 k3s tests (needs Docker)
 ```
