@@ -17,16 +17,26 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
-      - name: Install mdBook
+      # Pinned release with a verified checksum. This used to resolve "latest"
+      # through the unauthenticated GitHub API, which failed when rate-limited
+      # and ran an unverified binary in a job that can deploy Pages. To bump,
+      # take the sha256 from the release asset's digest on GitHub.
+      - name: Install mdBook (pinned, checksum verified)
+        env:
+          MDBOOK_VERSION: v0.5.4
+          MDBOOK_SHA256: 3f28de05dafca9d0f2eab99c662116b0e37b89b1d96a08f8f430b9eeae958cd7
         run: |
-          mkdir -p "$HOME/.cargo/bin"
-          MDBOOK_VERSION=$(curl -s https://api.github.com/repos/rust-lang/mdBook/releases/latest | grep tag_name | cut -d'"' -f4)
-          curl -sSL "https://github.com/rust-lang/mdBook/releases/download/${MDBOOK_VERSION}/mdbook-${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz" | tar -xz -C "$HOME/.cargo/bin"
-          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+          curl --fail --silent --show-error --location --output "$RUNNER_TEMP/mdbook.tar.gz" \
+            "https://github.com/rust-lang/mdBook/releases/download/${MDBOOK_VERSION}/mdbook-${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          echo "${MDBOOK_SHA256}  $RUNNER_TEMP/mdbook.tar.gz" | sha256sum --check --strict
+          mkdir -p "$RUNNER_TEMP/bin"
+          tar -xzf "$RUNNER_TEMP/mdbook.tar.gz" -C "$RUNNER_TEMP/bin" mdbook
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/bin/mdbook" --version
 
       - name: Build docs
         run: mdbook build docs/
@@ -85,7 +95,7 @@ jobs:
           REDIRECT
 
       - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v4
+        uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453 # v4.1.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./deploy

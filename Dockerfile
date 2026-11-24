@@ -1,3 +1,4 @@
+# Keep the rust:<version> tag in sync with rust-toolchain.toml (CI checks it).
 # kube 5 requires rustc >= 1.95.
 FROM rust:1.99 AS builder
 

@@ -5,15 +5,59 @@ on:
   pull_request:
     branches: [main]
 
+# Jobs that publish ask for more (packages: write) themselves.
+permissions:
+  contents: read
+
+# One run per PR at a time (a new push cancels the outdated run). Runs on main
+# are keyed by commit and never cancelled, so every merge gets a result.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  # No debug info for the dev/test profile in CI: faster builds and links and a
+  # much smaller rust-cache. Panic messages still report file:line.
+  CARGO_PROFILE_DEV_DEBUG: 0
+
 jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # rust-toolchain.toml is the single source of truth for the toolchain.
+      # With no arguments, `rustup toolchain install` installs the channel,
+      # profile and components it pins.
+      - name: Install Rust toolchain from rust-toolchain.toml
+        run: |
+          rustup toolchain install --no-self-update
+          rustc --version --verbose
+          cargo --version
+      # The release image is built by the Dockerfile's rust:<version> stage, so
+      # CI must compile with the same rustc minor version. Dependabot bumps the
+      # Dockerfile; bump rust-toolchain.toml in the same PR.
+      - name: Check toolchain matches Dockerfile rust image
+        run: |
+          want=$(rustc --version | sed -E 's/^rustc ([0-9]+\.[0-9]+).*/\1/')
+          images=$(awk 'toupper($1) == "FROM" { for (i = 2; i <= NF; i++) if ($i !~ /^--/) { print $i; break } }' Dockerfile | grep -E '(^|/)rust([:@]|$)' || true)
+          if [ -z "$images" ]; then
+            echo "::error file=Dockerfile::no rust:<version> build stage found"
+            exit 1
+          fi
+          rc=0
+          for image in $images; do
+            case "$image" in
+              *rust:"$want" | *rust:"$want"[.-]*) echo "ok: $image matches rustc $want" ;;
+              *) echo "::error file=Dockerfile::$image does not match rustc $want from rust-toolchain.toml; bump both together"; rc=1 ;;
+            esac
+          done
+          exit "$rc"
+      # Restore the cache main saved, but save only from main, so PR caches
+      # don't fill the repo's Actions cache quota and evict main's.
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
-          components: clippy, rustfmt
-      - uses: Swatinem/rust-cache@v2
+          save-if: ${{ github.event_name == 'push' }}
       - name: Check for binary files
         run: |
           BINARIES=$(find . -not -path './target/*' -not -path './.git/*' -type f \( -name '*.tgz' -o -name '*.tar.gz' -o -name '*.zip' -o -name '*.exe' -o -name '*.bin' -o -name '*.whl' -o -name '*.jar' \))
@@ -24,7 +68,7 @@ jobs:
       - name: Check formatting
         run: cargo fmt --check
       - name: Clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --locked --all-targets -- -D warnings
       # k8s-openapi allows exactly one `v1_*` version feature per build, so the
       # final binary picks it (ours through the `server` feature, deckwatch in
       # its own Cargo.toml). The library's own dependency must not enable one.
@@ -42,15 +86,37 @@ jobs:
       # make sure that configuration stays warning-free. Without `server`
       # nothing picks a k8s-openapi version, so pick the one a consumer would.
       - name: Clippy (library only, no default features)
-        run: cargo clippy --lib --no-default-features --features k8s-openapi/v1_33 -- -D warnings
+        run: cargo clippy --locked --lib --no-default-features --features k8s-openapi/v1_33 -- -D warnings
       - name: Build
-        run: cargo build --release
+        run: cargo build --locked --release
       - name: Test
-        run: cargo test
+        run: cargo test --locked
       # The same tests without `server`; the k8s-openapi dev-dependency
       # supplies the version feature.
       - name: Test (library only, no default features)
-        run: cargo test --no-default-features
+        run: cargo test --locked --no-default-features
+
+  # The library must build on the `rust-version` declared in Cargo.toml, the
+  # oldest rustc a consumer like deckwatch may use. Only the library-only build
+  # is checked; the binary is built with the pinned toolchain.
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install the MSRV toolchain
+        run: |
+          msrv=$(sed -n 's/^rust-version = "\(.*\)"/\1/p' Cargo.toml)
+          if [ -z "$msrv" ]; then
+            echo "::error file=Cargo.toml::no rust-version"
+            exit 1
+          fi
+          rustup toolchain install "$msrv" --profile minimal --no-self-update
+          echo "MSRV=$msrv" >> "$GITHUB_ENV"
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          save-if: ${{ github.event_name == 'push' }}
+      - name: Check the library on the MSRV
+        run: cargo "+$MSRV" check --locked --lib --no-default-features --features k8s-openapi/v1_33
 
   # cargo deny with deny.toml. Bans, licenses and sources must pass. The
   # advisories leg only warns: a new RustSec advisory shows as a failed
@@ -59,36 +125,54 @@ jobs:
   # Don't make `deny (advisories)` a required status check.
   deny:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     strategy:
       fail-fast: false
       matrix:
         checks: [advisories, bans licenses sources]
     continue-on-error: ${{ matrix.checks == 'advisories' }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: EmbarkStudios/cargo-deny-action@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: EmbarkStudios/cargo-deny-action@81891abc19297b21343b15ef67dc61e4aea74fda # v2.1.4
         with:
           command: check ${{ matrix.checks }}
 
+  # Build the release image on PRs too (not pushed), so a broken Dockerfile or
+  # a rust: image older than the crates need fails before the merge rather than
+  # at release time. The layer cache is written only from main.
+  docker-build:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build release image (not pushed)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          push: false
+          cache-from: type=gha,scope=ci-docker
+
   docker:
     runs-on: ubuntu-latest
-    needs: [check, deny]
+    needs: [check, msrv, deny]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v7
-      - uses: docker/login-action@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v7
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
+          context: .
           push: true
+          cache-from: type=gha,scope=ci-docker
+          cache-to: type=gha,scope=ci-docker,mode=max
           tags: |
             ghcr.io/${{ github.repository }}:latest
             ghcr.io/${{ github.repository }}:${{ github.sha }}
