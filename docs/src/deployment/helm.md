@@ -139,6 +139,33 @@ When autoscaling is enabled, the HPA manages the replica count instead of `repli
 
 When enabled, the NetworkPolicy restricts ingress to the service port (`service.port`) and only from the specified CIDRs and/or namespaces. If neither `allowedCIDRs` nor `allowedNamespaces` is set, all ingress traffic on the service port is allowed.
 
+### OpenTelemetry
+
+OTLP export of traces, the `mcp.server.operation.duration` metric and logs
+(see [Telemetry](../telemetry.md)). Nothing is exported while `otel.endpoint`
+is empty.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `otel.endpoint` | `""` | `OTEL_EXPORTER_OTLP_ENDPOINT`: the collector's OTLP http/protobuf URL, e.g. `http://otel-collector.observability:4318` (gRPC is not supported) |
+| `otel.serviceName` | `""` | `OTEL_SERVICE_NAME` (the binary defaults to `mcp-k8s`) |
+| `otel.clusterName` | `""` | Added to `OTEL_RESOURCE_ATTRIBUTES` as `k8s.cluster.name` |
+| `otel.resourceAttributes` | `{}` | More `OTEL_RESOURCE_ATTRIBUTES`, e.g. `{deployment.environment.name: prod}` |
+| `otel.sampler` | `""` | `OTEL_TRACES_SAMPLER`, e.g. `parentbased_traceidratio` |
+| `otel.samplerArg` | `""` | `OTEL_TRACES_SAMPLER_ARG`, e.g. `"0.25"` |
+| `otel.traces` / `otel.metrics` / `otel.logs` | `true` | `false` stops exporting that signal |
+| `otel.headersSecret.name` / `.key` | `""` | A Secret key holding `OTEL_EXPORTER_OTLP_HEADERS` (e.g. `authorization=Bearer ...`) |
+| `otel.filter` | `""` | `MCP_K8S_OTEL_FILTER`: tracing filter for exported spans and logs (default `info`) |
+| `otel.extraEnv` | `[]` | More environment variables (rendered even without `endpoint`), e.g. `OTEL_EXPORTER_OTLP_TIMEOUT` |
+
+```yaml
+otel:
+  endpoint: http://otel-collector.observability:4318
+  clusterName: prod-east
+  sampler: parentbased_traceidratio
+  samplerArg: "0.25"
+```
+
 ## Example Values Files
 
 ### Read-only deployment

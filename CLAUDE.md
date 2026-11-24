@@ -20,7 +20,8 @@ Rust project with a library crate (`mcp_k8s`) and a binary crate (`mcp-k8s`).
 ```
 src/
 ├── lib.rs              # Public API re-exports
-├── main.rs             # Binary: stdio/HTTP/HTTPS modes, auth middleware, metrics
+├── main.rs             # Binary: stdio/HTTP/HTTPS modes, auth middleware, metrics, request spans
+├── otel.rs             # Binary only (`mod otel` in main.rs): OTLP pipeline, W3C trace context
 ├── cache.rs            # Optional in-memory response cache with TTL
 ├── client.rs           # K8sClient — kube::Client wrapper with namespace allowlist + permissions
 ├── cluster.rs          # ClusterManager — multi-cluster support with named contexts
@@ -36,6 +37,12 @@ src/
 │   └── tests.rs        # One test per rule: rejection and opt-in acceptance
 ├── types.rs            # Core summary/detail structs + re-exports from resource modules
 ├── extract.rs          # K8s API objects → summary/detail extraction functions
+├── telemetry/          # tracing-only telemetry (no opentelemetry crates)
+│   ├── mod.rs          # server_span, finish_operation, ClientInfo, W3cTraceContext, embedder docs
+│   ├── semconv.rs      # Every attribute/metric name (OTel GenAI MCP conventions)
+│   ├── summary.rs      # summarize(): action class, target, ALLOWED_ARGUMENTS redaction
+│   ├── call.rs         # ToolCall: span attributes, metric event, end-of-call log, nesting
+│   └── tests.rs        # Unit tests + the canary test over every tool schema
 ├── mcp/
 │   ├── mod.rs          # Module re-exports
 │   ├── protocol.rs     # JSON-RPC 2.0 types (with utoipa schemas)
@@ -159,8 +166,23 @@ uses `Api::watch()` with timeout for event streaming (30s hard cap).
 `mcp_k8s_tool_calls_total{tool,status}` (`status` is `ok`, `error` or
 `denied`) and `mcp_k8s_tool_call_duration_seconds{tool}`, both emitted by the
 library's `mcp::handle_tool()`, plus `mcp_requests_total{method}` from the
-server. There is no separate errors counter. Structured JSON logging via
-`--log-format json`. UUID trace IDs per request.
+server. There is no separate errors counter. These stay unchanged until a
+release deprecates them in favour of the OTel metric.
+
+**Telemetry** (`telemetry/`, `otel.rs`): one SERVER span per MCP request
+(`telemetry::server_span`, created by `dispatch` in `main.rs`), the
+`mcp.server.operation.duration` histogram as a `tracing` event for
+`tracing-opentelemetry`'s `MetricsLayer`, and a `tool call finished` /
+`request finished` log line, named after the OTel GenAI MCP conventions
+(`telemetry::semconv`, which records the commit implemented). `handle_tool`
+instruments itself with `telemetry::ToolCall`; inside a running `ToolCall`
+(the binary wraps every known tool in one; deckwatch can too) it reports into
+it instead, so a call never gets two spans. The binary exports over OTLP
+http/protobuf when `OTEL_EXPORTER_OTLP_ENDPOINT` is set, and drains and
+flushes on SIGTERM/SIGINT. Spans carry `mcp_k8s.request_id` always and
+`trace_id` when exporting. Structured JSON logging via `--log-format json`;
+logs go to stderr in stdio mode. The Telemetry page in `docs/src/` lists
+every name.
 
 ## Library consumers (deckwatch)
 
@@ -192,6 +214,21 @@ behind the default-on `server` feature, which the `mcp-k8s` binary requires.
   (see [Releasing](#releasing)).
 - deckwatch relies on the namespace allowlist and `ActionPermissions` being
   enforced by every tool.
+- **The library stays tracing-only.** No `opentelemetry*` crate may enter its
+  dependency graph or public API: OTel's global providers are statics inside
+  the `opentelemetry` crate, so an embedder on another 0.x version would
+  silently get no telemetry. `cargo tree -e normal --no-default-features |
+  grep -i opentelemetry` must print nothing. OTel crates belong behind the
+  `otel` feature (enabled by `server`) and are used only in `main.rs` and
+  `otel.rs`.
+- **The OTel crates move together** (`opentelemetry*` 0.33,
+  `tracing-opentelemetry` 0.34): each `tracing-opentelemetry` release pins
+  one `opentelemetry` minor. Dependabot groups them (`otel-stack`).
+- **Telemetry names live in `telemetry::semconv`.** Don't spell an attribute
+  name inline, and keep metric events to `semconv::METRIC_ATTRIBUTES`:
+  `MetricsLayer` turns every event field (even a message) into a metric
+  attribute. `tracing-opentelemetry` 0.34 ignores `otel.name` changes once a
+  span has been entered, so the span name must be final at creation.
 - The `kube` and `k8s-openapi` versions (currently kube 5, k8s-openapi 0.29;
   the library enables no `v1_*` feature, see above) are part of the public
   API, because `K8sClient::new` takes a `kube::Client`. deckwatch must use the
@@ -266,9 +303,11 @@ mcp-k8s --http --tls-cert /path/cert.pem --tls-key /path/key.pem
 | `--no-secure-defaults` | `MCP_K8S_NO_SECURE_DEFAULTS` | `false` | Skip the restricted securityContext defaults |
 | `--disable-secret-decode` | `DISABLE_SECRET_DECODE` | `false` | Prevent secret value decoding |
 | `--cache-ttl` | `CACHE_TTL` | `0` | Response cache TTL in seconds (0 = disabled) |
-| `--log-format` | `LOG_FORMAT` | `text` | Log format: `text` or `json` |
+| `--log-format` | `LOG_FORMAT` | `text` | Log format: `text` or `json` (stderr in stdio mode) |
 | — | `KUBECONFIG` | in-cluster | K8s config path |
-| — | `RUST_LOG` | `info` | Log level |
+| — | `RUST_LOG` | `info` | Console log level |
+| — | `OTEL_EXPORTER_OTLP_ENDPOINT` | (none: off) | OTLP http/protobuf collector; other standard `OTEL_*` variables apply (protocol, headers, service name, resource attributes, sampler, `*_EXPORTER=none`, `OTEL_SDK_DISABLED`) |
+| — | `MCP_K8S_OTEL_FILTER` | `info` | `EnvFilter` for spans and logs exported over OTLP |
 
 ## Security posture
 
@@ -288,6 +327,19 @@ Rules:
 
 - Compare tokens in constant time (`subtle::ConstantTimeEq`, as `src/main.rs`
   does). Never log tokens or secret values.
+- **Tool argument values never go into telemetry** (spans, metrics, logs,
+  error messages), apart from the scalars in
+  `telemetry::summary::ALLOWED_ARGUMENTS`. Record arguments only through
+  `telemetry::summarize`, never `tracing::info!(?args)` or an error string: API
+  server messages echo names and invalid values. Widening the allowlist needs
+  a reason in `ALLOWED_ARGUMENTS` and an update to the `allowlist_is_reviewed`
+  snapshot test.
+- **Every tool is covered by the canary test**
+  (`telemetry::tests::canary_no_argument_value_reaches_telemetry`), which
+  walks `tool_definitions()` and fills every string with a marker. A new tool
+  is covered automatically; if it fails, fix the leak, don't exempt the tool.
+  It also fails for a listed tool that `handle_tool` (or the cluster
+  manager) doesn't handle.
 - Every namespaced tool must check the namespace allowlist and
   `ActionPermissions`. New tools need tests that prove both.
 - Every write tool must run the workload policy (see Key Components,
@@ -343,7 +395,7 @@ mcp-k8s/
 │   └── k3s_workloads.rs    # k3s tests for the typed tools and guardrails (3 tests, #[ignore])
 ├── docs/                   # mdBook documentation (GitHub Pages)
 │   ├── book.toml
-│   ├── src/                # 22 documentation pages
+│   ├── src/                # 23 documentation pages
 │   └── theme/              # Version switcher (JS + CSS)
 ├── helm/
 │   ├── mcp-k8s/            # Helm chart (with PDB, HPA, NetworkPolicy, Ingress)
@@ -398,7 +450,7 @@ CI workflow (build, test, clippy, fmt) runs against them before merge.
 
 ```bash
 cargo build --release       # Build
-cargo test                  # 522 unit + 2 binary (router) + 8 integration + 30 guardrail + 9 typed-tool tests
+cargo test                  # 549 unit + 11 binary (router, telemetry) + 8 integration + 30 guardrail + 9 typed-tool tests
 cargo test --no-default-features  # Same tests without `server` (what deckwatch compiles)
 cargo test --test k3s_integration -- --ignored  # k3s integration tests (needs Docker)
 cargo test --test k3s_workloads -- --ignored --test-threads=1  # k3s workload/guardrail tests
@@ -427,7 +479,7 @@ features on every PR. A separate `deny` job runs `cargo deny` with `deny.toml`
   kubeconfig: never run it.
 - **The Dockerfile is only built on pushes to `main`**, not on PRs. Run
   `docker build .` when you change it or bump the toolchain. CI uses floating
-  `stable`, but the Dockerfile pins `rust:1.95` (kube 5's minimum).
+  `stable`, but the Dockerfile pins `rust:1.99` (kube 5 needs at least 1.95).
 - **The `default` ruleset has no required status checks**, so red CI doesn't
   block a merge. Check `gh pr checks` is green before handing a PR over.
 
@@ -462,7 +514,10 @@ docker build -t mcp-k8s .
 ```
 
 Static musl binary in `scratch` container. Runs `/mcp-k8s --http` on
-port 8080. Installs `rustls::crypto::ring` provider at startup.
+port 8080. Installs `rustls::crypto::ring` provider at startup. The OTLP
+exporter's reqwest uses `rustls-no-provider`, so it shares that provider
+instead of adding aws-lc-rs (reqwest's `rustls` feature would). A missing
+or duplicate process-level provider panics at runtime.
 
 ## Releasing
 

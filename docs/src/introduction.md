@@ -24,7 +24,8 @@ mcp-k8s bridges the gap between AI assistants and Kubernetes clusters. It transl
 - **Auth introspection** -- `whoami`, `can_i`, and `list_my_permissions` tools let the AI understand its own access level.
 - **TLS and bearer token auth** -- Optional `--tls-cert`/`--tls-key` for HTTPS and `--auth-token` for bearer token authentication on the HTTP server.
 - **Swagger UI** -- Interactive API documentation at `GET /swagger-ui` with OpenAPI spec at `GET /openapi.json`.
-- **Structured JSON logging** -- `--log-format json` for production log aggregation.
+- **Structured JSON logging** -- `--log-format json` for production log aggregation, with one searchable line per request (tool, outcome, duration, decision, target).
+- **OpenTelemetry** -- one SERVER span per MCP request, the `mcp.server.operation.duration` metric and logs over OTLP, named after the OpenTelemetry MCP conventions and with tool arguments redacted to an allowlist. See [Telemetry](./telemetry.md).
 
 ## Architecture
 

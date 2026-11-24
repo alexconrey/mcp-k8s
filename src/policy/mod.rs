@@ -530,7 +530,21 @@ pub fn into_result(mut violations: Vec<Violation>) -> Result<(), PolicyError> {
     }
     let mut seen = std::collections::HashSet::new();
     violations.retain(|v| seen.insert(v.to_string()));
-    Err(PolicyError { violations })
+    let error = PolicyError { violations };
+    error.record_denial();
+    Err(error)
+}
+
+impl PolicyError {
+    /// Report this rejection to the running tool call's telemetry:
+    /// `mcp_k8s.decision=denied`, `mcp_k8s.denied_rule=policy:<setting>,…`
+    /// (the settings that would allow it). A no-op outside a tool call.
+    pub fn record_denial(&self) {
+        let mut fields: Vec<&str> = self.violations.iter().map(|v| v.flag().field).collect();
+        fields.sort_unstable();
+        fields.dedup();
+        crate::telemetry::record_denial(&format!("policy:{}", fields.join(",")));
+    }
 }
 
 #[cfg(test)]

@@ -165,6 +165,102 @@ every write path, `apply_manifest` included.
 - `create_ingress` created backing Services even with `service-create`
   disabled.
 
+<!-- From #25 (telemetry). These entries move to `## [0.5.2]` when the 0.5.2
+     release PR (#31) merges; drop them from [Unreleased] when merging main then. -->
+
+### Added
+- **Native OpenTelemetry telemetry.** Every MCP request produces one SERVER
+  span named `{mcp.method.name} {target}` (e.g. `tools/call apply_manifest`),
+  one observation of the `mcp.server.operation.duration` histogram (seconds),
+  and one log line, named after the OpenTelemetry GenAI MCP conventions
+  (Development status, implemented against `semantic-conventions-genai`
+  commit `7cb940f`). Tool calls record the tool, `mcp_k8s.action`
+  (`read`/`write`/`delete`/`exec`), `mcp_k8s.decision` and
+  `mcp_k8s.denied_rule`, `error.type` (`tool_error`, `permission_denied`,
+  `unknown_tool`, `cancelled`, or the JSON-RPC code), the target namespace,
+  kind, name and API version, and the argument keys. The metric carries only
+  low-cardinality attributes. See the Telemetry docs page.
+- **Library: `mcp_k8s::telemetry`**, `tracing` only (no `opentelemetry`
+  dependency, so embedders on any OTel version get the data):
+  - `server_span()`, the request span with every attribute declared;
+  - `ToolCall` / `instrument_tool_call()` for an embedder's own tools,
+    `record_denial()`, `finish_operation()`, `record_rpc_status()`;
+  - `summarize()`, which classifies a call and redacts its arguments to keys
+    plus the `ALLOWED_ARGUMENTS` scalars (namespace, name, kind, api_version,
+    group, version, replicas, image, container, pod_name, job_name, cluster,
+    decode);
+  - `semconv`, every attribute and metric name; `ClientInfo`,
+    `W3cTraceContext`, `is_known_tool()`.
+
+  `mcp::handle_tool` now instruments every call it serves. Inside an
+  embedder's running `ToolCall` it reports into that call instead, so one
+  call never yields two spans. A canary test fills every string argument of
+  every tool schema with a marker and fails if one outside the allowlist
+  reaches telemetry.
+- `ActionPermissions::denied_by(tool)` and `action_denied_by(resource,
+  action)` name the setting that denies a call (`global:create`,
+  `override:deployment-delete`, `apply_manifest:disabled`), for
+  `mcp_k8s.denied_rule`. Guardrails report `policy:<setting>` through
+  `telemetry::record_denial`.
+- **Binary: OTLP export** of traces, the metric and logs over http/protobuf
+  (new `otel` feature, enabled by `server`), configured by the standard
+  `OTEL_*` variables (`OTEL_EXPORTER_OTLP_ENDPOINT` and per-signal endpoints,
+  `_PROTOCOL`, `_HEADERS`, `_TIMEOUT`, `OTEL_SERVICE_NAME` defaulting to
+  `mcp-k8s`, `OTEL_RESOURCE_ATTRIBUTES`, `OTEL_TRACES_SAMPLER`,
+  `OTEL_*_EXPORTER=none`, `OTEL_SDK_DISABLED`) and off unless an endpoint is
+  set. `MCP_K8S_OTEL_FILTER` (default `info`) filters exported spans and logs.
+  gRPC isn't supported. TLS uses rustls with the ring provider the binary
+  already installs.
+- W3C trace context from `params._meta.traceparent`/`tracestate` (preferred)
+  and the HTTP `traceparent` header (fallback, or a span link when both are
+  present) becomes the request span's parent.
+- `initialize` records the client's self-reported `clientInfo` name and
+  version and the protocol version. On stdio they're attached to every later
+  request; over HTTP, where mcp-k8s issues no `Mcp-Session-Id`, only to the
+  `initialize` span.
+- Helm: `otel.*` values (`endpoint`, `serviceName`, `clusterName`,
+  `resourceAttributes`, `sampler`, `samplerArg`, per-signal switches,
+  `headersSecret`, `filter`, `extraEnv`).
+
+### Changed
+- **Log output.** Every request ends with an `INFO` line, `tool call
+  finished` or `request finished` (outcome, `duration_ms`, decision, target),
+  on target `mcp_k8s::telemetry`; `processing request` moved to `DEBUG`. The
+  request span is still `mcp_request`, but its fields changed: `method` is now
+  `mcp.method.name`, and the random-UUID `trace_id` is now
+  `mcp_k8s.request_id`. `trace_id` holds the W3C trace id when traces are
+  exported. Embedders get the new `mcp_k8s::telemetry` events too: filter the
+  target `mcp_k8s::telemetry::metrics` (metric observations) out of console
+  logs.
+- The server shuts down gracefully on SIGTERM/SIGINT: HTTP(S) stops
+  accepting, finishes in-flight requests and exits; stdio exits. Telemetry is
+  flushed first.
+- `RUST_LOG` now filters console logs only.
+
+### Fixed
+- In stdio mode, logs went to stdout and mixed with the JSON-RPC stream. They
+  go to stderr now; HTTP mode still logs to stdout.
+
+### Internal
+- Dependabot groups the OpenTelemetry crates (`otel-stack`), which have to
+  move together.
+- New dependencies, all behind `server` (via the new `otel` feature):
+  `opentelemetry`, `opentelemetry_sdk`, `opentelemetry-otlp`,
+  `opentelemetry-appender-tracing` (0.33), `tracing-opentelemetry` (0.34) and
+  `reqwest` 0.13 (`blocking`, `rustls-no-provider`). The library-only build
+  (`--no-default-features`) has no new dependencies.
+
+### Deprecated (announced)
+- The Prometheus metrics `mcp_k8s_tool_calls_total`,
+  `mcp_k8s_tool_call_duration_seconds` and `mcp_requests_total` are
+  unchanged in this release. A later release will deprecate them in favour
+  of the OpenTelemetry metric `mcp.server.operation.duration`, and the one
+  after that will remove them.
+
+## [0.5.1] - 2026-11-24
+
+Security and dependency release. No library API changes.
+
 ### Security
 - Lockfile updates for RustSec advisories: `h2` 0.4.21 (RUSTSEC-2026-0258),
   `rustls` 0.23.46 (RUSTSEC-2026-0285, -0346, -0348, -0349),
@@ -176,6 +272,15 @@ every write path, `apply_manifest` included.
   (RUSTSEC-2026-0367, -0368, -0369, -0429, -0545, -0548), with `zip` 9. No API
   changes were needed.
 
+### Changed
+- Dependency updates from Dependabot: `tower-http` 0.6 → 0.7 and
+  `axum-server` 0.7 → 0.9 (#21), `metrics-exporter-prometheus` 0.17 → 0.18
+  (#22), and minor/patch bumps of `serde_json`, `thiserror`, `http`,
+  `futures`, `clap`, `uuid` and `tokio-test` (#20). All of these are
+  server-feature or dev dependencies except `serde_json`, `thiserror`, `http`
+  and `futures`.
+- The container image builds with `rust:1.99` (was 1.95). (#19)
+
 ### Internal
 - Dependabot for cargo, Docker base images and GitHub Actions, plus Dependabot
   alerts and security updates.
@@ -183,8 +288,8 @@ every write path, `apply_manifest` included.
   advisories only warn. `audit.yaml` runs the advisory check weekly and fails
   on findings. `deny.toml` now denies yanked crates, wildcard versions and
   unknown registries and git sources, and allows `CDLA-Permissive-2.0`
-  (Mozilla CA data in `webpki-root-certs`).
-- Router tests for `/openapi.json` and the Swagger UI.
+  (Mozilla CA data in `webpki-root-certs`). (#18, #23)
+- Router tests for `/openapi.json` and the Swagger UI. (#18)
 
 ## [0.5.0] - 2026-11-24
 

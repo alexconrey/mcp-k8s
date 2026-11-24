@@ -24,6 +24,7 @@
 # Operations
 
 - [Permissions](./permissions.md)
+- [Telemetry](./telemetry.md)
 - [Docker](./deployment/docker.md)
 - [Helm Chart](./deployment/helm.md)
 - [Kubernetes Manifests](./deployment/manifests.md)
