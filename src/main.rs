@@ -1,8 +1,10 @@
 use std::io::BufRead;
+use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
-use axum::extract::{Request, State};
-use axum::http::{header, StatusCode};
+use axum::extract::{ConnectInfo, Request, State};
+use axum::http::{header, HeaderMap, StatusCode};
 use axum::middleware::Next;
 use axum::response::sse::{Event, Sse};
 use axum::response::IntoResponse;
@@ -13,7 +15,10 @@ use metrics::counter;
 use metrics_exporter_prometheus::PrometheusHandle;
 use subtle::ConstantTimeEq;
 use tower_http::cors::CorsLayer;
-use tracing::Instrument;
+use tracing::{Instrument, Span};
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::Layer;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 use uuid::Uuid;
@@ -23,7 +28,20 @@ use mcp_k8s::mcp::{
     JsonRpcResponse,
 };
 use mcp_k8s::permissions::ActionPermissions;
+use mcp_k8s::telemetry::{self, semconv, ClientInfo, ToolCall, W3cTraceContext};
 use mcp_k8s::{ClusterManager, K8sClient, ResponseCache};
+
+mod otel;
+
+/// The MCP protocol version this server speaks.
+const PROTOCOL_VERSION: &str = "2025-11-25";
+/// The prompts `prompts/get` serves (span names use only these).
+const PROMPTS: &[&str] = &[
+    "diagnose-pod",
+    "review-namespace-rbac",
+    "cluster-health-check",
+    "resource-usage-report",
+];
 
 #[derive(OpenApi)]
 #[openapi(
@@ -125,16 +143,21 @@ async fn main() {
 
     let cli = Cli::parse();
 
-    let env_filter =
-        tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into());
-
-    if cli.log_format == "json" {
-        tracing_subscriber::fmt()
-            .with_env_filter(env_filter)
-            .json()
-            .init();
-    } else {
-        tracing_subscriber::fmt().with_env_filter(env_filter).init();
+    // The OTLP pipeline feeds the subscriber, so build it first and report
+    // on it once logging is up. It stays empty unless an endpoint is set.
+    let (pipeline, otel_warnings) = otel::Pipeline::from_env();
+    init_tracing(&cli.log_format, !cli.http, &pipeline);
+    for warning in otel_warnings {
+        tracing::warn!("{warning}");
+    }
+    let signals = pipeline.signals();
+    if signals != otel::Signals::default() {
+        tracing::info!(
+            traces = signals.traces,
+            metrics = signals.metrics,
+            logs = signals.logs,
+            "exporting OTLP over http/protobuf"
+        );
     }
 
     let prometheus_handle = metrics_exporter_prometheus::PrometheusBuilder::new()
@@ -218,6 +241,7 @@ async fn main() {
 
     if cli.http {
         let auth_token = cli.auth_token.clone();
+        // Both servers drain in-flight requests on SIGTERM/SIGINT and return.
 
         match (&cli.tls_cert, &cli.tls_key) {
             (Some(cert_path), Some(key_path)) => {
@@ -248,8 +272,79 @@ async fn main() {
             }
         }
     } else {
+        // Stdio reads stdin synchronously, so a signal can't interrupt it:
+        // flush telemetry and exit from a task instead.
+        let on_signal = pipeline.clone();
+        tokio::spawn(async move {
+            shutdown_signal().await;
+            on_signal.shutdown();
+            std::process::exit(0);
+        });
         run_stdio(cluster_manager).await;
     }
+
+    pipeline.shutdown();
+}
+
+/// Console logs (`RUST_LOG`, `--log-format`; stderr in stdio mode) plus the
+/// OTLP layers. Each layer has its own filter, so `RUST_LOG=warn` quiets the
+/// console without starving the exporters.
+fn init_tracing(log_format: &str, stdio: bool, pipeline: &otel::Pipeline) {
+    let mut console_filter =
+        tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into());
+    // Metric events carry no message and would print as noise, unless asked for.
+    let asked = std::env::var("RUST_LOG").is_ok_and(|v| v.contains(semconv::METRICS_TARGET));
+    if !asked {
+        if let Ok(directive) = format!("{}=off", semconv::METRICS_TARGET).parse() {
+            console_filter = console_filter.add_directive(directive);
+        }
+    }
+    // In stdio mode stdout carries the JSON-RPC stream, so logs go to stderr.
+    let writer = if stdio {
+        tracing_subscriber::fmt::writer::BoxMakeWriter::new(std::io::stderr)
+    } else {
+        tracing_subscriber::fmt::writer::BoxMakeWriter::new(std::io::stdout)
+    };
+    let console: otel::BoxedLayer = if log_format == "json" {
+        tracing_subscriber::fmt::layer()
+            .json()
+            .with_writer(writer)
+            .with_filter(console_filter)
+            .boxed()
+    } else {
+        tracing_subscriber::fmt::layer()
+            .with_writer(writer)
+            .with_filter(console_filter)
+            .boxed()
+    };
+    let mut layers = vec![console];
+    layers.extend(pipeline.layers());
+    tracing_subscriber::registry().with(layers).init();
+}
+
+/// Resolves on SIGINT (Ctrl-C) or, on Unix, SIGTERM.
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        if tokio::signal::ctrl_c().await.is_err() {
+            std::future::pending::<()>().await;
+        }
+    };
+    #[cfg(unix)]
+    let terminate = async {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut signal) => {
+                signal.recv().await;
+            }
+            Err(_) => std::future::pending::<()>().await,
+        }
+    };
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+    tokio::select! {
+        _ = ctrl_c => {}
+        _ = terminate => {}
+    }
+    tracing::info!("shutting down");
 }
 
 // ---------------------------------------------------------------------------
@@ -259,6 +354,9 @@ async fn main() {
 async fn run_stdio(manager: ClusterManager) {
     let stdin = std::io::stdin();
     let reader = stdin.lock();
+    // stdio is one client for the life of the process: a real session, so
+    // the client info from `initialize` is attached to every later request.
+    let mut session = RequestContext::default();
 
     for line in reader.lines() {
         let line = match line {
@@ -283,7 +381,13 @@ async fn run_stdio(manager: ClusterManager) {
             }
         };
 
-        let response = dispatch(&manager, request).await;
+        let initialize =
+            (request.method == "initialize").then(|| ClientInfo::from_initialize(&request.params));
+        let response = dispatch(&manager, request, &session).await;
+        if let Some(client) = initialize {
+            session.session_client = Some(client);
+            session.protocol_version = Some(PROTOCOL_VERSION.to_string());
+        }
         println!("{}", serde_json::to_string(&response).unwrap());
     }
 }
@@ -386,7 +490,13 @@ async fn run_http(
 
     tracing::info!("mcp-k8s HTTP server listening on {listen}");
 
-    axum::serve(listener, app).await.expect("Server error");
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown_signal())
+    .await
+    .expect("Server error");
 }
 
 async fn run_https(
@@ -408,8 +518,15 @@ async fn run_https(
 
     tracing::info!("mcp-k8s HTTPS server listening on {listen}");
 
+    let handle = axum_server::Handle::new();
+    let on_signal = handle.clone();
+    tokio::spawn(async move {
+        shutdown_signal().await;
+        on_signal.graceful_shutdown(Some(Duration::from_secs(25)));
+    });
     axum_server::bind_rustls(addr, config)
-        .serve(app.into_make_service())
+        .handle(handle)
+        .serve(app.into_make_service_with_connect_info::<SocketAddr>())
         .await
         .expect("HTTPS server error");
 }
@@ -429,9 +546,12 @@ async fn run_https(
 )]
 async fn handle_mcp_http(
     State(manager): State<Arc<ClusterManager>>,
+    peer: Option<axum::Extension<ConnectInfo<SocketAddr>>>,
+    headers: HeaderMap,
     Json(request): Json<JsonRpcRequest>,
 ) -> impl IntoResponse {
-    let response = dispatch(&manager, request).await;
+    let ctx = RequestContext::http(peer.map(|e| e.0 .0), &headers);
+    let response = dispatch(&manager, request, &ctx).await;
     ([(header::CONTENT_TYPE, "application/json")], Json(response)).into_response()
 }
 
@@ -459,9 +579,12 @@ async fn metrics_handler(axum::Extension(handle): axum::Extension<PrometheusHand
 
 async fn handle_mcp_sse(
     State(manager): State<Arc<ClusterManager>>,
+    peer: Option<axum::Extension<ConnectInfo<SocketAddr>>>,
+    headers: HeaderMap,
     Json(request): Json<JsonRpcRequest>,
 ) -> Sse<impl futures::Stream<Item = Result<Event, std::convert::Infallible>>> {
-    let response = dispatch(&manager, request).await;
+    let ctx = RequestContext::http(peer.map(|e| e.0 .0), &headers);
+    let response = dispatch(&manager, request, &ctx).await;
     let json = serde_json::to_string(&response).unwrap_or_default();
 
     let events = vec![
@@ -478,40 +601,202 @@ async fn handle_mcp_sse(
 // Shared dispatch
 // ---------------------------------------------------------------------------
 
-async fn dispatch(manager: &ClusterManager, request: JsonRpcRequest) -> JsonRpcResponse {
-    let trace_id = Uuid::new_v4().to_string();
-    let span = tracing::info_span!(
-        "mcp_request",
-        trace_id = %trace_id,
-        method = %request.method,
-    );
+/// The transport a request arrived on.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum Transport {
+    #[default]
+    Stdio,
+    Http,
+}
 
+/// What the transport knows about a request, beyond the JSON-RPC message.
+#[derive(Default)]
+struct RequestContext {
+    transport: Transport,
+    peer: Option<SocketAddr>,
+    /// W3C trace context from the HTTP `traceparent`/`tracestate` headers.
+    http_trace: Option<W3cTraceContext>,
+    /// The negotiated MCP version: the `MCP-Protocol-Version` header over
+    /// HTTP, or the `initialize` result on stdio.
+    protocol_version: Option<String>,
+    /// The client from `initialize`. Only stdio has a session to keep it in;
+    /// mcp-k8s doesn't issue `Mcp-Session-Id` over HTTP.
+    session_client: Option<ClientInfo>,
+}
+
+impl RequestContext {
+    fn http(peer: Option<SocketAddr>, headers: &HeaderMap) -> Self {
+        let header = |name: &str| headers.get(name).and_then(|v| v.to_str().ok());
+        Self {
+            transport: Transport::Http,
+            peer,
+            http_trace: header("traceparent")
+                .and_then(|tp| W3cTraceContext::from_parts(tp, header("tracestate"))),
+            protocol_version: header("mcp-protocol-version")
+                .filter(|v| telemetry::valid_protocol_version(v))
+                .map(str::to_string),
+            session_client: None,
+        }
+    }
+}
+
+async fn dispatch(
+    manager: &ClusterManager,
+    request: JsonRpcRequest,
+    ctx: &RequestContext,
+) -> JsonRpcResponse {
+    let started = Instant::now();
+    let method = request.method.as_str();
+    // Span names may only contain names we serve: a client-supplied tool or
+    // prompt name is unbounded.
+    let target = match method {
+        "tools/call" => request.params["name"]
+            .as_str()
+            .filter(|t| telemetry::is_known_tool(t)),
+        "prompts/get" => request.params["name"]
+            .as_str()
+            .filter(|p| PROMPTS.contains(p)),
+        _ => None,
+    };
+    let span = telemetry::server_span(method, target);
+    span.record(
+        semconv::MCP_K8S_REQUEST_ID,
+        Uuid::new_v4().to_string().as_str(),
+    );
+    record_request(&span, manager, &request, ctx).await;
+    // The remote parent must be set before the span is first entered, and
+    // reading the trace id starts the span, so this order matters.
+    otel::set_remote_parent(
+        &span,
+        W3cTraceContext::from_meta(&request.params).as_ref(),
+        ctx.http_trace.as_ref(),
+    );
+    otel::record_trace_id(&span);
+
+    let request_span = span.clone();
     async {
         counter!("mcp_requests_total", "method" => request.method.clone()).increment(1);
-        tracing::info!("processing request");
+        tracing::debug!("processing request");
 
-        match request.method.as_str() {
-            "initialize" => handle_initialize(&request),
-            "notifications/initialized" => success_response(&request, serde_json::json!({})),
-            "ping" => success_response(&request, serde_json::json!({})),
-            "tools/list" => handle_tools_list(manager, &request).await,
+        let (response, tool_call_reported) = match method {
+            "initialize" => (handle_initialize(&request, &request_span), false),
+            "notifications/initialized" => {
+                (success_response(&request, serde_json::json!({})), false)
+            }
+            "ping" => (success_response(&request, serde_json::json!({})), false),
+            "tools/list" => (handle_tools_list(manager, &request).await, false),
             "tools/call" => handle_tool_call(manager, &request).await,
-            "resources/list" => handle_resources_list(&request),
-            "resources/read" => handle_resources_read(manager, &request).await,
-            "prompts/list" => handle_prompts_list(&request),
-            "prompts/get" => handle_prompts_get(&request),
-            _ => method_not_found(&request),
+            "resources/list" => (handle_resources_list(&request), false),
+            "resources/read" => (handle_resources_read(manager, &request).await, false),
+            "prompts/list" => (handle_prompts_list(&request), false),
+            "prompts/get" => (handle_prompts_get(&request), false),
+            _ => (method_not_found(&request), false),
+        };
+
+        if let Some(error) = &response.error {
+            telemetry::record_rpc_status(&request_span, i64::from(error.code));
         }
+        // A ToolCall already emitted this request's metric and log events.
+        if !tool_call_reported {
+            let error_type = response.error.as_ref().map(|e| {
+                if method == "tools/call" {
+                    semconv::error_type::UNKNOWN_TOOL.to_string()
+                } else {
+                    e.code.to_string()
+                }
+            });
+            telemetry::finish_operation(method, started.elapsed(), error_type.as_deref());
+        }
+        response
     }
     .instrument(span)
     .await
 }
 
-fn handle_initialize(request: &JsonRpcRequest) -> JsonRpcResponse {
+/// Record what the transport and the message say about a request.
+async fn record_request(
+    span: &Span,
+    manager: &ClusterManager,
+    request: &JsonRpcRequest,
+    ctx: &RequestContext,
+) {
+    let id = match &request.id {
+        Some(serde_json::Value::Number(n)) => Some(n.to_string()),
+        Some(serde_json::Value::String(s)) => Some(clip(s, 128)),
+        _ => None,
+    };
+    if let Some(id) = id {
+        span.record(semconv::JSONRPC_REQUEST_ID, id.as_str());
+    }
+    match ctx.transport {
+        Transport::Stdio => {
+            span.record(semconv::NETWORK_TRANSPORT, "pipe");
+        }
+        Transport::Http => {
+            span.record(semconv::NETWORK_TRANSPORT, "tcp");
+            span.record(semconv::NETWORK_PROTOCOL_NAME, "http");
+        }
+    }
+    if let Some(peer) = ctx.peer {
+        span.record(semconv::CLIENT_ADDRESS, peer.ip().to_string().as_str());
+        span.record(semconv::CLIENT_PORT, i64::from(peer.port()));
+    }
+    // initialize records the version it negotiates itself.
+    if request.method != "initialize" {
+        if let Some(version) = &ctx.protocol_version {
+            span.record(semconv::MCP_PROTOCOL_VERSION, version.as_str());
+        }
+    }
+    if let Some(client) = &ctx.session_client {
+        client.record(span);
+    }
+    if matches!(request.method.as_str(), "tools/call" | "resources/read") {
+        // A context name only means something with --contexts. Without it the
+        // cluster is called "default"; single-cluster deployments should set
+        // k8s.cluster.name as a resource attribute (OTEL_RESOURCE_ATTRIBUTES).
+        let name = manager.active_name().await;
+        if name != "default" || manager.list_clusters().await.len() > 1 {
+            span.record(semconv::K8S_CLUSTER_NAME, name.as_str());
+        }
+    }
+    if request.method == "resources/read" {
+        if let Some(uri) = request.params["uri"].as_str() {
+            span.record(semconv::MCP_RESOURCE_URI, clip(uri, 256).as_str());
+        }
+    }
+}
+
+/// `s` without control characters, cut to at most `max` bytes.
+fn clip(s: &str, max: usize) -> String {
+    let mut out = String::new();
+    for c in s.chars().filter(|c| !c.is_control()) {
+        if out.len() + c.len_utf8() > max {
+            break;
+        }
+        out.push(c);
+    }
+    out
+}
+
+fn handle_initialize(request: &JsonRpcRequest, span: &Span) -> JsonRpcResponse {
+    // Self-reported by the client: a label for telemetry, never an identity.
+    let client = ClientInfo::from_initialize(&request.params);
+    client.record(span);
+    span.record(semconv::MCP_PROTOCOL_VERSION, PROTOCOL_VERSION);
+    tracing::event!(
+        tracing::Level::INFO,
+        {
+            { semconv::MCP_K8S_CLIENT_NAME } = client.name.as_deref(),
+            { semconv::MCP_K8S_CLIENT_VERSION } = client.version.as_deref(),
+            requested_protocol_version = client.protocol_version.as_deref(),
+            { semconv::MCP_PROTOCOL_VERSION } = PROTOCOL_VERSION,
+        },
+        "client initialized"
+    );
     success_response(
         request,
         serde_json::json!({
-            "protocolVersion": "2025-11-25",
+            "protocolVersion": PROTOCOL_VERSION,
             "capabilities": { "tools": {}, "resources": {}, "prompts": {} },
             "serverInfo": { "name": "mcp-k8s", "version": env!("CARGO_PKG_VERSION") }
         }),
@@ -527,29 +812,57 @@ async fn handle_tools_list(manager: &ClusterManager, request: &JsonRpcRequest) -
     success_response(request, serde_json::json!({ "tools": tools }))
 }
 
-async fn handle_tool_call(manager: &ClusterManager, request: &JsonRpcRequest) -> JsonRpcResponse {
+/// Run a `tools/call`. Returns the response and whether a [`ToolCall`]
+/// reported the request (its metric and log events).
+async fn handle_tool_call(
+    manager: &ClusterManager,
+    request: &JsonRpcRequest,
+) -> (JsonRpcResponse, bool) {
     let params = &request.params;
     let tool_name = params["name"].as_str().unwrap_or("");
     let args = &params["arguments"];
 
-    // Handle cluster management tools first (they operate on the manager, not a K8s client)
-    let result = match tool_name {
-        "list_clusters" | "switch_cluster" | "get_active_cluster" => {
-            mcp_k8s::resources::cluster_mgmt::handle_tool(manager, tool_name, args).await
-        }
-        _ => {
-            // All other tools need the active K8s client
-            let client = match manager.active_client().await {
-                Some(c) => c,
-                None => {
-                    return error_response(request, -32000, "no active cluster configured");
-                }
-            };
-            mcp_k8s::mcp::handle_tool(&client, tool_name, args).await
+    let body = async {
+        match tool_name {
+            // Cluster management tools operate on the manager, not a K8s client.
+            "list_clusters" | "switch_cluster" | "get_active_cluster" => {
+                mcp_k8s::resources::cluster_mgmt::handle_tool(manager, tool_name, args).await
+            }
+            // All other tools need the active K8s client. handle_tool sees the
+            // ToolCall below and reports into it rather than starting its own.
+            _ => match manager.active_client().await {
+                Some(client) => mcp_k8s::mcp::handle_tool(&client, tool_name, args).await,
+                None => Some(Err("no active cluster configured".to_string())),
+            },
         }
     };
 
-    match result {
+    // One ToolCall per call of a tool the server knows, cluster tools
+    // included. Unknown names get none: they would put arbitrary client input
+    // on the metric.
+    let (result, reported) = if telemetry::is_known_tool(tool_name) {
+        let call = ToolCall::start(tool_name, args);
+        let result = call.run(body).await;
+        let reported = match &result {
+            Some(r) => {
+                call.finish(r);
+                true
+            }
+            None => {
+                call.abandon();
+                false
+            }
+        };
+        (result, reported)
+    } else {
+        // On the span only (spans tolerate it), never in its name or the metric.
+        if !tool_name.is_empty() {
+            Span::current().record(semconv::GEN_AI_TOOL_NAME, clip(tool_name, 128).as_str());
+        }
+        (body.await, false)
+    };
+
+    let response = match result {
         Some(Ok(text)) => success_response(
             request,
             serde_json::json!({
@@ -558,7 +871,8 @@ async fn handle_tool_call(manager: &ClusterManager, request: &JsonRpcRequest) ->
         ),
         Some(Err(e)) => error_response(request, -32000, &e),
         None => error_response(request, -32000, &format!("Unknown tool: {tool_name}")),
-    }
+    };
+    (response, reported)
 }
 
 // ---------------------------------------------------------------------------
@@ -814,5 +1128,443 @@ mod tests {
         let (status, body) = get("/swagger-ui/index.html").await;
         assert_eq!(status, axum::http::StatusCode::OK);
         assert!(body.contains("swagger"), "{body}");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Telemetry tests: the real dispatch path into in-memory OTel exporters
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod telemetry_tests {
+    use std::collections::HashMap;
+
+    use http::{Request as HttpRequest, Response as HttpResponse};
+    use kube::client::Body;
+    use opentelemetry::trace::{SpanId, SpanKind, Status, TraceId};
+    use opentelemetry::Value;
+    use opentelemetry_sdk::logs::{InMemoryLogExporter, SdkLoggerProvider};
+    use opentelemetry_sdk::metrics::data::{AggregatedMetrics, MetricData};
+    use opentelemetry_sdk::metrics::{InMemoryMetricExporter, PeriodicReader, SdkMeterProvider};
+    use opentelemetry_sdk::trace::{InMemorySpanExporter, SdkTracerProvider, SpanData};
+    use serde_json::json;
+    use tracing::instrument::WithSubscriber;
+
+    use super::*;
+
+    const TRACEPARENT: &str = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+    const HTTP_TRACEPARENT: &str = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
+
+    struct Harness {
+        spans: InMemorySpanExporter,
+        metrics: InMemoryMetricExporter,
+        logs: InMemoryLogExporter,
+        pipeline: otel::Pipeline,
+        dispatch: tracing::Dispatch,
+    }
+
+    /// The production layers (`otel::Pipeline::layers`) over in-memory
+    /// exporters, with the binary's metric view.
+    fn harness() -> Harness {
+        let spans = InMemorySpanExporter::default();
+        let metrics = InMemoryMetricExporter::default();
+        let logs = InMemoryLogExporter::default();
+        let pipeline = otel::Pipeline::from_providers(
+            Some(
+                SdkTracerProvider::builder()
+                    .with_simple_exporter(spans.clone())
+                    .build(),
+            ),
+            Some(
+                SdkMeterProvider::builder()
+                    .with_reader(PeriodicReader::builder(metrics.clone()).build())
+                    .with_view(otel::duration_view)
+                    .build(),
+            ),
+            Some(
+                SdkLoggerProvider::builder()
+                    .with_simple_exporter(logs.clone())
+                    .build(),
+            ),
+        );
+        let dispatch =
+            tracing::Dispatch::new(tracing_subscriber::registry().with(pipeline.layers()));
+        Harness {
+            spans,
+            metrics,
+            logs,
+            pipeline,
+            dispatch,
+        }
+    }
+
+    /// A cluster whose API answers `GET /api/v1/namespaces` and 404s
+    /// everything else.
+    async fn manager(perms: ActionPermissions) -> ClusterManager {
+        let (svc, mut handle) = tower_test::mock::pair::<HttpRequest<Body>, HttpResponse<Body>>();
+        tokio::spawn(async move {
+            while let Some((req, send)) = handle.next_request().await {
+                let (status, body) = if req.uri().path() == "/api/v1/namespaces" {
+                    (
+                        200,
+                        json!({"apiVersion": "v1", "kind": "NamespaceList", "metadata": {},
+                               "items": [{"metadata": {"name": "default"}}]}),
+                    )
+                } else {
+                    (
+                        404,
+                        json!({"kind": "Status", "apiVersion": "v1", "metadata": {},
+                               "status": "Failure", "message": "not found",
+                               "reason": "NotFound", "code": 404}),
+                    )
+                };
+                send.send_response(
+                    HttpResponse::builder()
+                        .status(status)
+                        .header("content-type", "application/json")
+                        .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                        .unwrap(),
+                );
+            }
+        });
+        let client = K8sClient::new(kube::Client::new(svc, "default"), vec![], perms);
+        ClusterManager::new(client, "test-cluster".to_string()).await
+    }
+
+    fn request(value: serde_json::Value) -> JsonRpcRequest {
+        serde_json::from_value(value).unwrap()
+    }
+
+    async fn run(
+        h: &Harness,
+        manager: &ClusterManager,
+        req: JsonRpcRequest,
+        ctx: &RequestContext,
+    ) -> JsonRpcResponse {
+        let response = dispatch(manager, req, ctx)
+            .with_subscriber(h.dispatch.clone())
+            .await;
+        h.pipeline.force_flush();
+        response
+    }
+
+    fn server_spans(h: &Harness) -> Vec<SpanData> {
+        h.spans
+            .get_finished_spans()
+            .unwrap()
+            .into_iter()
+            .filter(|s| s.span_kind == SpanKind::Server)
+            .collect()
+    }
+
+    /// The span's attributes. Fails if a key was recorded twice: the SDK
+    /// exports every value, so a double `record` is a bug.
+    fn attrs(span: &SpanData) -> HashMap<String, Value> {
+        let mut map = HashMap::new();
+        for kv in &span.attributes {
+            let dup = map.insert(kv.key.to_string(), kv.value.clone());
+            assert!(dup.is_none(), "{} recorded twice on {}", kv.key, span.name);
+        }
+        map
+    }
+
+    fn s(v: &str) -> Value {
+        Value::from(v.to_string())
+    }
+
+    /// Every `mcp.server.operation.duration` data point, as (count,
+    /// attributes), from the latest export (temporality is cumulative, so it
+    /// holds every series).
+    fn duration_points(h: &Harness) -> Vec<(u64, HashMap<String, String>)> {
+        let mut points = Vec::new();
+        let exports = h.metrics.get_finished_metrics().unwrap();
+        if let Some(rm) = exports.last() {
+            for sm in rm.scope_metrics() {
+                for m in sm.metrics() {
+                    if m.name() != semconv::MCP_SERVER_OPERATION_DURATION {
+                        continue;
+                    }
+                    assert_eq!(m.unit(), "s");
+                    let AggregatedMetrics::F64(MetricData::Histogram(hist)) = m.data() else {
+                        panic!("{} is not an f64 histogram", m.name());
+                    };
+                    for dp in hist.data_points() {
+                        let bounds: Vec<f64> = dp.bounds().collect();
+                        assert_eq!(bounds, semconv::MCP_SERVER_OPERATION_DURATION_BUCKETS);
+                        points.push((
+                            dp.count(),
+                            dp.attributes()
+                                .map(|kv| (kv.key.to_string(), kv.value.to_string()))
+                                .collect(),
+                        ));
+                    }
+                }
+            }
+        }
+        points
+    }
+
+    #[tokio::test]
+    async fn tools_call_yields_one_server_span_one_point_one_log() {
+        let h = harness();
+        let manager = manager(ActionPermissions::default()).await;
+        let response = run(
+            &h,
+            &manager,
+            request(json!({"jsonrpc": "2.0", "id": 7, "method": "tools/call",
+                           "params": {"name": "list_namespaces", "arguments": {}}})),
+            &RequestContext::default(),
+        )
+        .await;
+        assert!(
+            response.error.is_none(),
+            "{:?}",
+            response.error.map(|e| e.message)
+        );
+
+        let spans = server_spans(&h);
+        assert_eq!(spans.len(), 1, "exactly one SERVER span");
+        let span = &spans[0];
+        assert_eq!(span.name, "tools/call list_namespaces");
+        assert_eq!(span.status, Status::Unset);
+        let a = attrs(span);
+        assert_eq!(a[semconv::MCP_METHOD_NAME], s("tools/call"));
+        assert_eq!(a[semconv::GEN_AI_TOOL_NAME], s("list_namespaces"));
+        assert_eq!(a[semconv::GEN_AI_OPERATION_NAME], s("execute_tool"));
+        assert_eq!(a[semconv::MCP_K8S_ACTION], s("read"));
+        assert_eq!(a[semconv::MCP_K8S_DECISION], s("allowed"));
+        assert_eq!(a[semconv::MCP_K8S_OUTCOME], s("ok"));
+        assert_eq!(a[semconv::JSONRPC_REQUEST_ID], s("7"));
+        assert_eq!(a[semconv::NETWORK_TRANSPORT], s("pipe"));
+        assert_eq!(a[semconv::K8S_CLUSTER_NAME], s("test-cluster"));
+        assert_eq!(
+            a[semconv::TRACE_ID],
+            s(&span.span_context.trace_id().to_string())
+        );
+        assert!(a.contains_key(semconv::MCP_K8S_REQUEST_ID));
+        assert!(!a.contains_key(semconv::ERROR_TYPE));
+        assert!(!a.contains_key("otel.name") && !a.contains_key("otel.kind"));
+
+        let points = duration_points(&h);
+        assert_eq!(points.len(), 1, "exactly one histogram point: {points:?}");
+        let (count, point) = &points[0];
+        assert_eq!(*count, 1);
+        let expected: HashMap<String, String> = [
+            (semconv::MCP_METHOD_NAME, "tools/call"),
+            (semconv::GEN_AI_TOOL_NAME, "list_namespaces"),
+            (semconv::GEN_AI_OPERATION_NAME, "execute_tool"),
+            (semconv::MCP_K8S_ACTION, "read"),
+            (semconv::MCP_K8S_DECISION, "allowed"),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
+        assert_eq!(point, &expected, "only low-cardinality attributes");
+
+        let logs = h.logs.get_emitted_logs().unwrap();
+        let finished: Vec<_> = logs
+            .iter()
+            .filter(|l| {
+                l.record
+                    .body()
+                    .is_some_and(|b| format!("{b:?}").contains("tool call finished"))
+            })
+            .collect();
+        assert_eq!(finished.len(), 1);
+        let cx = finished[0]
+            .record
+            .trace_context()
+            .expect("log has trace context");
+        assert_eq!(cx.trace_id, span.span_context.trace_id());
+        assert_eq!(cx.span_id, span.span_context.span_id());
+    }
+
+    #[tokio::test]
+    async fn denied_call_sets_decision_rule_and_error_type() {
+        let h = harness();
+        let manager = manager(ActionPermissions::new(
+            true,
+            false,
+            false,
+            vec![],
+            true,
+            true,
+        ))
+        .await;
+        let response = run(
+            &h,
+            &manager,
+            request(json!({"jsonrpc": "2.0", "id": "a1", "method": "tools/call",
+                           "params": {"name": "create_deployment",
+                                      "arguments": {"namespace": "prod", "name": "web",
+                                                    "image": "nginx", "env": {"PASSWORD": "hunter2"}}}})),
+            &RequestContext::default(),
+        )
+        .await;
+        assert_eq!(response.error.as_ref().map(|e| e.code), Some(-32000));
+
+        let spans = server_spans(&h);
+        assert_eq!(spans.len(), 1);
+        let a = attrs(&spans[0]);
+        assert_eq!(a[semconv::MCP_K8S_DECISION], s("denied"));
+        assert_eq!(a[semconv::MCP_K8S_DENIED_RULE], s("global:create"));
+        assert_eq!(a[semconv::ERROR_TYPE], s("permission_denied"));
+        assert_eq!(a[semconv::RPC_STATUS_CODE], s("-32000"));
+        assert_eq!(a[semconv::MCP_K8S_ACTION], s("write"));
+        assert_eq!(a[semconv::K8S_NAMESPACE_NAME], s("prod"));
+        assert!(matches!(spans[0].status, Status::Error { .. }));
+        let everything = format!("{:?}", h.spans.get_finished_spans().unwrap());
+        assert!(!everything.contains("hunter2") && !everything.contains("PASSWORD"));
+
+        let points = duration_points(&h);
+        assert_eq!(points.len(), 1);
+        assert_eq!(points[0].1[semconv::MCP_K8S_DECISION], "denied");
+        assert_eq!(points[0].1[semconv::ERROR_TYPE], "permission_denied");
+        assert!(!points[0].1.contains_key(semconv::MCP_K8S_DENIED_RULE));
+    }
+
+    #[tokio::test]
+    async fn meta_traceparent_is_the_remote_parent() {
+        let h = harness();
+        let manager = manager(ActionPermissions::default()).await;
+        run(
+            &h,
+            &manager,
+            request(json!({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                           "params": {"name": "list_namespaces", "arguments": {},
+                                      "_meta": {"traceparent": TRACEPARENT}}})),
+            &RequestContext::default(),
+        )
+        .await;
+        let spans = server_spans(&h);
+        assert_eq!(spans.len(), 1);
+        let span = &spans[0];
+        assert_eq!(
+            span.span_context.trace_id(),
+            TraceId::from_hex("4bf92f3577b34da6a3ce929d0e0e4736").unwrap()
+        );
+        assert_eq!(
+            span.parent_span_id,
+            SpanId::from_hex("00f067aa0ba902b7").unwrap()
+        );
+        assert!(span.parent_span_is_remote);
+        assert!(span.links.is_empty());
+    }
+
+    #[tokio::test]
+    async fn http_traceparent_is_the_fallback_and_a_link() {
+        let h = harness();
+        let manager = manager(ActionPermissions::default()).await;
+        let mut headers = HeaderMap::new();
+        headers.insert("traceparent", HTTP_TRACEPARENT.parse().unwrap());
+        headers.insert("mcp-protocol-version", "2025-11-25".parse().unwrap());
+        let ctx = RequestContext::http(Some("10.0.0.7:51000".parse().unwrap()), &headers);
+
+        // Header only: it is the parent.
+        run(
+            &h,
+            &manager,
+            request(json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})),
+            &ctx,
+        )
+        .await;
+        // Both: _meta is the parent, the header a link.
+        run(
+            &h,
+            &manager,
+            request(json!({"jsonrpc": "2.0", "id": 2, "method": "ping",
+                           "params": {"_meta": {"traceparent": TRACEPARENT}}})),
+            &ctx,
+        )
+        .await;
+
+        let spans = server_spans(&h);
+        assert_eq!(spans.len(), 2);
+        let http_trace = TraceId::from_hex("0af7651916cd43dd8448eb211c80319c").unwrap();
+        assert_eq!(spans[0].name, "tools/list");
+        assert_eq!(spans[0].span_context.trace_id(), http_trace);
+        let a = attrs(&spans[0]);
+        assert_eq!(a[semconv::NETWORK_TRANSPORT], s("tcp"));
+        assert_eq!(a[semconv::NETWORK_PROTOCOL_NAME], s("http"));
+        assert_eq!(a[semconv::CLIENT_ADDRESS], s("10.0.0.7"));
+        assert_eq!(a[semconv::CLIENT_PORT], Value::I64(51000));
+        assert_eq!(a[semconv::MCP_PROTOCOL_VERSION], s("2025-11-25"));
+
+        assert_eq!(spans[1].name, "ping");
+        assert_eq!(
+            spans[1].span_context.trace_id(),
+            TraceId::from_hex("4bf92f3577b34da6a3ce929d0e0e4736").unwrap()
+        );
+        assert_eq!(spans[1].links.len(), 1);
+        assert_eq!(spans[1].links[0].span_context.trace_id(), http_trace);
+
+        // Non-tool requests: one point each, method (and error.type) only.
+        let points = duration_points(&h);
+        let methods: Vec<_> = points
+            .iter()
+            .map(|(_, p)| p[semconv::MCP_METHOD_NAME].clone())
+            .collect();
+        assert_eq!(methods.len(), 2, "{points:?}");
+        assert!(
+            methods.contains(&"tools/list".to_string()) && methods.contains(&"ping".to_string())
+        );
+        assert!(points.iter().all(|(_, p)| p.len() == 1));
+    }
+
+    #[tokio::test]
+    async fn initialize_and_unknown_requests() {
+        let h = harness();
+        let manager = manager(ActionPermissions::default()).await;
+        run(
+            &h,
+            &manager,
+            request(json!({"jsonrpc": "2.0", "id": 0, "method": "initialize",
+                           "params": {"protocolVersion": "2025-06-18",
+                                      "clientInfo": {"name": "claude-code", "version": "2.1.0"}}})),
+            &RequestContext::default(),
+        )
+        .await;
+        run(
+            &h,
+            &manager,
+            request(json!({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                           "params": {"name": "no-such-tool-1234", "arguments": {}}})),
+            &RequestContext::default(),
+        )
+        .await;
+        run(
+            &h,
+            &manager,
+            request(json!({"jsonrpc": "2.0", "id": 2, "method": "bogus/method"})),
+            &RequestContext::default(),
+        )
+        .await;
+
+        let spans = server_spans(&h);
+        assert_eq!(spans.len(), 3);
+        let init = attrs(&spans[0]);
+        assert_eq!(spans[0].name, "initialize");
+        assert_eq!(init[semconv::MCP_K8S_CLIENT_NAME], s("claude-code"));
+        assert_eq!(init[semconv::MCP_K8S_CLIENT_VERSION], s("2.1.0"));
+        assert_eq!(init[semconv::MCP_PROTOCOL_VERSION], s(PROTOCOL_VERSION));
+
+        // An unknown tool never names the span or the metric.
+        assert_eq!(spans[1].name, "tools/call");
+        let unknown = attrs(&spans[1]);
+        assert_eq!(unknown[semconv::ERROR_TYPE], s("unknown_tool"));
+        assert_eq!(unknown[semconv::GEN_AI_TOOL_NAME], s("no-such-tool-1234"));
+        assert_eq!(spans[2].name, "_OTHER");
+        assert_eq!(attrs(&spans[2])[semconv::RPC_STATUS_CODE], s("-32601"));
+        assert_eq!(
+            spans[2].status,
+            Status::Unset,
+            "a caller mistake, not an error"
+        );
+
+        let points = duration_points(&h);
+        assert_eq!(points.len(), 3, "{points:?}");
+        let rendered = format!("{points:?}");
+        assert!(!rendered.contains("no-such-tool-1234") && !rendered.contains("bogus"));
+        assert!(rendered.contains("unknown_tool") && rendered.contains("_OTHER"));
     }
 }

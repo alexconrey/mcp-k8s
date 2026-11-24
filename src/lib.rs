@@ -6,6 +6,7 @@ pub mod extract;
 pub mod mcp;
 pub mod permissions;
 pub mod resources;
+pub mod telemetry;
 pub mod types;
 
 pub use cache::ResponseCache;
