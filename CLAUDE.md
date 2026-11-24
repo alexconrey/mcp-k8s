@@ -363,7 +363,7 @@ features on every PR. A separate `deny` job runs `cargo deny` with `deny.toml`
   kubeconfig.
 - **The Dockerfile is only built on pushes to `main`**, not on PRs. Run
   `docker build .` when you change it or bump the toolchain. CI uses floating
-  `stable`, but the Dockerfile pins `rust:1.95` (kube 5's minimum).
+  `stable`, but the Dockerfile pins `rust:1.99` (kube 5 needs at least 1.95).
 - **The `default` ruleset has no required status checks**, so red CI doesn't
   block a merge. Check `gh pr checks` is green before handing a PR over.
 
