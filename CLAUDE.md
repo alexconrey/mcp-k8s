@@ -8,7 +8,7 @@ watch/subscribe, and all GA + alpha/beta K8s API groups.
 ## Agent bootstrap and keeping docs current
 
 - **Local planning doc:** `PLAN.md`, if present, is the maintainer's working plan for releases, CI and security hardening. It is local-only (`.git/info/exclude`), so it may be missing on a fresh clone. On your first session with it, read it in full, verify its claims against the code and GitHub, and fold durable rules and facts into **this file** in a PR. Keep the roadmap and progress in `PLAN.md`.
-- **Same-PR rule:** any change to behaviour, flags, tools, CI, releases or process updates the matching docs in the same PR: this file, `README.md`, `docs/src/` (mdBook), and the changelog once it exists. When a mistake costs you time, add the lesson here.
+- **Same-PR rule:** any change to behaviour, flags, tools, CI, releases or process updates the matching docs in the same PR: this file, `README.md`, `docs/src/` (mdBook), and `CHANGELOG.md` (under `## [Unreleased]`). When a mistake costs you time, add the lesson here.
 - Before finishing, check that the counts and lists in this file (tools, modules, tests, flags) still match the code.
 
 ## Architecture
@@ -123,9 +123,11 @@ uses `Api::watch()` with timeout for event streaming (30s hard cap).
 `prompts/list`, `prompts/get`, and `ping` keepalive. SSE transport at
 `/mcp/sse`.
 
-**Observability**: Prometheus metrics (`mcp_tool_calls_total`,
-`mcp_tool_call_duration_seconds`, `mcp_tool_call_errors_total`,
-`mcp_requests_total`) at `/metrics`. Structured JSON logging via
+**Observability**: Prometheus metrics at `/metrics`:
+`mcp_k8s_tool_calls_total{tool,status}` (`status` is `ok`, `error` or
+`denied`) and `mcp_k8s_tool_call_duration_seconds{tool}`, both emitted by the
+library's `mcp::handle_tool()`, plus `mcp_requests_total{method}` from the
+server. There is no separate errors counter. Structured JSON logging via
 `--log-format json`. UUID trace IDs per request.
 
 ## Library consumers (deckwatch)
@@ -145,6 +147,12 @@ behind the default-on `server` feature, which the `mcp-k8s` binary requires.
   (see [Releasing](#releasing)).
 - deckwatch relies on the namespace allowlist and `ActionPermissions` being
   enforced by every tool.
+- The `kube` and `k8s-openapi` versions (currently kube 4, k8s-openapi 0.28
+  with `v1_32`) are part of the public API, because `K8sClient::new` takes a
+  `kube::Client`. deckwatch must use the same majors, so bumping them is a
+  breaking change: coordinate it with a deckwatch PR and ship it in a minor
+  release. Raising the `k8s-openapi` feature also raises the minimum supported
+  Kubernetes version.
 
 ## Runtime Modes
 
@@ -198,6 +206,28 @@ mcp-k8s --http --tls-cert /path/cert.pem --tls-key /path/key.pem
 | — | `KUBECONFIG` | in-cluster | K8s config path |
 | — | `RUST_LOG` | `info` | Log level |
 
+## Security posture
+
+mcp-k8s is a standalone server with broad cluster powers, so treat server
+weaknesses as security issues. The current defaults are permissive:
+
+- `--listen` defaults to `0.0.0.0:8080`, and `--auth-token` is optional.
+  Without a token the HTTP API is unauthenticated.
+- The router uses `CorsLayer::permissive()` and doesn't validate `Origin`.
+- Secret decoding and `apply_manifest` are on by default
+  (`ActionPermissions::default()`, which deckwatch also uses).
+- An empty namespace allowlist means every namespace.
+
+Rules:
+
+- Compare tokens in constant time (`subtle::ConstantTimeEq`, as `src/main.rs`
+  does). Never log tokens or secret values.
+- Every namespaced tool must check the namespace allowlist and
+  `ActionPermissions`. New tools need tests that prove both.
+- Don't loosen defaults. Tightening a default is a breaking change: record it
+  in `CHANGELOG.md` and ship it in a minor release, coordinated with
+  deckwatch.
+
 ## Resource Module Pattern
 
 Each resource module in `src/resources/` follows this pattern:
@@ -248,7 +278,8 @@ mcp-k8s/
 │   ├── release.yaml        # Docker + Helm OCI + GitHub Release on tag
 │   └── docs.yaml           # Versioned mdBook deploy to GitHub Pages
 ├── Dockerfile              # Static musl binary in scratch container
-├── Makefile                # 17 targets (build, test, fmt, clippy, docker, deploy, etc.)
+├── Makefile                # 16 targets (build, test, fmt, clippy, docker, deploy, etc.)
+├── CHANGELOG.md            # Keep a Changelog; checked by the release workflow
 ├── deny.toml               # cargo-deny license/vulnerability audit config
 ├── .pre-commit-config.yaml # fmt + clippy pre-commit hooks
 ├── Cargo.toml
@@ -277,18 +308,43 @@ CI workflow (build, test, clippy, fmt) runs against them before merge.
 - No `Co-Authored-By` or Claude/AI attribution in commits or PR descriptions.
 - No force-pushes. No tags, releases or ruleset changes without explicit
   maintainer approval.
+- Work in a git worktree under `/tmp`, because the maintainer's checkout may
+  sit on an old branch. Never use `git stash`.
+- **Never run the server against a real cluster by accident.** The local
+  kube context may point at a production cluster, and the binary connects to
+  the current context at startup. Use the
+  testcontainers k3s tests (`cargo test -- --ignored`) for end-to-end checks.
 
 ## Building and Testing
 
 ```bash
 cargo build --release       # Build
-cargo test                  # 398 unit + 8 integration tests
+cargo test                  # 425 unit + 8 integration tests
 cargo test -- --ignored     # Run k3s integration tests (needs Docker)
 cargo clippy --all-targets -- -D warnings  # Lint
 cargo clippy --lib --no-default-features -- -D warnings  # Library-only build (what deckwatch compiles)
 cargo fmt --check           # Format check
-make check                  # All of the above
+make check                  # cargo fmt (rewrites) + clippy --all-targets + test. Not the
+                            # library-only clippy or k3s tests, so it's not quite CI
+make deny                   # cargo deny check (licenses + advisories)
 ```
+
+### What CI does and doesn't cover
+
+`ci.yaml` runs the binary-file check, `fmt --check`, both clippy
+configurations, `build --release` and `cargo test` on every PR. Gaps to cover
+yourself:
+
+- **The k3s integration tests are `#[ignore]`d and never run in CI.** Run
+  `cargo test -- --ignored` (needs Docker) when you change kube API paths or
+  the namespace allowlist.
+- **`cargo deny` doesn't run in CI.** Run `make deny` when you change
+  dependencies. There's no Dependabot yet.
+- **The Dockerfile is only built on pushes to `main`**, not on PRs. Run
+  `docker build .` when you change it or bump the toolchain. CI uses floating
+  `stable`, but the Dockerfile pins `rust:1.89`.
+- **The `default` ruleset has no required status checks**, so red CI doesn't
+  block a merge. Check `gh pr checks` is green before handing a PR over.
 
 ## Container Image
 
@@ -310,10 +366,11 @@ need has to ship in one.
   after `v0.3.1` (2026-08-05) while `main` kept changing. deckwatch had to track
   `branch = "main"`, so any merge here could change deckwatch on its next
   `cargo update`.
-- **The `Cargo.toml` `version` must equal the tag.** Bump it, and the
-  changelog, in a PR before tagging. As of 2026-11-24 `Cargo.toml` still said
-  `0.1.0` against tag `v0.3.1`. The release workflow should refuse a mismatched
-  tag (see `PLAN.md` Phase 0).
+- **The version must equal the tag.** Before tagging, a PR sets the same
+  version in `Cargo.toml` `version`, `helm/mcp-k8s/Chart.yaml` `version` and
+  `appVersion`, and adds a `## [X.Y.Z] - YYYY-MM-DD` section to
+  `CHANGELOG.md` (moving the `[Unreleased]` entries). The `verify-version` job
+  in `release.yaml` refuses to publish if any of these don't match the tag.
 - **Semver within 0.x:** breaking library API or behaviour changes bump the
   minor version.
 - **Downstream pins the tag**, e.g. deckwatch:
@@ -337,12 +394,14 @@ This triggers three workflows:
 3. **Pages build** — GitHub deploys the updated `gh-pages` branch
 
 Artifacts produced per release:
-- Docker image: `ghcr.io/alexconrey/mcp-k8s:vX.Y.Z`
+- Docker image: `ghcr.io/alexconrey/mcp-k8s:vX.Y.Z` (the release also moves
+  `:latest`; pushes to `main` publish `:latest` and `:<sha>` too, so `:latest`
+  is not a release)
 - Helm chart: `oci://ghcr.io/alexconrey/charts/mcp-k8s:X.Y.Z`
 - Versioned docs: `https://alexconrey.github.io/mcp-k8s/vX.Y.Z/`
 - GitHub Release with release notes: `https://github.com/alexconrey/mcp-k8s/releases/tag/vX.Y.Z`
 
-The release workflow uses `softprops/action-gh-release@v2` with
+The release workflow uses `softprops/action-gh-release@v3` with
 `generate_release_notes: true` for GitHub's auto-generated changelog
 plus a custom body with commit log, artifact table, and quick start.
 
