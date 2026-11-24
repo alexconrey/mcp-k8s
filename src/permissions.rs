@@ -158,6 +158,30 @@ impl ActionPermissions {
         self.is_action_allowed(&resource, &action)
     }
 
+    /// The setting that denies `tool_name`, or `None` if
+    /// [`Self::is_tool_allowed`] allows it. Used as `mcp_k8s.denied_rule` in
+    /// telemetry:
+    ///
+    /// * `apply_manifest:disabled` — `--disable-apply-manifest`
+    /// * `override:<resource>-<action>` — a `--disable` entry
+    /// * `global:<action>` — `--disable-create`/`-update`/`-delete`
+    pub fn denied_by(&self, tool_name: &str) -> Option<String> {
+        if tool_name == "apply_manifest" && !self.apply_manifest_enabled {
+            return Some("apply_manifest:disabled".to_string());
+        }
+        let action = Self::action_for_tool(tool_name);
+        let resource = Self::resource_from_tool(tool_name);
+        if self.is_action_allowed(&resource, &action) {
+            return None;
+        }
+        let key = format!("{}-{}", resource.to_lowercase(), action);
+        if self.resource_overrides.contains_key(&key) {
+            Some(format!("override:{key}"))
+        } else {
+            Some(format!("global:{action}"))
+        }
+    }
+
     /// Best-effort resource extraction from a tool name.
     ///
     /// `"create_deployment"` → `"deployment"`, `"scale_deployment"` → `"deployment"`,
