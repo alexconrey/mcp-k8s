@@ -243,6 +243,85 @@ fn action_classes() {
 }
 
 #[test]
+fn action_class_follows_the_permission_classification() {
+    use crate::permissions::Action;
+    // For every tool, the label agrees with what the permission check uses,
+    // so a call labelled `read` can never be one that a disable flag gates.
+    for tool in crate::mcp::tool_definitions(&ActionPermissions::default()) {
+        let name = tool["name"].as_str().unwrap();
+        let expected = match ActionPermissions::action_for_tool(name) {
+            _ if name.starts_with("exec_") => ActionClass::Exec,
+            Action::Read => ActionClass::Read,
+            Action::Create | Action::Update => ActionClass::Write,
+            Action::Delete => ActionClass::Delete,
+        };
+        assert_eq!(ActionClass::for_tool(name), expected, "{name}");
+    }
+    // Once exec_pod is gated as an update, disabling updates denies it with
+    // the global rule (on older classifications it is a read and allowed).
+    let no_update = ActionPermissions::new(false, true, false, vec![], true, true);
+    if ActionPermissions::action_for_tool("exec_pod") == Action::Update {
+        assert_eq!(
+            no_update.denied_by("exec_pod").as_deref(),
+            Some("global:update")
+        );
+    }
+    let p = ActionPermissions::new(false, false, false, vec!["pod-update".into()], true, true);
+    assert_eq!(
+        p.action_denied_by("pod", &Action::Update).as_deref(),
+        Some("override:pod-update")
+    );
+    assert_eq!(p.action_denied_by("pod", &Action::Create), None);
+    assert_eq!(
+        no_update
+            .action_denied_by("deployment", &Action::Update)
+            .as_deref(),
+        Some("global:update")
+    );
+}
+
+#[tokio::test]
+async fn guardrail_denial_inside_a_tool_is_recorded() {
+    // A workload guardrail deep inside a tool body (as the policy engine
+    // does) reports the rule through record_denial; the call ends denied.
+    let cap = Capture::default();
+    let dispatch = cap.dispatch();
+    let span = tracing::dispatcher::with_default(&dispatch, || {
+        server_span("tools/call", Some("create_pod"))
+    });
+    async {
+        let call = ToolCall::start("create_pod", &json!({"namespace": "prod", "name": "p"}));
+        let result: Result<String, String> = call
+            .run(async {
+                // e.g. policy::into_result() rejecting a privileged container
+                assert!(record_denial("policy:allow_privileged"));
+                Err("rejected by the mcp-k8s workload policy".to_string())
+            })
+            .await;
+        call.finish(&result);
+    }
+    .instrument(span)
+    .with_subscriber(dispatch)
+    .await;
+
+    let spans = cap.new_spans();
+    assert_eq!(spans.len(), 1);
+    let f = cap.span_fields(spans[0].span_id.unwrap());
+    assert_eq!(field(&f, semconv::MCP_K8S_DECISION), Some("denied"));
+    assert_eq!(
+        field(&f, semconv::MCP_K8S_DENIED_RULE),
+        Some("policy:allow_privileged")
+    );
+    assert_eq!(field(&f, semconv::ERROR_TYPE), Some("permission_denied"));
+    let metrics = cap.events(semconv::METRICS_TARGET);
+    assert_eq!(metrics.len(), 1);
+    assert_eq!(
+        field(&metrics[0].fields, semconv::MCP_K8S_DECISION),
+        Some("denied")
+    );
+}
+
+#[test]
 fn summarize_read() {
     let s = summarize(
         "get_pod_logs",

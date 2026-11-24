@@ -41,8 +41,11 @@ release workflow refuses a tag that doesn't match `Cargo.toml`,
   call never yields two spans. A canary test fills every string argument of
   every tool schema with a marker and fails if one outside the allowlist
   reaches telemetry.
-- `ActionPermissions::denied_by(tool)` names the setting that denies a tool
-  (`global:create`, `override:deployment-delete`, `apply_manifest:disabled`).
+- `ActionPermissions::denied_by(tool)` and `action_denied_by(resource,
+  action)` name the setting that denies a call (`global:create`,
+  `override:deployment-delete`, `apply_manifest:disabled`), for
+  `mcp_k8s.denied_rule`. Guardrails report `policy:<setting>` through
+  `telemetry::record_denial`.
 - **Binary: OTLP export** of traces, the metric and logs over http/protobuf
   (new `otel` feature, enabled by `server`), configured by the standard
   `OTEL_*` variables (`OTEL_EXPORTER_OTLP_ENDPOINT` and per-signal endpoints,

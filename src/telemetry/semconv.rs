@@ -91,7 +91,16 @@ pub const MCP_K8S_RESOURCE_API_VERSION: &str = "mcp_k8s.resource.api_version";
 pub const MCP_K8S_ACTION: &str = "mcp_k8s.action";
 /// `allowed` or `denied`.
 pub const MCP_K8S_DECISION: &str = "mcp_k8s.decision";
-/// The setting or policy rule that denied the call, e.g. `global:create`.
+/// The setting or policy rule that denied the call:
+/// - `global:<action>`, `override:<resource>-<action>` or
+///   `apply_manifest:disabled` for [`crate::permissions::ActionPermissions`]
+///   (see `ActionPermissions::denied_by`);
+/// - `policy:<field>[,<field>…]` for workload guardrails, naming the policy
+///   settings that would allow the call (sorted, de-duplicated);
+/// - embedders' own rules otherwise.
+///
+/// Guardrails report it with [`super::record_denial`]. Span only, never on
+/// the metric.
 pub const MCP_K8S_DENIED_RULE: &str = "mcp_k8s.denied_rule";
 /// How the call ended: `ok`, `error`, `denied` or `cancelled`.
 pub const MCP_K8S_OUTCOME: &str = "mcp_k8s.outcome";

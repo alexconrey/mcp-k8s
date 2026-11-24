@@ -170,8 +170,15 @@ impl ActionPermissions {
             return Some("apply_manifest:disabled".to_string());
         }
         let action = Self::action_for_tool(tool_name);
-        let resource = Self::resource_from_tool(tool_name);
-        if self.is_action_allowed(&resource, &action) {
+        self.action_denied_by(&Self::resource_from_tool(tool_name), &action)
+    }
+
+    /// The setting that denies `action` on `resource`, or `None` if
+    /// [`Self::is_action_allowed`] allows it: `override:<resource>-<action>`
+    /// or `global:<action>`. For checks that aren't tied to one tool name,
+    /// such as the kind inside an `apply_manifest` manifest.
+    pub fn action_denied_by(&self, resource: &str, action: &Action) -> Option<String> {
+        if self.is_action_allowed(resource, action) {
             return None;
         }
         let key = format!("{}-{}", resource.to_lowercase(), action);

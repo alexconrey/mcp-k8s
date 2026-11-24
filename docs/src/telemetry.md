@@ -82,7 +82,7 @@ header's context becomes a span link instead.
 | `mcp.resource.uri` | `resources/read` | `k8s://prod/pods/web-1` |
 | `mcp_k8s.action` | `tools/call` | `read`, `write`, `delete`, `exec` |
 | `mcp_k8s.decision` | `tools/call` | `allowed`, `denied` |
-| `mcp_k8s.denied_rule` | denied calls | `global:create`, `override:deployment-delete`, `apply_manifest:disabled` |
+| `mcp_k8s.denied_rule` | denied calls | `global:create`, `override:deployment-delete`, `apply_manifest:disabled`; workload guardrails report `policy:<setting>` (the policy settings that would allow the call) |
 | `mcp_k8s.outcome` | always | `ok`, `error`, `denied`, `cancelled` |
 | `error.type` | failures | see below |
 | `rpc.status_code` | JSON-RPC error responses | `-32000` |
@@ -105,7 +105,7 @@ authenticated user once single sign-on exists.
 | Value | Meaning |
 |---|---|
 | `tool_error` | The tool ran and failed. The server still answers with JSON-RPC error `-32000` (in `rpc.status_code`). |
-| `permission_denied` | A permission setting or policy refused the call (`mcp_k8s.decision=denied`). |
+| `permission_denied` | A permission setting or workload guardrail refused the call (`mcp_k8s.decision=denied`, rule in `mcp_k8s.denied_rule`). |
 | `unknown_tool` | `tools/call` named a tool the server doesn't have. The span status stays unset: a caller mistake. |
 | `cancelled` | The request was dropped before the tool finished (client went away). |
 | `-32601`, `-32000`, … | Any other JSON-RPC error response, by code. `-32700`, `-32600`, `-32601`, `-32602` and `-32002` are caller mistakes and leave the span status unset. |
@@ -240,7 +240,10 @@ let result = async {
 
 Tools whose names don't use mcp-k8s's prefixes (`trigger_build`) can set the
 action with `ToolCall::start_with_action`, and guardrails can call
-`telemetry::record_denial(rule)` inside a call. The rustdoc of
+`telemetry::record_denial(rule)` inside a call. `mcp_k8s.action` follows the
+permission classification (`ActionPermissions::action_for_tool`): `exec_*`
+tools are labelled `exec`, the permission action that gates them is
+`update`. The rustdoc of
 `mcp_k8s::telemetry` has the details.
 
 ## Old metric names

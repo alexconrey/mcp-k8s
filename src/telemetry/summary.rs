@@ -67,17 +67,20 @@ pub enum ActionClass {
 }
 
 impl ActionClass {
-    /// Classify an mcp-k8s tool. Reads, writes and deletes come from
-    /// [`ActionPermissions::action_for_tool`]; `exec_*` tools are `Exec`.
+    /// Classify an mcp-k8s tool from [`ActionPermissions::action_for_tool`],
+    /// the same classification the permission check uses: `Read` is `read`,
+    /// `Create` and `Update` are `write`, `Delete` is `delete`. `exec_*` tools
+    /// are labelled `exec` instead, a refinement of the permission action
+    /// they are gated by (`update` once `action_for_tool` classifies
+    /// `exec_pod` as one), so the decision and the label never disagree on
+    /// whether a call mutates the cluster.
     ///
     /// Embedders whose tool names don't follow mcp-k8s's prefixes
     /// (`trigger_build`, `enable_plugin`, …) should pick the class themselves
     /// with [`super::ToolCall::start_with_action`].
     pub fn for_tool(tool: &str) -> Self {
-        if tool.starts_with("exec_") {
-            return Self::Exec;
-        }
         match ActionPermissions::action_for_tool(tool) {
+            _ if tool.starts_with("exec_") => Self::Exec,
             Action::Read => Self::Read,
             Action::Create | Action::Update => Self::Write,
             Action::Delete => Self::Delete,
