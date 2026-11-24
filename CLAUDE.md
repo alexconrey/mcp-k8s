@@ -5,6 +5,12 @@ Kubernetes MCP (Model Context Protocol) server and library. Exposes
 and other MCP clients. Supports multi-cluster management, CRD discovery,
 watch/subscribe, and all GA + alpha/beta K8s API groups.
 
+## Agent bootstrap and keeping docs current
+
+- **Local planning doc:** `PLAN.md`, if present, is the maintainer's working plan for releases, CI and security hardening. It is local-only (`.git/info/exclude`), so it may be missing on a fresh clone. On your first session with it, read it in full, verify its claims against the code and GitHub, and fold durable rules and facts into **this file** in a PR. Keep the roadmap and progress in `PLAN.md`.
+- **Same-PR rule:** any change to behaviour, flags, tools, CI, releases or process updates the matching docs in the same PR: this file, `README.md`, `docs/src/` (mdBook), and the changelog once it exists. When a mistake costs you time, add the lesson here.
+- Before finishing, check that the counts and lists in this file (tools, modules, tests, flags) still match the code.
+
 ## Architecture
 
 Rust project with a library crate (`mcp_k8s`) and a binary crate (`mcp-k8s`).
@@ -121,6 +127,24 @@ uses `Api::watch()` with timeout for event streaming (30s hard cap).
 `mcp_tool_call_duration_seconds`, `mcp_tool_call_errors_total`,
 `mcp_requests_total`) at `/metrics`. Structured JSON logging via
 `--log-format json`. UUID trace IDs per request.
+
+## Library consumers (deckwatch)
+
+deckwatch vendors the `mcp_k8s` library as a git dependency with
+`default-features = false`. Since #12, the HTTP server stack (`axum`,
+`axum-server`, `utoipa`, `utoipa-swagger-ui`, `clap`, `tower-http`, …) is
+behind the default-on `server` feature, which the `mcp-k8s` binary requires.
+
+- The library must keep building, linting and testing **without** `server`.
+  CI runs `cargo clippy --lib --no-default-features -- -D warnings`.
+- Don't add server-only dependencies to library code. Gate them with
+  `#[cfg(feature = "server")]` or `#[cfg_attr(feature = "server", ...)]`.
+- Changes to the public library API, such as `K8sClient::new(client,
+  allowed_namespaces, permissions)` and `mcp::handle_tool`, are **breaking for
+  deckwatch**. Ship them in a release with a semver-appropriate version bump
+  (see [Releasing](#releasing)).
+- deckwatch relies on the namespace allowlist and `ActionPermissions` being
+  enforced by every tool.
 
 ## Runtime Modes
 
@@ -243,11 +267,16 @@ git checkout -b feature/my-change
 cargo check && cargo clippy -- -D warnings && cargo fmt
 git push -u origin feature/my-change
 gh pr create --title "..." --body "..."
-gh pr merge --squash --delete-branch
 ```
 
 Do **not** push directly to `main`. Even one-liner changes need a PR so the
 CI workflow (build, test, clippy, fmt) runs against them before merge.
+
+- **The maintainer merges** (squash) once CI is green. Agents open PRs but
+  don't merge them.
+- No `Co-Authored-By` or Claude/AI attribution in commits or PR descriptions.
+- No force-pushes. No tags, releases or ruleset changes without explicit
+  maintainer approval.
 
 ## Building and Testing
 
@@ -256,6 +285,7 @@ cargo build --release       # Build
 cargo test                  # 398 unit + 8 integration tests
 cargo test -- --ignored     # Run k3s integration tests (needs Docker)
 cargo clippy --all-targets -- -D warnings  # Lint
+cargo clippy --lib --no-default-features -- -D warnings  # Library-only build (what deckwatch compiles)
 cargo fmt --check           # Format check
 make check                  # All of the above
 ```
@@ -271,9 +301,29 @@ port 8080. Installs `rustls::crypto::ring` provider at startup.
 
 ## Releasing
 
-Cutting a new release:
+### Release policy and downstream version locking
+
+Downstream consumers must pin a **release**, not `main`, so every change they
+need has to ship in one.
+
+- **Ship a GitHub Release for every change downstream needs.** Releases stalled
+  after `v0.3.1` (2026-08-05) while `main` kept changing. deckwatch had to track
+  `branch = "main"`, so any merge here could change deckwatch on its next
+  `cargo update`.
+- **The `Cargo.toml` `version` must equal the tag.** Bump it, and the
+  changelog, in a PR before tagging. As of 2026-11-24 `Cargo.toml` still said
+  `0.1.0` against tag `v0.3.1`. The release workflow should refuse a mismatched
+  tag (see `PLAN.md` Phase 0).
+- **Semver within 0.x:** breaking library API or behaviour changes bump the
+  minor version.
+- **Downstream pins the tag**, e.g. deckwatch:
+  `mcp-k8s = { git = "https://github.com/alexconrey/mcp-k8s.git", tag = "vX.Y.Z", default-features = false }`.
+- **Only the maintainer creates tags and releases.**
+
+Cutting a new release (maintainer):
 
 ```bash
+# after the version-bump PR has merged
 git tag v0.X.Y
 git push origin v0.X.Y
 ```
@@ -300,7 +350,7 @@ plus a custom body with commit log, artifact table, and quick start.
 
 Published to GHCR OCI registry on tag push:
 ```bash
-helm install mcp-k8s oci://ghcr.io/alexconrey/charts/mcp-k8s --version 0.1.0
+helm install mcp-k8s oci://ghcr.io/alexconrey/charts/mcp-k8s --version <X.Y.Z>  # latest release
 ```
 
 ## Documentation
@@ -314,4 +364,4 @@ Built with mdBook, versioned per tag (`/latest/`, `/v0.1.0/`).
 Extracted from deckwatch's MCP server (`src/handlers/mcp.rs`) and K8s type
 layer (`src/kube_ext.rs`). Deckwatch can depend on this crate for the shared
 K8s tool implementations while keeping its own database-backed tools
-(gitops, applications, addons, templates) in-tree.
+(gitops, applications, plugins, templates) in-tree.
