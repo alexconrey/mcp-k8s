@@ -36,7 +36,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-64b8b2b9.js";
+            window.path_to_searchindex_js = "../searchindex-4e6edd76.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-caea04ac.js"></script>
@@ -186,9 +186,12 @@
 <h2 id="building-from-source"><a class="header" href="#building-from-source">Building from Source</a></h2>
 <h3 id="prerequisites"><a class="header" href="#prerequisites">Prerequisites</a></h3>
 <ul>
-<li><a href="https://rustup.rs/">Rust</a> (stable toolchain)</li>
-<li>Access to a Kubernetes cluster (via <code>KUBECONFIG</code> or in-cluster config)</li>
+<li><a href="https://rustup.rs/">Rust</a> 1.95 or newer (stable toolchain)</li>
+<li>Access to a Kubernetes <strong>1.33 or newer</strong> cluster (via <code>KUBECONFIG</code> or in-cluster config)</li>
 </ul>
+<p>mcp-k8s compiles against the Kubernetes 1.33 API types (k8s-openapi <code>v1_33</code>).
+Tools for alpha and beta APIs only work on clusters that enable those APIs; see
+<a href="../tools/overview.html#alpha-and-beta-apis">Alpha and beta APIs</a>.</p>
 <h3 id="build"><a class="header" href="#build">Build</a></h3>
 <pre><code class="language-bash">git clone https://github.com/alexconrey/mcp-k8s.git
 cd mcp-k8s
