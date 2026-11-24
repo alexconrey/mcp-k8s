@@ -345,7 +345,7 @@ cargo clippy --lib --no-default-features --features k8s-openapi/v1_33 -- -D warn
 cargo fmt --check           # Format check
 make check                  # cargo fmt (rewrites) + both clippy and both test configs.
                             # Not the k8s-openapi feature check or k3s tests, so not quite CI
-make deny                   # cargo deny check (advisories, licenses, bans, sources), as CI does
+make deny                   # cargo deny check (advisories, licenses, bans, sources)
 ```
 
 ### What CI does and doesn't cover
@@ -353,8 +353,8 @@ make deny                   # cargo deny check (advisories, licenses, bans, sour
 `ci.yaml` runs the binary-file check, `fmt --check`, both clippy
 configurations, a check that the library's k8s-openapi dependency enables no
 version feature, `build --release`, and `cargo test` with and without default
-features on every PR. A separate `deny` job runs `cargo deny check` with
-`deny.toml`. Gaps to cover yourself:
+features on every PR. A separate `deny` job runs `cargo deny` with `deny.toml`
+(advisories only warn; see [Dependencies and advisories](#dependencies-and-advisories)). Gaps to cover yourself:
 
 - **The k3s integration tests are `#[ignore]`d and never run in CI.** Run
   `cargo test --test k3s_integration -- --ignored` (needs Docker) when you
@@ -379,13 +379,17 @@ features on every PR. A separate `deny` job runs `cargo deny check` with
 - A **`kube-stack` major is a breaking release** (see
   [Library consumers](#library-consumers-deckwatch)): don't merge it as a
   routine bump.
-- **`cargo deny check`** runs in CI (`deny` job) and weekly (`audit.yaml`).
-  Vulnerable, unsound and yanked crates fail, and so do non-crates.io sources
-  and licenses outside the allowlist. A new RustSec advisory can fail CI on an
-  unrelated PR. Fix it first (usually
-  `cargo update -p <crate>`; try `--precise <version>` if that does nothing).
-  Otherwise add an `ignore` entry in `deny.toml` with a reason. Duplicate
-  crate versions only warn.
+- **`cargo deny`** runs in CI (`deny` job, two legs) and weekly
+  (`audit.yaml`). The `bans licenses sources` leg blocks: non-crates.io
+  sources, wildcard versions and licenses outside the allowlist fail it.
+  The `advisories` leg **only warns**: a vulnerable, unsound or yanked crate
+  shows as a failed `deny (advisories)` check, but the CI run still passes, so
+  a new RustSec advisory doesn't block unrelated PRs. The weekly `audit.yaml`
+  run fails on advisories and is the backstop. Never make
+  `deny (advisories)` a required status check. To fix an advisory, try
+  `cargo update -p <crate>` first, and `--precise <version>` if that does
+  nothing. Otherwise add an `ignore` entry in `deny.toml` with a reason.
+  Duplicate crate versions only warn.
 
 ## Container Image
 

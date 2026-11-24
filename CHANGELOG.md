@@ -26,8 +26,9 @@ release workflow refuses a tag that doesn't match `Cargo.toml`,
 ### Internal
 - Dependabot for cargo, Docker base images and GitHub Actions, plus Dependabot
   alerts and security updates.
-- CI runs `cargo deny check` (`deny` job), and `audit.yaml` runs the advisory
-  check weekly. `deny.toml` now denies yanked crates, wildcard versions and
+- CI runs `cargo deny` (`deny` job): bans, licenses and sources block, and
+  advisories only warn. `audit.yaml` runs the advisory check weekly and fails
+  on findings. `deny.toml` now denies yanked crates, wildcard versions and
   unknown registries and git sources, and allows `CDLA-Permissive-2.0`
   (Mozilla CA data in `webpki-root-certs`).
 - Router tests for `/openapi.json` and the Swagger UI.
