@@ -347,14 +347,17 @@ mcp-k8s/
 ├── helm/
 │   ├── mcp-k8s/            # Helm chart (with PDB, HPA, NetworkPolicy, Ingress)
 │   └── charts/mcp-k8s/     # Raw K8s manifests + Kustomize
-├── .github/workflows/
-│   ├── ci.yaml             # Build, test, clippy, fmt on PR
-│   ├── release.yaml        # Docker + Helm OCI + GitHub Release on tag
-│   └── docs.yaml           # Versioned mdBook deploy to GitHub Pages
+├── .github/
+│   ├── dependabot.yml      # Weekly cargo/docker/actions updates, grouped
+│   └── workflows/
+│       ├── ci.yaml         # Build, test, clippy, fmt, cargo deny on PR
+│       ├── audit.yaml      # Weekly RustSec advisory scan (cargo deny)
+│       ├── release.yaml    # Docker + Helm OCI + GitHub Release on tag
+│       └── docs.yaml       # Versioned mdBook deploy to GitHub Pages
 ├── Dockerfile              # Static musl binary in scratch container
 ├── Makefile                # 18 targets (build, test, test-lib, fmt, clippy, clippy-lib, docker, deploy, etc.)
 ├── CHANGELOG.md            # Keep a Changelog; checked by the release workflow
-├── deny.toml               # cargo-deny license/vulnerability audit config
+├── deny.toml               # cargo-deny config (advisories, licenses, bans, sources)
 ├── .pre-commit-config.yaml # fmt + clippy pre-commit hooks
 ├── Cargo.toml
 └── README.md
@@ -394,7 +397,7 @@ CI workflow (build, test, clippy, fmt) runs against them before merge.
 
 ```bash
 cargo build --release       # Build
-cargo test                  # 521 unit + 8 integration + 30 guardrail tests
+cargo test                  # 521 unit + 2 binary (router) + 8 integration + 30 guardrail tests
 cargo test --no-default-features  # Same tests without `server` (what deckwatch compiles)
 cargo test --test k3s_integration -- --ignored  # k3s integration tests (needs Docker)
 cargo test --test k3s_workloads -- --ignored --test-threads=1  # k3s workload/guardrail tests
@@ -403,7 +406,7 @@ cargo clippy --lib --no-default-features --features k8s-openapi/v1_33 -- -D warn
 cargo fmt --check           # Format check
 make check                  # cargo fmt (rewrites) + both clippy and both test configs.
                             # Not the k8s-openapi feature check or k3s tests, so not quite CI
-make deny                   # cargo deny check (licenses + advisories)
+make deny                   # cargo deny check (advisories, licenses, bans, sources)
 ```
 
 ### What CI does and doesn't cover
@@ -411,7 +414,8 @@ make deny                   # cargo deny check (licenses + advisories)
 `ci.yaml` runs the binary-file check, `fmt --check`, both clippy
 configurations, a check that the library's k8s-openapi dependency enables no
 version feature, `build --release`, and `cargo test` with and without default
-features on every PR. Gaps to cover yourself:
+features on every PR. A separate `deny` job runs `cargo deny` with `deny.toml`
+(advisories only warn; see [Dependencies and advisories](#dependencies-and-advisories)). Gaps to cover yourself:
 
 - **The k3s integration tests are `#[ignore]`d and never run in CI.** Run
   `cargo test --test k3s_integration -- --ignored` (needs Docker) when you
@@ -420,13 +424,35 @@ features on every PR. Gaps to cover yourself:
   change the typed workload tools or the policy. Plain
   `cargo test -- --ignored` also runs the `cluster.rs` tests, which load your
   kubeconfig: never run it.
-- **`cargo deny` doesn't run in CI.** Run `make deny` when you change
-  dependencies. There's no Dependabot yet.
 - **The Dockerfile is only built on pushes to `main`**, not on PRs. Run
   `docker build .` when you change it or bump the toolchain. CI uses floating
   `stable`, but the Dockerfile pins `rust:1.95` (kube 5's minimum).
 - **The `default` ruleset has no required status checks**, so red CI doesn't
   block a merge. Check `gh pr checks` is green before handing a PR over.
+
+### Dependencies and advisories
+
+- **Dependabot** (`.github/dependabot.yml`) opens weekly PRs for cargo, the
+  Dockerfile base images and GitHub Actions. Minor and patch cargo updates are
+  grouped, and majors of `kube`/`k8s-openapi`, the axum/tower/hyper stack and
+  `utoipa` are grouped so they land together. Cargo updates wait 3 days (7 for
+  majors). Dependabot alerts and security updates are enabled on the repo, and
+  security PRs skip the schedule. Dependency PRs never bump the crate or
+  chart version.
+- A **`kube-stack` major is a breaking release** (see
+  [Library consumers](#library-consumers-deckwatch)): don't merge it as a
+  routine bump.
+- **`cargo deny`** runs in CI (`deny` job, two legs) and weekly
+  (`audit.yaml`). The `bans licenses sources` leg blocks: non-crates.io
+  sources, wildcard versions and licenses outside the allowlist fail it.
+  The `advisories` leg **only warns**: a vulnerable, unsound or yanked crate
+  shows as a failed `deny (advisories)` check, but the CI run still passes, so
+  a new RustSec advisory doesn't block unrelated PRs. The weekly `audit.yaml`
+  run fails on advisories and is the backstop. Never make
+  `deny (advisories)` a required status check. To fix an advisory, try
+  `cargo update -p <crate>` first, and `--precise <version>` if that does
+  nothing. Otherwise add an `ignore` entry in `deny.toml` with a reason.
+  Duplicate crate versions only warn.
 
 ## Container Image
 

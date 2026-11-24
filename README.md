@@ -248,7 +248,7 @@ let permissions = ActionPermissions::default().with_workload_policy(policy);
 ## Testing
 
 ```bash
-cargo test                                      # 521 unit + 8 integration + 30 guardrail tests
+cargo test                                      # 521 unit + 2 router + 8 integration + 30 guardrail tests
 cargo test --no-default-features                # the same, as library consumers build it
 cargo test --test k3s_integration -- --ignored  # 13 k3s tests (needs Docker)
 cargo test --test k3s_workloads -- --ignored --test-threads=1  # 2 k3s tests for the typed workload tools and guardrails

@@ -151,6 +151,27 @@ every write path, `apply_manifest` included.
 - `create_ingress` created backing Services even with `service-create`
   disabled.
 
+### Security
+- Lockfile updates for RustSec advisories: `h2` 0.4.21 (RUSTSEC-2026-0258),
+  `rustls` 0.23.46 (RUSTSEC-2026-0285, -0346, -0348, -0349),
+  `rustls-webpki` 0.103.17 (RUSTSEC-2026-0382), `webpki-root-certs` 1.0.12
+  (RUSTSEC-2026-0383), `tokio` 1.54.1 (RUSTSEC-2026-0386, unsound),
+  `url` 2.5.9 (RUSTSEC-2026-0592), and yanked `chacha20` 0.10.1 → 0.10.2.
+- `utoipa` 5 → 6 and `utoipa-swagger-ui` 9 → 10 (server feature only). This
+  replaces the build-time `zip` 3.0.0 dependency, which had six advisories
+  (RUSTSEC-2026-0367, -0368, -0369, -0429, -0545, -0548), with `zip` 9. No API
+  changes were needed.
+
+### Internal
+- Dependabot for cargo, Docker base images and GitHub Actions, plus Dependabot
+  alerts and security updates.
+- CI runs `cargo deny` (`deny` job): bans, licenses and sources block, and
+  advisories only warn. `audit.yaml` runs the advisory check weekly and fails
+  on findings. `deny.toml` now denies yanked crates, wildcard versions and
+  unknown registries and git sources, and allows `CDLA-Permissive-2.0`
+  (Mozilla CA data in `webpki-root-certs`).
+- Router tests for `/openapi.json` and the Swagger UI.
+
 ## [0.5.0] - 2026-11-24
 
 kube 5 / k8s-openapi 0.29. Requires Kubernetes 1.33 or newer.
