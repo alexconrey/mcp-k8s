@@ -15,6 +15,9 @@ release workflow refuses a tag that doesn't match `Cargo.toml`,
 ## [0.4.0] - 2026-11-24
 
 ### Added
+- **`get_resource_json`**, the honest name for the generic "get any resource"
+  tool: it returns the full object as JSON. Edit the output and pass it back to
+  `apply_manifest`, or convert it to YAML client-side if a person needs YAML.
 - **`server` feature** (on by default). The standalone HTTP server's
   dependencies (`axum`, `axum-server`, `clap`, `tower-http`,
   `tracing-subscriber`, the Prometheus exporter, `utoipa`,
@@ -28,7 +31,21 @@ release workflow refuses a tag that doesn't match `Cargo.toml`,
 - `update_deployment_labels`, `update_deployment_annotations` and
   `update_deployment_affinity` tools. (#9)
 
+### Deprecated
+- **`get_resource_yaml`** is now an alias for `get_resource_json`, with the
+  same arguments and output. Despite its name it always returned JSON. It will
+  be removed in the next minor release.
+
 ### Changed
+- **`apply_manifest` is described as a last resort.** Its description now
+  steers agents to the typed `create_*`/`update_*` tools, which validate input
+  and enforce mcp-k8s's guardrails, whereas `apply_manifest` sends raw objects.
+  It also states correctly that only **JSON** manifests are accepted. It
+  previously claimed "YAML or JSON", but the parser has always rejected YAML.
+  The documentation's YAML examples, which could never have worked, are now
+  JSON.
+- The documented tool count is corrected to 210, including the alias. It said
+  202 while the code already had 209.
 - Tool-call metrics are recorded inside the library's `handle_tool()`, so
   library consumers get `mcp_k8s_tool_calls_total` and friends without
   wrapping every call. (#7)

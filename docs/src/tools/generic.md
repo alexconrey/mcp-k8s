@@ -1,14 +1,20 @@
 # Generic Tools
 
-mcp-k8s provides two generic tools that work with any Kubernetes resource type, including Custom Resource Definitions (CRDs). These tools use Kubernetes API discovery to resolve resource types at runtime.
+mcp-k8s provides generic tools that work with any Kubernetes resource type, including Custom Resource Definitions (CRDs). These tools use Kubernetes API discovery to resolve resource types at runtime.
 
 ## apply_manifest
 
-Apply an arbitrary Kubernetes YAML or JSON manifest using server-side apply. Accepts any resource type. Returns the applied object's metadata (name, namespace, kind, resource_version).
+**Last resort.** Apply an arbitrary Kubernetes manifest, given as **JSON**, using server-side apply. Accepts any resource type.
+
+> Prefer the typed tools (`create_deployment`, `create_job`, `create_pod`, `update_*`, …). They validate their input and enforce mcp-k8s's guardrails, whereas `apply_manifest` sends the raw object to the API server. Use it only for resource types that have no typed tool, and consider disabling it with `--disable-apply-manifest` (see [Permissions](../permissions.md)).
+
+It returns the applied object's metadata (name, namespace, kind, resource_version).
+
+YAML is **not** accepted: convert it to JSON first (for example `yq -o=json manifest.yaml`). The output of [`get_resource_json`](#get_resource_json) can be edited and passed straight back.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `manifest` | string | Yes | The Kubernetes manifest as a YAML or JSON string |
+| `manifest` | string | Yes | The Kubernetes manifest as a JSON string (YAML is not accepted) |
 
 The manifest string is parsed, the resource type is resolved via API discovery, and the object is applied using server-side apply with the field manager `mcp-k8s`.
 
@@ -16,7 +22,7 @@ The manifest string is parsed, the resource type is resolved via API discovery, 
 
 ```json
 {
-  "manifest": "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: my-config\n  namespace: default\ndata:\n  database_url: postgres://localhost:5432/mydb\n  log_level: info"
+  "manifest": "{\"apiVersion\":\"v1\",\"kind\":\"ConfigMap\",\"metadata\":{\"name\":\"my-config\",\"namespace\":\"default\"},\"data\":{\"database_url\":\"postgres://localhost:5432/mydb\",\"log_level\":\"info\"}}"
 }
 ```
 
@@ -24,7 +30,7 @@ The manifest string is parsed, the resource type is resolved via API discovery, 
 
 ```json
 {
-  "manifest": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\n  namespace: default\nspec:\n  replicas: 3\n  selector:\n    matchLabels:\n      app: web\n  template:\n    metadata:\n      labels:\n        app: web\n    spec:\n      containers:\n      - name: web\n        image: nginx:1.25\n        ports:\n        - containerPort: 80"
+  "manifest": "{\"apiVersion\":\"apps/v1\",\"kind\":\"Deployment\",\"metadata\":{\"name\":\"web\",\"namespace\":\"default\"},\"spec\":{\"replicas\":3,\"selector\":{\"matchLabels\":{\"app\":\"web\"}},\"template\":{\"metadata\":{\"labels\":{\"app\":\"web\"}},\"spec\":{\"containers\":[{\"name\":\"web\",\"image\":\"nginx:1.25\",\"ports\":[{\"containerPort\":80}]}]}}}}"
 }
 ```
 
@@ -32,23 +38,23 @@ The manifest string is parsed, the resource type is resolved via API discovery, 
 
 ```json
 {
-  "manifest": "apiVersion: monitoring.coreos.com/v1\nkind: ServiceMonitor\nmetadata:\n  name: my-app\n  namespace: monitoring\nspec:\n  selector:\n    matchLabels:\n      app: my-app\n  endpoints:\n  - port: metrics\n    interval: 30s"
+  "manifest": "{\"apiVersion\":\"monitoring.coreos.com/v1\",\"kind\":\"ServiceMonitor\",\"metadata\":{\"name\":\"my-app\",\"namespace\":\"monitoring\"},\"spec\":{\"selector\":{\"matchLabels\":{\"app\":\"my-app\"}},\"endpoints\":[{\"port\":\"metrics\",\"interval\":\"30s\"}]}}"
 }
 ```
 
 ### Notes
 
 - `apply_manifest` is classified as a **create** action. It is disabled when `--disable-create` is set.
-- The manifest can be YAML or JSON. Multi-document YAML (separated by `---`) is not supported; apply one resource per call.
+- The manifest must be a single JSON object. YAML (including multi-document `---` files) is rejected with a parse error; convert it to JSON and apply one resource per call.
 - If the resource already exists, it is updated (server-side apply merges fields).
 - For CRDs, the API group must be installed in the cluster for discovery to succeed.
 - The RBAC rules for the mcp-k8s service account must include the API groups and resources referenced in the manifest. See [RBAC Setup](../deployment/rbac.md) for details.
 
 ---
 
-## get_resource_yaml
+## get_resource_json
 
-Get any Kubernetes resource as raw JSON output. Accepts apiVersion, kind, name, and optional namespace. Uses API discovery to resolve the resource type.
+Get any Kubernetes resource as JSON, the object as the API server returns it. Accepts apiVersion, kind, name, and optional namespace. Uses API discovery to resolve the resource type. The output can be edited and passed back to `apply_manifest`; if a person needs YAML, convert it client-side (for example `yq -P`).
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -91,6 +97,9 @@ Get any Kubernetes resource as raw JSON output. Accepts apiVersion, kind, name, 
 
 ### Notes
 
-- `get_resource_yaml` is classified as a **read** action and is always available regardless of permission configuration.
-- Despite the name, the output is JSON (not YAML). The name is kept for compatibility.
+- `get_resource_json` is classified as a **read** action and is always available regardless of permission configuration.
 - This tool returns the full Kubernetes object, unlike the typed tools which return focused summaries. Use it when you need complete object details or when working with resource types that do not have dedicated tools.
+
+### `get_resource_yaml` (deprecated)
+
+`get_resource_yaml` is a **deprecated alias** for `get_resource_json`. It takes the same arguments and returns the same **JSON**; despite its name it never returned YAML. It remains for compatibility in 0.4.x and will be removed in the next minor release. Switch to `get_resource_json`.

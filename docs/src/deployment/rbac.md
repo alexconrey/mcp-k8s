@@ -289,7 +289,7 @@ rules:
   # --------------------------------------------------------------------------
   # Generic / apply_manifest
   # --------------------------------------------------------------------------
-  # The apply_manifest and get_resource_yaml tools use API discovery and can
+  # The apply_manifest and get_resource_json (and its deprecated alias get_resource_yaml) tools use API discovery and can
   # operate on any resource type. The rules above cover all built-in tools.
   # If you use apply_manifest to manage custom resources, add rules for those
   # API groups here.
