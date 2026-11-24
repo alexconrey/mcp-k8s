@@ -47,7 +47,9 @@ everything before exiting.
 
 TLS uses rustls with the ring crypto provider that the binary installs at
 startup (the same one the HTTPS server and the Kubernetes client use), and the
-system's root certificates (the container image ships them).
+system's root certificates (the container image ships them). For a collector
+with a private CA, point `SSL_CERT_FILE` at a PEM bundle that contains it (it
+replaces the system roots, so include any public roots you also need).
 
 With the [Helm chart](./deployment/helm.md#opentelemetry), set `otel.endpoint`
 and friends instead.
