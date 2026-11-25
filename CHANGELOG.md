@@ -21,6 +21,30 @@ release workflow refuses a tag that doesn't match `Cargo.toml`,
   deprecated but still honoured, and wins.
 
 ### Security
+- **Namespace allowlist bypasses fixed.** With `--namespaces` (or a library
+  allowlist) set:
+  - `delete_namespace`, `update_namespace` and `create_namespace` acted on any
+    namespace (e.g. `delete_namespace kube-system`); they now refuse
+    namespaces outside the allowlist, like `get_namespace`.
+  - `watch_resource` and `list_custom_resources` without a namespace, on a
+    namespaced kind, and `list_csistoragecapacities` without a namespace,
+    acted across **all** namespaces; they now refuse with `namespace is
+    required`. Without an allowlist they behave as before.
+  - `drain_node` deleted pods in every namespace on the node; it now refuses,
+    before cordoning, when non-DaemonSet pods outside the allowlist would be
+    evicted.
+  - `create_rolebinding` fetched the bound Role from the target namespace
+    before checking the allowlist (leaking whether it exists and its
+    rules in the error); the check now comes first, and the bound-role lookup
+    checks the allowlist itself.
+  - `can_i` and `list_my_permissions` answered for any namespace; they now
+    refuse namespaces outside the allowlist.
+  - The custom resource tools ran API discovery before refusing a disallowed
+    namespace; they now refuse before any request.
+- New `tests/namespace_allowlist.rs` calls every tool that takes a namespace
+  with one outside the allowlist and requires a refusal before any API
+  request, and fails for a new tool without a namespace argument unless it
+  is listed as exempt with a reason.
 - **Secret values leaked through the generic tools.** `get_resource_json`,
   its `get_resource_yaml` alias and `k8s://<ns>/secrets/<name>` resources
   returned a Secret's base64 `data` even with secret decoding disabled. They
@@ -65,6 +89,13 @@ release workflow refuses a tag that doesn't match `Cargo.toml`,
   was flagged on every build.
 
 ### Added
+- **`apply_manifest` takes a `namespace` argument** (deckwatch passes one; it
+  used to be ignored). It fills `metadata.namespace` when the manifest has
+  none, a mismatch with `metadata.namespace` is refused, and both are checked
+  against the namespace allowlist. `create_custom_resource` gets the same
+  filling. The workload policy still doesn't apply to `apply_manifest`.
+- `K8sClient::has_namespace_allowlist()` and
+  `K8sClient::namespace_required_error()`.
 - `--allow-privileged-csr` / `MCP_K8S_ALLOW_PRIVILEGED_CSR` and
   `WorkloadPolicy.allow_privileged_csr` (on in `WorkloadPolicy::permissive()`)
   to approve such CSRs anyway. Library: `policy::check_csr`,
@@ -73,6 +104,24 @@ release workflow refuses a tag that doesn't match `Cargo.toml`,
   `subject.organizations`) and the requester's groups (`requestor_groups`).
 - Dependencies: `x509-cert` 0.3 (RustCrypto, without its `pem` feature) and
   `pem` 4 (already used by kube-client) in the library.
+
+### Changed
+- **`exec_pod` refuses pods with node-level access** (privileged containers,
+  `hostNetwork`/`hostPID`/`hostIPC`, `hostPath` volumes, added capabilities,
+  Unconfined profiles) unless the operator allows the setting with the
+  matching `--allow-*` flag. The error names the flag(s). It reads the pod
+  first, so it now needs `get` on pods as well as `create` on `pods/exec`.
+- **`exec_pod` has a timeout and an output cap.** New `timeout_secs` argument
+  (default 60, max 300): a command still running at the deadline returns the
+  output so far with `timed_out: true` and the exec session is closed. Each of
+  stdout and stderr is capped at 1 MiB with a truncation marker. stdout and
+  stderr are now read concurrently, which also fixes a hang when a command
+  wrote more than about 1 KiB to stderr before closing stdout.
+- `port_forward_check` gives up after 10 seconds instead of waiting forever.
+- `get_custom_resource`, `update_custom_resource` and `delete_custom_resource`
+  require `namespace` for namespaced kinds (they used to address the
+  cluster-scoped path and fail with a 404), and address cluster-scoped kinds
+  without a namespace even if one is passed.
 
 
 ## [0.6.0] - 2026-11-24

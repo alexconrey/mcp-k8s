@@ -27,7 +27,7 @@ kube = { version = "5", features = ["ws"] }
 k8s-openapi = "0.29"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-util", "net", "sync"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-util", "net", "sync", "time"] }
 thiserror = "2"
 http = "1"
 # approve_csr parses the PKCS#10 request to check the identity it asks for.

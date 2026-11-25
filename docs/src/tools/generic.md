@@ -10,7 +10,7 @@ mcp-k8s provides generic tools that work with any Kubernetes resource type, incl
 
 What still applies when it's enabled:
 
-- the namespace allowlist, on the manifest's namespace;
+- the namespace allowlist, on the manifest's `metadata.namespace` and on the `namespace` argument;
 - the per-resource create/update switches. It looks the object up first: creating needs `<resource>-create`, updating needs `<resource>-update`.
 
 Its tool definition carries the MCP annotation `destructiveHint: true`, so MCP clients (Claude Code, for example) ask the user before each call. A manifest without a managed-by label gets `app.kubernetes.io/managed-by: mcp-k8s`. See [Permissions: apply_manifest](../permissions.md#apply_manifest) for the reasoning.
@@ -22,6 +22,9 @@ YAML is **not** accepted: convert it to JSON first (for example `yq -o=json mani
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `manifest` | string | Yes | The Kubernetes manifest as a JSON string (YAML is not accepted) |
+| `namespace` | string | No | Target namespace for a namespaced kind. Fills `metadata.namespace` when the manifest has none; if both are set they must match, or the call is refused. Checked against the namespace allowlist. |
+
+A namespaced kind needs a namespace from one of the two. Cluster-scoped kinds ignore it (but a namespace outside the allowlist is still refused).
 
 The manifest string is parsed, the resource type is resolved via API discovery, and the object is applied using server-side apply with the field manager `mcp-k8s`.
 

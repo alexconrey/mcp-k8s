@@ -216,6 +216,8 @@ async fn create_rolebinding(
     args: &serde_json::Value,
 ) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
+    // Before anything else: the bound-role lookup below reads the namespace.
+    let rb_api = api(client, ns)?;
     let name = args["name"].as_str().ok_or("name is required")?;
 
     let role_ref_val = args.get("role_ref").ok_or("role_ref is required")?;
@@ -285,7 +287,6 @@ async fn create_rolebinding(
     .await?;
     crate::policy::into_result(bound).map_err(|e| e.to_string())?;
 
-    let rb_api = api(client, ns)?;
     let created = rb_api
         .create(&PostParams::default(), &rb)
         .await

@@ -285,11 +285,11 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
         }),
         serde_json::json!({
             "name": "list_csistoragecapacities",
-            "description": "List CSIStorageCapacities. Optionally filter by namespace; if omitted, lists across all namespaces. Returns name, namespace, storage_class_name, capacity, and maximum_volume_size.",
+            "description": "List CSIStorageCapacities. Optionally filter by namespace; if omitted, lists across all namespaces (refused when the server has a namespace allowlist). Returns name, namespace, storage_class_name, capacity, and maximum_volume_size.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "namespace": { "type": "string", "description": "Kubernetes namespace (optional, omit for all namespaces)" }
+                    "namespace": { "type": "string", "description": "Kubernetes namespace (optional, omit for all namespaces; required when the server has a namespace allowlist)" }
                 },
                 "additionalProperties": false
             }
@@ -388,6 +388,9 @@ async fn list_csistoragecapacities(
         api.list(&ListParams::default())
             .await
             .map_err(|e| e.to_string())?
+    } else if client.has_namespace_allowlist() {
+        // Omitting the namespace lists every namespace.
+        return Err(client.namespace_required_error());
     } else {
         let api = csistoragecapacity_api_all(client);
         api.list(&ListParams::default())
