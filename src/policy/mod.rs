@@ -19,6 +19,9 @@
 //! it.
 
 mod admission;
+mod csr;
+#[cfg(test)]
+pub(crate) mod csr_fixtures;
 mod manifest;
 mod network;
 mod pod;
@@ -29,6 +32,7 @@ use std::fmt;
 pub(crate) use admission::{
     admit_manifest, bound_role_violations, check_typed, patch_checked, AdmissionOrigin, PatchKind,
 };
+pub use csr::{check_csr, parse_csr_identity, CsrIdentity};
 pub use manifest::{check_object, is_builtin_group, kind_not_allowed, Source};
 pub use network::{check_ingress, check_service};
 pub use pod::{check_pod_spec, normalize_image, BASELINE_CAPABILITIES, SAFE_VOLUME_TYPES};
@@ -46,7 +50,7 @@ pub const MANAGED_BY_VALUE: &str = "mcp-k8s";
 /// runtime's default set, host namespaces, `hostPath` volumes and host ports,
 /// risky volume types, unconfined seccomp/AppArmor profiles, NodePort and
 /// LoadBalancer Services, ingress-nginx snippet annotations, RBAC escalation
-/// primitives, and (for the custom resource tools) cluster-scoped kinds and
+/// primitives, CSR approvals for privileged identities, and (for the custom resource tools) cluster-scoped kinds and
 /// custom resource groups that aren't allowlisted.
 ///
 /// Relax individual rules by setting fields (the struct is `#[non_exhaustive]`,
@@ -120,6 +124,12 @@ pub struct WorkloadPolicy {
     /// `cluster-admin` (or a role with those rules), binding anonymous
     /// subjects, and service-account token Secrets.
     pub allow_rbac_escalation: bool,
+    /// Allow `approve_csr` to approve CertificateSigningRequests for
+    /// privileged identities: group `system:masters`, any other `system:`
+    /// user or group (nodes, control-plane components, service accounts,
+    /// `system:anonymous`), and requests whose subject can't be parsed. See
+    /// [`check_csr`].
+    pub allow_privileged_csr: bool,
     /// Typed create tools fill in a restricted securityContext (runAsNonRoot,
     /// seccomp RuntimeDefault, no privilege escalation, drop ALL capabilities)
     /// and `automountServiceAccountToken: false` when the caller doesn't set
@@ -148,6 +158,7 @@ impl Default for WorkloadPolicy {
             allowed_manifest_kinds: Vec::new(),
             allowed_custom_resource_groups: Vec::new(),
             allow_rbac_escalation: false,
+            allow_privileged_csr: false,
             secure_defaults: true,
         }
     }
@@ -177,6 +188,7 @@ impl WorkloadPolicy {
             allowed_manifest_kinds: vec!["*".to_string()],
             allowed_custom_resource_groups: vec!["*".to_string()],
             allow_rbac_escalation: true,
+            allow_privileged_csr: true,
             secure_defaults: false,
         }
     }
@@ -401,6 +413,12 @@ pub mod flags {
         "allow_rbac_escalation"
     );
     flag!(
+        ALLOW_PRIVILEGED_CSR,
+        "--allow-privileged-csr",
+        "MCP_K8S_ALLOW_PRIVILEGED_CSR",
+        "allow_privileged_csr"
+    );
+    flag!(
         NO_SECURE_DEFAULTS,
         "--no-secure-defaults",
         "MCP_K8S_NO_SECURE_DEFAULTS",
@@ -427,6 +445,7 @@ pub mod flags {
         &ALLOW_MANIFEST_KINDS,
         &ALLOW_CUSTOM_RESOURCE_GROUPS,
         &ALLOW_RBAC_ESCALATION,
+        &ALLOW_PRIVILEGED_CSR,
         &NO_SECURE_DEFAULTS,
     ];
 }

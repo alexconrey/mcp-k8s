@@ -299,7 +299,7 @@ No required parameters.
 
 ### get_csr
 
-Get detailed info for a single CSR.
+Get detailed info for a single CSR, including the identity it requests: `subject.common_names` (the user) and `subject.organizations` (the groups), parsed from `spec.request`, plus the requester's own groups (`requestor_groups`).
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -307,11 +307,14 @@ Get detailed info for a single CSR.
 
 ### approve_csr
 
-Approve a CertificateSigningRequest.
+Approve a pending CertificateSigningRequest.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | Yes | CSR name |
+| `message` | string | No | Approval message |
+
+Before approving, mcp-k8s parses the request's subject and refuses privileged identities unless the operator sets `--allow-privileged-csr`: group `system:masters` (a cluster-admin certificate), any other `system:` user or group (nodes, control-plane components, service accounts, `system:anonymous`, `system:unauthenticated`), and requests it can't parse. A node's request for its own serving certificate (signer `kubernetes.io/kubelet-serving`) is allowed. See [CSR approval](../permissions.md#csr-approval).
 
 ### deny_csr
 
