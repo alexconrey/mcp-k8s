@@ -8,7 +8,16 @@ mcp-k8s provides a pre-built container image for running as an HTTP server. This
 ghcr.io/alexconrey/mcp-k8s:latest
 ```
 
-The image is built on `gcr.io/distroless/cc-debian12:nonroot` and runs the `mcp-k8s --http` command on port 8080 by default.
+Tags:
+
+| Tag | Meaning |
+|-----|---------|
+| `vX.Y.Z` | A release. Pin this in production. |
+| `vX.Y` | The newest patch release of `X.Y`. |
+| `latest` | The newest release. |
+| `main`, `<commit sha>` | Builds of the `main` branch. Unreleased; for testing only. |
+
+The image is a static musl binary in a `scratch` image, running as UID 65534. It runs `mcp-k8s --http` on port 8080 by default.
 
 ## Building the Image
 

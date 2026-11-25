@@ -1,6 +1,9 @@
 image:
   repository: ghcr.io/alexconrey/mcp-k8s
-  tag: latest
+  # Defaults to the chart's appVersion (v<appVersion>), the image released with
+  # this chart. Set it to pin another release, or `main` for the latest build
+  # of the main branch.
+  tag: ""
   pullPolicy: IfNotPresent
 
 replicaCount: 1

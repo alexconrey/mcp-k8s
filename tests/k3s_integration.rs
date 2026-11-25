@@ -76,8 +76,32 @@ async fn start_k3s() -> (kube::Client, ContainerAsync<K3s>) {
     .expect("failed to build kube Config from kubeconfig");
 
     let client = kube::Client::try_from(config).expect("failed to create kube Client");
+    wait_for_api_ready(&client).await;
 
     (client, container)
+}
+
+/// Wait until the API server serves the `default` namespace and its `default`
+/// ServiceAccount. k3s reports ready before that, and on a loaded machine (a CI
+/// runner, or several clusters starting at once) tests that call the API
+/// straight away occasionally failed (k3s_get_configmap, k3s_get_events).
+async fn wait_for_api_ready(client: &kube::Client) {
+    use k8s_openapi::api::core::v1::{Namespace, ServiceAccount};
+    let namespaces: kube::Api<Namespace> = kube::Api::all(client.clone());
+    let service_accounts: kube::Api<ServiceAccount> =
+        kube::Api::namespaced(client.clone(), "default");
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(90);
+    loop {
+        let ns = namespaces.get_opt("default").await;
+        let sa = service_accounts.get_opt("default").await;
+        match (&ns, &sa) {
+            (Ok(Some(_)), Ok(Some(_))) => return,
+            _ if tokio::time::Instant::now() >= deadline => {
+                panic!("k3s API not ready after 90s: namespace={ns:?} serviceaccount={sa:?}")
+            }
+            _ => tokio::time::sleep(std::time::Duration::from_secs(1)).await,
+        }
+    }
 }
 
 /// Like [`start_k3s`], wrapped in a `K8sClient` with default permissions and

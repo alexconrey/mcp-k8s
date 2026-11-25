@@ -345,7 +345,7 @@ page have the full recipe; the binary's `src/otel.rs` is a working example.
 ## Testing
 
 ```bash
-cargo test                                      # 549 unit + 11 binary + 8 integration + 27 guardrail tests
+cargo test                                      # 553 unit + 11 binary + 8 integration + 27 guardrail tests
 cargo test --no-default-features                # the same, as library consumers build it
 cargo test --test k3s_integration -- --ignored  # 13 k3s tests (needs Docker)
 cargo test --test k3s_workloads -- --ignored --test-threads=1  # 2 k3s tests for the typed workload tools and guardrails

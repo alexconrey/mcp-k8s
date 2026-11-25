@@ -1,7 +1,10 @@
 [package]
 name = "mcp-k8s"
-version = "0.5.1"
+version = "0.5.2"
 edition = "2021"
+# MSRV for library consumers (kube 5 needs 1.95). CI checks the library build
+# on it; the binary is built with rust-toolchain.toml.
+rust-version = "1.95"
 description = "Kubernetes MCP (Model Context Protocol) server and library"
 license = "MIT"
 publish = false
