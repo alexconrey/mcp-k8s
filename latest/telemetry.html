@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-ca30b04b.js";
+            window.path_to_searchindex_js = "searchindex-aca6ae64.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-5b34cd39.js"></script>
@@ -426,14 +426,24 @@ tools are labelled <code>exec</code>, the permission action that gates them is
 <code>update</code>. The rustdoc of
 <code>mcp_k8s::telemetry</code> has the details.</p>
 <h2 id="old-metric-names"><a class="header" href="#old-metric-names">Old metric names</a></h2>
-<p>The Prometheus counters at <code>/metrics</code> are unchanged:
-<code>mcp_k8s_tool_calls_total{tool,status}</code>,
+<p><strong>Deprecated in v0.7.0, removed in v0.8.0.</strong> The Prometheus metrics at
+<code>/metrics</code>, <code>mcp_k8s_tool_calls_total{tool,status}</code>,
 <code>mcp_k8s_tool_call_duration_seconds{tool}</code> (both from the library, also inside
-embedders) and <code>mcp_requests_total{method}</code> (binary). They overlap with
+embedders) and <code>mcp_requests_total{method}</code> (binary), overlap with
 <code>mcp.server.operation.duration</code>, which carries the same information with
-semantic-convention names. A later release will deprecate them in favour of
-the OTel metric and remove them one minor release after that; the changelog
-will say when.</p>
+semantic-convention names. They’re still emitted in 0.7.x, and their <code># HELP</code>
+text says they’re deprecated. Move dashboards and alerts to the OTel metric
+(export with <code>OTEL_EXPORTER_OTLP_ENDPOINT</code>).</p>
+<h2 id="audit-events"><a class="header" href="#audit-events">Audit events</a></h2>
+<p>Every tool call that writes, deletes or execs, and every denied call, also
+produces an <code>audit</code> event on the <code>tracing</code> target <code>mcp_k8s::audit</code>: the tool,
+action, decision and <code>mcp_k8s.denied_rule</code>, outcome and <code>error.type</code>, the
+target (cluster, namespace, kind, name, API version) and the argument keys.
+Argument values are never included (see Redaction). The event belongs to the
+request span, so JSON logs and OTLP log records carry the client and trace
+context with it. Route the target to its own sink to keep an audit trail, for
+example with <code>RUST_LOG=info</code> and a log pipeline that selects
+<code>target == "mcp_k8s::audit"</code>.</p>
 
                     </main>
 

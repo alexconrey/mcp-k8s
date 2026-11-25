@@ -36,7 +36,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ca30b04b.js";
+            window.path_to_searchindex_js = "../searchindex-aca6ae64.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-5b34cd39.js"></script>
@@ -355,15 +355,15 @@ scrape_configs:
 <tr><th>Metric</th><th>Type</th><th>Labels</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>mcp_requests_total</code></td><td>Counter</td><td><code>method</code></td><td>Total MCP JSON-RPC requests by method</td></tr>
-<tr><td><code>mcp_k8s_tool_calls_total</code></td><td>Counter</td><td><code>tool</code>, <code>status</code></td><td>Total tool calls by tool name. <code>status</code> is <code>ok</code>, <code>error</code> or <code>denied</code> (blocked by permissions)</td></tr>
-<tr><td><code>mcp_k8s_tool_call_duration_seconds</code></td><td>Histogram</td><td><code>tool</code></td><td>Tool call duration in seconds</td></tr>
+<tr><td><code>mcp_requests_total</code></td><td>Counter</td><td><code>method</code></td><td>Deprecated (removed in v0.8.0). Total MCP JSON-RPC requests by method</td></tr>
+<tr><td><code>mcp_k8s_tool_calls_total</code></td><td>Counter</td><td><code>tool</code>, <code>status</code></td><td>Deprecated (removed in v0.8.0). Total tool calls by tool name. <code>status</code> is <code>ok</code>, <code>error</code> or <code>denied</code> (blocked by permissions)</td></tr>
+<tr><td><code>mcp_k8s_tool_call_duration_seconds</code></td><td>Histogram</td><td><code>tool</code></td><td>Deprecated (removed in v0.8.0). Tool call duration in seconds</td></tr>
 </tbody>
 </table>
 </div>
-<p>These names will be deprecated in a later release in favour of the
-OpenTelemetry metric <code>mcp.server.operation.duration</code>, exported over OTLP (see
-<a href="../telemetry.html#old-metric-names">Telemetry</a>).</p>
+<p>These names are deprecated since v0.7.0 and will be removed in v0.8.0, in
+favour of the OpenTelemetry metric <code>mcp.server.operation.duration</code>, exported
+over OTLP (see <a href="../telemetry.html#old-metric-names">Telemetry</a>).</p>
 <h2 id="health-checks"><a class="header" href="#health-checks">Health Checks</a></h2>
 <p>The <code>/healthz</code> endpoint returns <code>ok</code> with a 200 status code when the server is running. Use this for Docker health checks:</p>
 <pre><code class="language-dockerfile">HEALTHCHECK --interval=30s --timeout=3s \
