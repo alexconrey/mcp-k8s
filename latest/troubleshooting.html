@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-41aa9c8b.js";
+            window.path_to_searchindex_js = "searchindex-b6dd1424.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-5b34cd39.js"></script>
@@ -302,12 +302,12 @@ kubectl get events --field-selector involvedObject.name=&lt;pod-name&gt;
 <p><strong>Symptom</strong>: <code>get_secret</code> returns the secret but data values are redacted or missing, even when <code>decode: true</code> is passed.</p>
 <p><strong>Causes</strong>:</p>
 <ul>
-<li><strong><code>--disable-secret-decode</code> is set</strong>: When the server is started with <code>--disable-secret-decode</code> (or <code>DISABLE_SECRET_DECODE=true</code>), the <code>decode: true</code> parameter is ignored and secret values are never returned. This is a safety feature for production deployments.</li>
-<li><strong><code>decode: true</code> not passed</strong>: By default, <code>get_secret</code> returns metadata and keys but redacts the values. You must explicitly pass <code>"decode": true</code> in the tool arguments to see decoded values.</li>
+<li><strong>Secret decoding isn’t enabled</strong> (the default since v0.7.0): the server needs <code>--enable-secret-decode</code> (<code>ENABLE_SECRET_DECODE=true</code>). Without it <code>get_secret</code> refuses <code>decode: true</code>, and <code>get_resource_json</code> shows Secret values as <code>&lt;redacted: …&gt;</code>. <code>--disable-secret-decode</code> also keeps it off.</li>
+<li><strong><code>decode: true</code> not passed</strong>: <code>get_secret</code> returns metadata and keys unless you pass <code>"decode": true</code>.</li>
 </ul>
 <p><strong>Fix</strong>: If you need to see secret values, ensure:</p>
 <ol>
-<li>The server was <strong>not</strong> started with <code>--disable-secret-decode</code>.</li>
+<li>The server was started with <code>--enable-secret-decode</code> (and not <code>--disable-secret-decode</code>).</li>
 <li>The tool call includes <code>"decode": true</code>:
 <pre><code class="language-json">{
   "name": "get_secret",

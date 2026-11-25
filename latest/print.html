@@ -37,7 +37,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-41aa9c8b.js";
+            window.path_to_searchindex_js = "searchindex-b6dd1424.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-5b34cd39.js"></script>
@@ -603,7 +603,8 @@ mcp-k8s --http \
 <tr><th>Flag</th><th>Env Var</th><th>Default</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>--disable-secret-decode</code></td><td><code>DISABLE_SECRET_DECODE</code></td><td><code>false</code></td><td>When set, the <code>get_secret</code> tool never returns decoded secret values, even if the caller passes <code>decode: true</code>. Use this in environments where secret values must not be exposed to MCP clients.</td></tr>
+<tr><td><code>--enable-secret-decode</code></td><td><code>ENABLE_SECRET_DECODE</code></td><td><code>false</code></td><td>Let tools return Secret values: <code>get_secret</code> with <code>decode: true</code>, and Secret <code>data</code> in <code>get_resource_json</code> and <code>k8s://…/secrets/…</code> resources. Without it, values are redacted on every path (only keys are shown, and the <code>kubectl.kubernetes.io/last-applied-configuration</code> annotation, which holds the applied manifest, is redacted too), and <code>get_secret</code> refuses <code>decode: true</code>.</td></tr>
+<tr><td><code>--disable-secret-decode</code></td><td><code>DISABLE_SECRET_DECODE</code></td><td><code>false</code></td><td>Deprecated: decoding is off by default. Still honoured, and wins over <code>--enable-secret-decode</code>.</td></tr>
 </tbody>
 </table>
 </div>
@@ -697,12 +698,11 @@ CACHE_TTL=60 mcp-k8s
   --allowed-hosts mcp.example.com \
   --tls-cert /etc/certs/tls.crt \
   --tls-key /etc/certs/tls.key \
-  --disable-secret-decode \
   --log-format json \
   --cache-ttl 30 \
   --contexts staging,production
 </code></pre>
-<p>This starts mcp-k8s as an HTTPS server on port 9090 with bearer token authentication (read from a file), answering only to <code>mcp.example.com</code>, restricted to the <code>default</code> and <code>production</code> namespaces, with all delete operations disabled globally (<code>apply_manifest</code> stays off, its default), deployment/secret creation disabled individually, secret decoding disabled, structured JSON logging enabled, a 30-second response cache, and two cluster contexts loaded (<code>staging</code> active by default).</p>
+<p>This starts mcp-k8s as an HTTPS server on port 9090 with bearer token authentication (read from a file), answering only to <code>mcp.example.com</code>, restricted to the <code>default</code> and <code>production</code> namespaces, with all delete operations disabled globally (<code>apply_manifest</code> stays off, its default), deployment/secret creation disabled individually, secret decoding off (the default), structured JSON logging enabled, a 30-second response cache, and two cluster contexts loaded (<code>staging</code> active by default).</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h1>
 <p>This guide walks you through setting up mcp-k8s with Claude Code and using it to interact with a Kubernetes cluster.</p>
@@ -1937,7 +1937,7 @@ CACHE_TTL=60 mcp-k8s
 <hr>
 <h2 id="secrets"><a class="header" href="#secrets">Secrets</a></h2>
 <blockquote>
-<p><strong>Note:</strong> Secret values are never returned by default. The <code>list_secrets</code> tool only returns metadata and key counts. The <code>get_secret</code> tool returns key names by default; pass <code>decode: true</code> to include decoded values.</p>
+<p><strong>Note:</strong> Secret values are never returned unless the server operator enables secret decoding (<code>--enable-secret-decode</code>). The <code>list_secrets</code> tool only returns metadata and key counts. The <code>get_secret</code> tool returns key names; with decoding enabled, pass <code>decode: true</code> to include decoded values (without it, <code>decode: true</code> is refused). The <code>kubectl.kubernetes.io/last-applied-configuration</code> annotation, which contains the applied manifest, is redacted unless values may be shown. <code>get_resource_json</code> redacts Secret values the same way.</p>
 </blockquote>
 <h3 id="list_secrets"><a class="header" href="#list_secrets">list_secrets</a></h3>
 <p>List secrets in a namespace. Returns name, namespace, type, data key count, and created_at. Secret values are never returned.</p>
@@ -1963,7 +1963,7 @@ CACHE_TTL=60 mcp-k8s
 <tbody>
 <tr><td><code>namespace</code></td><td>string</td><td>Yes</td><td>Kubernetes namespace</td></tr>
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Secret name</td></tr>
-<tr><td><code>decode</code></td><td>boolean</td><td>No</td><td>If true, include decoded secret values. Defaults to false.</td></tr>
+<tr><td><code>decode</code></td><td>boolean</td><td>No</td><td>If true, include decoded secret values. Defaults to false. Refused unless the operator enabled <code>--enable-secret-decode</code>.</td></tr>
 </tbody>
 </table>
 </div>
@@ -4712,7 +4712,7 @@ http/protobuf. See <a href="#telemetry-1">Telemetry</a>.</p>
 <tr><td><code>MCP_K8S_REQUEST_TIMEOUT_SECS</code></td><td>Request timeout</td><td><code>360</code></td></tr>
 <tr><td><code>TLS_CERT</code></td><td>Path to TLS certificate PEM file</td><td><em>(none)</em></td></tr>
 <tr><td><code>TLS_KEY</code></td><td>Path to TLS private key PEM file</td><td><em>(none)</em></td></tr>
-<tr><td><code>DISABLE_SECRET_DECODE</code></td><td>Prevent secret value decoding</td><td><code>false</code></td></tr>
+<tr><td><code>ENABLE_SECRET_DECODE</code></td><td>Let tools return Secret values (redacted otherwise)</td><td><code>false</code></td></tr>
 <tr><td><code>LOG_FORMAT</code></td><td>Log output format (<code>text</code> or <code>json</code>)</td><td><code>text</code></td></tr>
 <tr><td><code>KUBECONFIG</code></td><td>Path to kubeconfig file</td><td><em>(auto-detected)</em></td></tr>
 <tr><td><code>RUST_LOG</code></td><td>Console log level filter</td><td><code>info</code></td></tr>
@@ -6381,12 +6381,12 @@ kubectl get events --field-selector involvedObject.name=&lt;pod-name&gt;
 <p><strong>Symptom</strong>: <code>get_secret</code> returns the secret but data values are redacted or missing, even when <code>decode: true</code> is passed.</p>
 <p><strong>Causes</strong>:</p>
 <ul>
-<li><strong><code>--disable-secret-decode</code> is set</strong>: When the server is started with <code>--disable-secret-decode</code> (or <code>DISABLE_SECRET_DECODE=true</code>), the <code>decode: true</code> parameter is ignored and secret values are never returned. This is a safety feature for production deployments.</li>
-<li><strong><code>decode: true</code> not passed</strong>: By default, <code>get_secret</code> returns metadata and keys but redacts the values. You must explicitly pass <code>"decode": true</code> in the tool arguments to see decoded values.</li>
+<li><strong>Secret decoding isn’t enabled</strong> (the default since v0.7.0): the server needs <code>--enable-secret-decode</code> (<code>ENABLE_SECRET_DECODE=true</code>). Without it <code>get_secret</code> refuses <code>decode: true</code>, and <code>get_resource_json</code> shows Secret values as <code>&lt;redacted: …&gt;</code>. <code>--disable-secret-decode</code> also keeps it off.</li>
+<li><strong><code>decode: true</code> not passed</strong>: <code>get_secret</code> returns metadata and keys unless you pass <code>"decode": true</code>.</li>
 </ul>
 <p><strong>Fix</strong>: If you need to see secret values, ensure:</p>
 <ol>
-<li>The server was <strong>not</strong> started with <code>--disable-secret-decode</code>.</li>
+<li>The server was started with <code>--enable-secret-decode</code> (and not <code>--disable-secret-decode</code>).</li>
 <li>The tool call includes <code>"decode": true</code>:
 <pre><code class="language-json">{
   "name": "get_secret",

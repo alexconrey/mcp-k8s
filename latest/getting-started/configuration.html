@@ -36,7 +36,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-41aa9c8b.js";
+            window.path_to_searchindex_js = "../searchindex-b6dd1424.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-5b34cd39.js"></script>
@@ -417,7 +417,8 @@ mcp-k8s --http \
 <tr><th>Flag</th><th>Env Var</th><th>Default</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>--disable-secret-decode</code></td><td><code>DISABLE_SECRET_DECODE</code></td><td><code>false</code></td><td>When set, the <code>get_secret</code> tool never returns decoded secret values, even if the caller passes <code>decode: true</code>. Use this in environments where secret values must not be exposed to MCP clients.</td></tr>
+<tr><td><code>--enable-secret-decode</code></td><td><code>ENABLE_SECRET_DECODE</code></td><td><code>false</code></td><td>Let tools return Secret values: <code>get_secret</code> with <code>decode: true</code>, and Secret <code>data</code> in <code>get_resource_json</code> and <code>k8s://…/secrets/…</code> resources. Without it, values are redacted on every path (only keys are shown, and the <code>kubectl.kubernetes.io/last-applied-configuration</code> annotation, which holds the applied manifest, is redacted too), and <code>get_secret</code> refuses <code>decode: true</code>.</td></tr>
+<tr><td><code>--disable-secret-decode</code></td><td><code>DISABLE_SECRET_DECODE</code></td><td><code>false</code></td><td>Deprecated: decoding is off by default. Still honoured, and wins over <code>--enable-secret-decode</code>.</td></tr>
 </tbody>
 </table>
 </div>
@@ -511,12 +512,11 @@ CACHE_TTL=60 mcp-k8s
   --allowed-hosts mcp.example.com \
   --tls-cert /etc/certs/tls.crt \
   --tls-key /etc/certs/tls.key \
-  --disable-secret-decode \
   --log-format json \
   --cache-ttl 30 \
   --contexts staging,production
 </code></pre>
-<p>This starts mcp-k8s as an HTTPS server on port 9090 with bearer token authentication (read from a file), answering only to <code>mcp.example.com</code>, restricted to the <code>default</code> and <code>production</code> namespaces, with all delete operations disabled globally (<code>apply_manifest</code> stays off, its default), deployment/secret creation disabled individually, secret decoding disabled, structured JSON logging enabled, a 30-second response cache, and two cluster contexts loaded (<code>staging</code> active by default).</p>
+<p>This starts mcp-k8s as an HTTPS server on port 9090 with bearer token authentication (read from a file), answering only to <code>mcp.example.com</code>, restricted to the <code>default</code> and <code>production</code> namespaces, with all delete operations disabled globally (<code>apply_manifest</code> stays off, its default), deployment/secret creation disabled individually, secret decoding off (the default), structured JSON logging enabled, a 30-second response cache, and two cluster contexts loaded (<code>staging</code> active by default).</p>
 
                     </main>
 

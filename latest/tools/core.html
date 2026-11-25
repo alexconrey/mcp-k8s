@@ -36,7 +36,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-41aa9c8b.js";
+            window.path_to_searchindex_js = "../searchindex-b6dd1424.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-5b34cd39.js"></script>
@@ -683,7 +683,7 @@
 <hr>
 <h2 id="secrets"><a class="header" href="#secrets">Secrets</a></h2>
 <blockquote>
-<p><strong>Note:</strong> Secret values are never returned by default. The <code>list_secrets</code> tool only returns metadata and key counts. The <code>get_secret</code> tool returns key names by default; pass <code>decode: true</code> to include decoded values.</p>
+<p><strong>Note:</strong> Secret values are never returned unless the server operator enables secret decoding (<code>--enable-secret-decode</code>). The <code>list_secrets</code> tool only returns metadata and key counts. The <code>get_secret</code> tool returns key names; with decoding enabled, pass <code>decode: true</code> to include decoded values (without it, <code>decode: true</code> is refused). The <code>kubectl.kubernetes.io/last-applied-configuration</code> annotation, which contains the applied manifest, is redacted unless values may be shown. <code>get_resource_json</code> redacts Secret values the same way.</p>
 </blockquote>
 <h3 id="list_secrets"><a class="header" href="#list_secrets">list_secrets</a></h3>
 <p>List secrets in a namespace. Returns name, namespace, type, data key count, and created_at. Secret values are never returned.</p>
@@ -709,7 +709,7 @@
 <tbody>
 <tr><td><code>namespace</code></td><td>string</td><td>Yes</td><td>Kubernetes namespace</td></tr>
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Secret name</td></tr>
-<tr><td><code>decode</code></td><td>boolean</td><td>No</td><td>If true, include decoded secret values. Defaults to false.</td></tr>
+<tr><td><code>decode</code></td><td>boolean</td><td>No</td><td>If true, include decoded secret values. Defaults to false. Refused unless the operator enabled <code>--enable-secret-decode</code>.</td></tr>
 </tbody>
 </table>
 </div>
