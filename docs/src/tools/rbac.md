@@ -59,7 +59,7 @@ The RBAC write tools reject privilege escalation primitives unless the operator 
 - **ClusterRoles:** `aggregationRule`, and the `rbac.authorization.k8s.io/aggregate-to-*` labels, which push a role's rules into the built-in admin/edit/view roles.
 - **Bindings:** binding `cluster-admin`; binding `system:anonymous` or `system:unauthenticated`; and binding a role whose rules contain any of the above. The bound role is fetched and checked, so the built-in `edit` and `admin` roles, which can impersonate service accounts, count.
 
-Rules accept `resource_names`; ClusterRole rules also accept `non_resource_urls`. RBAC objects in `apply_manifest` manifests are rejected unless listed in `--allow-manifest-kinds`, and then get the same rules.
+Rules accept `resource_names`; ClusterRole rules also accept `non_resource_urls`. `apply_manifest`, if the operator enables it, applies RBAC objects without these rules.
 
 ## Roles
 

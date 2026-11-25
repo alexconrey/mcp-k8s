@@ -438,44 +438,59 @@ async fn k3s_guardrails() {
     ok(&client, "create_namespace", json!({ "name": ns })).await;
     wait_for_default_sa(&client, ns).await;
 
-    // Typed tool and apply_manifest reject the same privileged pod.
+    // The typed tool refuses a privileged pod.
     let err = call(&client, "create_pod", json!({ "namespace": ns, "name": "evil", "image": BUSYBOX, "security_context": { "privileged": true } }))
         .await
         .unwrap_err();
     assert!(err.contains("--allow-privileged"), "{err}");
-    let manifest = json!({
-        "apiVersion": "v1", "kind": "Pod", "metadata": { "name": "evil", "namespace": ns },
-        "spec": { "hostPID": true, "containers": [{ "name": "c", "image": BUSYBOX, "securityContext": { "privileged": true } }], "volumes": [{ "name": "root", "hostPath": { "path": "/" } }] }
-    });
-    let err = call(
-        &client,
-        "apply_manifest",
-        json!({ "manifest": manifest.to_string() }),
-    )
-    .await
-    .unwrap_err();
-    for flag in [
-        "--allow-privileged",
-        "--allow-host-namespaces",
-        "--allow-host-path",
-    ] {
-        assert!(err.contains(flag), "{flag}: {err}");
-    }
 
-    // A clean manifest still applies (discovery, existence check, SSA).
+    // apply_manifest is off by default...
     let cm = json!({ "apiVersion": "v1", "kind": "ConfigMap", "metadata": { "name": "applied", "namespace": ns }, "data": { "a": "1" } });
-    ok(
+    let err = call(
         &client,
         "apply_manifest",
         json!({ "manifest": cm.to_string() }),
     )
+    .await
+    .unwrap_err();
+    assert!(err.contains("--enable-apply-manifest"), "{err}");
+
+    // ... and when the operator enables it, it's a raw server-side apply that
+    // skips the workload policy.
+    let raw = K8sClient::new(
+        kube_client.clone(),
+        vec![],
+        ActionPermissions::default().with_apply_manifest(true),
+    );
+    let privileged = json!({
+        "apiVersion": "v1", "kind": "Pod", "metadata": { "name": "privileged", "namespace": ns },
+        "spec": { "containers": [{ "name": "c", "image": BUSYBOX, "command": ["sleep", "3600"], "securityContext": { "privileged": true } }] }
+    });
+    ok(
+        &raw,
+        "apply_manifest",
+        json!({ "manifest": privileged.to_string() }),
+    )
     .await;
-    let raw = get_json(&client, "v1", "ConfigMap", ns, "applied").await;
+    let pod = get_json(&client, "v1", "Pod", ns, "privileged").await;
     assert_eq!(
-        raw["metadata"]["labels"]["app.kubernetes.io/managed-by"],
+        pod["spec"]["containers"][0]["securityContext"]["privileged"],
+        true
+    );
+
+    // A clean manifest applies too (discovery, existence check, SSA).
+    ok(
+        &raw,
+        "apply_manifest",
+        json!({ "manifest": cm.to_string() }),
+    )
+    .await;
+    let applied = get_json(&client, "v1", "ConfigMap", ns, "applied").await;
+    assert_eq!(
+        applied["metadata"]["labels"]["app.kubernetes.io/managed-by"],
         "mcp-k8s"
     );
-    // ... but can't update it when updates are disabled.
+    // The operator's switches still hold: no update when updates are disabled.
     let no_update = K8sClient::new(
         kube_client.clone(),
         vec![],
@@ -490,23 +505,19 @@ async fn k3s_guardrails() {
     .unwrap_err();
     assert!(err.contains("would update the existing ConfigMap"), "{err}");
 
-    // RBAC and cluster-scoped kinds from raw manifests.
+    // Raw manifests aren't limited to namespaced kinds or by the RBAC rules:
+    // a ClusterRoleBinding to cluster-admin applies as given.
     let crb = json!({
-        "apiVersion": "rbac.authorization.k8s.io/v1", "kind": "ClusterRoleBinding", "metadata": { "name": "pwn" },
+        "apiVersion": "rbac.authorization.k8s.io/v1", "kind": "ClusterRoleBinding", "metadata": { "name": "raw-admins" },
         "roleRef": { "apiGroup": "rbac.authorization.k8s.io", "kind": "ClusterRole", "name": "cluster-admin" },
-        "subjects": [{ "kind": "ServiceAccount", "name": "default", "namespace": ns }]
+        "subjects": [{ "kind": "Group", "name": "platform-admins", "apiGroup": "rbac.authorization.k8s.io" }]
     });
-    let err = call(
-        &client,
+    ok(
+        &raw,
         "apply_manifest",
         json!({ "manifest": crb.to_string() }),
     )
-    .await
-    .unwrap_err();
-    assert!(
-        err.contains("--allow-manifest-kinds") && err.contains("cluster-admin"),
-        "{err}"
-    );
+    .await;
 
     // Typed RBAC tools: the bound role's rules count. edit can impersonate
     // service accounts; view can't.
@@ -528,13 +539,6 @@ async fn k3s_guardrails() {
     );
     let chart = json!({ "metadata": { "name": "x" }, "spec": { "chart": "nginx", "repo": "https://charts.example.com" } });
     let err = call(&client, "create_custom_resource", json!({ "group": "helm.cattle.io", "version": "v1", "kind": "HelmChart", "namespace": ns, "manifest": chart }))
-        .await
-        .unwrap_err();
-    assert!(
-        err.contains("--allow-custom-resource-groups helm.cattle.io"),
-        "{err}"
-    );
-    let err = call(&client, "apply_manifest", json!({ "manifest": json!({ "apiVersion": "helm.cattle.io/v1", "kind": "HelmChart", "metadata": { "name": "x", "namespace": ns }, "spec": { "chart": "nginx" } }).to_string() }))
         .await
         .unwrap_err();
     assert!(

@@ -18,8 +18,13 @@ permissions:
   disableDelete: false
   # List of "resource-action" strings to disable (e.g. ["pods-delete", "secrets-create"])
   disableActions: []
-  # Remove the apply_manifest tool (it enforces the same guardrails as the
-  # typed tools either way).
+  # Enable apply_manifest (off by default): an unrestricted raw server-side
+  # apply that skips the workload guardrails (the namespace allowlist and the
+  # disable switches still apply). Only for users who know exactly what
+  # they're applying; MCP clients ask the user before each call.
+  enableApplyManifest: false
+  # Deprecated: apply_manifest is off by default. Still honoured, and wins
+  # over enableApplyManifest.
   disableApplyManifest: false
 
 # Extra environment variables for the mcp-k8s container, e.g. to relax a

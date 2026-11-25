@@ -411,7 +411,7 @@ fn registry_allowlist() {
 }
 
 // ---------------------------------------------------------------------------
-// Every pod-bearing kind gets the same rules (apply_manifest parity)
+// Every pod-bearing kind gets the same rules
 // ---------------------------------------------------------------------------
 
 fn privileged_spec() -> Value {

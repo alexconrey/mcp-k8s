@@ -2,10 +2,14 @@
 //! Kubernetes API server (`tower_test::mock`).
 //!
 //! The rejection tests check that a request breaking the workload policy is
-//! refused *before* anything reaches the API server, for the typed tools and
-//! for `apply_manifest` alike (parity). The acceptance tests check the request
-//! bodies the typed tools send, the old minimal arguments, and the dry-run
-//! sequence update tools use.
+//! refused *before* anything reaches the API server. The acceptance tests
+//! check the request bodies the typed tools send, the old minimal arguments,
+//! and the dry-run sequence update tools use.
+//!
+//! `apply_manifest` is deliberately different: it's off by default, and when
+//! an operator enables it it's a raw server-side apply that skips the workload
+//! policy (keeping only the namespace allowlist and the create/update
+//! switches). Its tests check both halves.
 
 use std::pin::pin;
 
@@ -30,6 +34,11 @@ fn client_with(perms: ActionPermissions, namespaces: &[&str]) -> (K8sClient, Han
 
 fn strict_client() -> (K8sClient, Handle) {
     client_with(ActionPermissions::default(), &[])
+}
+
+/// The restrictive defaults, with apply_manifest enabled by the operator.
+fn raw_apply_client() -> (K8sClient, Handle) {
+    client_with(ActionPermissions::default().with_apply_manifest(true), &[])
 }
 
 fn client_with_policy(policy: WorkloadPolicy) -> (K8sClient, Handle) {
@@ -120,167 +129,113 @@ fn privileged_template() -> Value {
 }
 
 // ---------------------------------------------------------------------------
-// apply_manifest parity: rejected before any API call
+// apply_manifest: off by default; raw (no workload policy) when enabled
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn apply_manifest_rejects_a_privileged_pod() {
+async fn apply_manifest_is_disabled_by_default() {
     let (client, handle) = strict_client();
+    let manifest = json!({ "apiVersion": "v1", "kind": "ConfigMap", "metadata": { "name": "c", "namespace": "default" } });
+    let err = rejected_offline(
+        client,
+        handle,
+        "apply_manifest",
+        json!({ "manifest": manifest.to_string() }),
+    )
+    .await;
+    assert!(err.contains("apply_manifest is disabled"), "{err}");
+    assert!(err.contains("--enable-apply-manifest"), "{err}");
+}
+
+fn core_v1_discovery() -> (u16, Value) {
+    (
+        200,
+        json!({
+            "kind": "APIResourceList", "apiVersion": "v1", "groupVersion": "v1",
+            "resources": [{ "name": "pods", "singularName": "pod", "namespaced": true, "kind": "Pod", "verbs": ["create", "delete", "get", "list", "patch", "update", "watch"] }]
+        }),
+    )
+}
+
+fn rbac_v1_discovery() -> (u16, Value) {
+    (
+        200,
+        json!({
+            "kind": "APIResourceList", "apiVersion": "v1", "groupVersion": "rbac.authorization.k8s.io/v1",
+            "resources": [{ "name": "clusterrolebindings", "singularName": "clusterrolebinding", "namespaced": false, "kind": "ClusterRoleBinding", "verbs": ["create", "delete", "get", "list", "patch", "update", "watch"] }]
+        }),
+    )
+}
+
+#[tokio::test]
+async fn enabled_apply_manifest_skips_the_workload_policy() {
+    // The same privileged, hostPath, hostPID pod create_pod refuses goes
+    // straight to discovery, the existence check and the apply.
+    let (client, handle) = raw_apply_client();
     let manifest = json!({
         "apiVersion": "v1", "kind": "Pod", "metadata": { "name": "p", "namespace": "default" },
-        "spec": { "containers": [{ "name": "c", "image": "busybox", "securityContext": { "privileged": true } }] }
-    });
-    let err = rejected_offline(
-        client,
-        handle,
-        "apply_manifest",
-        json!({ "manifest": manifest.to_string() }),
-    )
-    .await;
-    assert!(err.contains("--allow-privileged"), "{err}");
-    assert!(
-        err.contains("spec.containers[0] (c).securityContext"),
-        "{err}"
-    );
-}
-
-#[tokio::test]
-async fn apply_manifest_rejects_a_privileged_deployment_template() {
-    let (client, handle) = strict_client();
-    let manifest = json!({
-        "apiVersion": "apps/v1", "kind": "Deployment", "metadata": { "name": "web", "namespace": "default" },
-        "spec": { "selector": { "matchLabels": { "app": "web" } }, "template": privileged_template() }
-    });
-    let err = rejected_offline(
-        client,
-        handle,
-        "apply_manifest",
-        json!({ "manifest": manifest.to_string() }),
-    )
-    .await;
-    assert!(
-        err.contains("--allow-privileged") && err.contains("spec.template.spec.containers[0]"),
-        "{err}"
-    );
-}
-
-#[tokio::test]
-async fn apply_manifest_rejects_host_path_in_every_workload_kind() {
-    let template = json!({
-        "metadata": { "labels": { "app": "x" } },
-        "spec": { "containers": [{ "name": "x", "image": "busybox" }], "volumes": [{ "name": "root", "hostPath": { "path": "/" } }] }
-    });
-    for (api_version, kind, spec) in [
-        (
-            "apps/v1",
-            "DaemonSet",
-            json!({ "selector": { "matchLabels": { "app": "x" } }, "template": template }),
-        ),
-        (
-            "apps/v1",
-            "StatefulSet",
-            json!({ "serviceName": "x", "selector": { "matchLabels": { "app": "x" } }, "template": template }),
-        ),
-        (
-            "apps/v1",
-            "ReplicaSet",
-            json!({ "selector": { "matchLabels": { "app": "x" } }, "template": template }),
-        ),
-        ("batch/v1", "Job", json!({ "template": template })),
-        (
-            "batch/v1",
-            "CronJob",
-            json!({ "schedule": "@daily", "jobTemplate": { "spec": { "template": template } } }),
-        ),
-    ] {
-        let (client, handle) = strict_client();
-        let manifest = json!({ "apiVersion": api_version, "kind": kind, "metadata": { "name": "x", "namespace": "default" }, "spec": spec });
-        let err = rejected_offline(
-            client,
-            handle,
-            "apply_manifest",
-            json!({ "manifest": manifest.to_string() }),
-        )
-        .await;
-        assert!(err.contains("--allow-host-path"), "{kind}: {err}");
-    }
-}
-
-#[tokio::test]
-async fn apply_manifest_rejects_snippet_annotations() {
-    let (client, handle) = strict_client();
-    let manifest = json!({
-        "apiVersion": "networking.k8s.io/v1", "kind": "Ingress",
-        "metadata": { "name": "i", "namespace": "default", "annotations": { "nginx.ingress.kubernetes.io/server-snippet": "location /x { return 200; }" } },
-        "spec": { "rules": [{ "http": { "paths": [{ "path": "/", "pathType": "Prefix", "backend": { "service": { "name": "s", "port": { "number": 80 } } } }] } }] }
-    });
-    let err = rejected_offline(
-        client,
-        handle,
-        "apply_manifest",
-        json!({ "manifest": manifest.to_string() }),
-    )
-    .await;
-    assert!(err.contains("--allow-ingress-snippets"), "{err}");
-}
-
-#[tokio::test]
-async fn apply_manifest_rejects_rbac_and_cluster_scoped_kinds() {
-    for (api_version, kind, namespaced) in [
-        ("rbac.authorization.k8s.io/v1", "ClusterRole", false),
-        ("rbac.authorization.k8s.io/v1", "ClusterRoleBinding", false),
-        ("rbac.authorization.k8s.io/v1", "Role", true),
-        ("rbac.authorization.k8s.io/v1", "RoleBinding", true),
-        (
-            "admissionregistration.k8s.io/v1",
-            "MutatingWebhookConfiguration",
-            false,
-        ),
-        ("apiextensions.k8s.io/v1", "CustomResourceDefinition", false),
-        ("v1", "Namespace", false),
-        ("v1", "Endpoints", true),
-    ] {
-        let (client, handle) = strict_client();
-        let mut manifest =
-            json!({ "apiVersion": api_version, "kind": kind, "metadata": { "name": "x" } });
-        if namespaced {
-            manifest["metadata"]["namespace"] = json!("default");
+        "spec": {
+            "hostPID": true,
+            "containers": [{ "name": "c", "image": "busybox", "securityContext": { "privileged": true } }],
+            "volumes": [{ "name": "root", "hostPath": { "path": "/" } }]
         }
-        let err = rejected_offline(
-            client,
-            handle,
-            "apply_manifest",
-            json!({ "manifest": manifest.to_string() }),
-        )
-        .await;
-        assert!(err.contains("--allow-manifest-kinds"), "{kind}: {err}");
-    }
-}
-
-#[tokio::test]
-async fn apply_manifest_rejects_custom_resources_unless_their_group_is_allowlisted() {
-    let (client, handle) = strict_client();
-    let manifest = json!({
-        "apiVersion": "helm.cattle.io/v1", "kind": "HelmChart",
-        "metadata": { "name": "x", "namespace": "kube-system" },
-        "spec": { "chart": "anything", "repo": "https://example.com" }
     });
-    let err = rejected_offline(
-        client,
+    let server = serve(
         handle,
+        vec![core_v1_discovery(), not_found(), (200, manifest.clone())],
+    );
+    handle_tool(
+        &client,
         "apply_manifest",
-        json!({ "manifest": manifest.to_string() }),
+        &json!({ "manifest": manifest.to_string() }),
     )
-    .await;
-    assert!(
-        err.contains("--allow-custom-resource-groups helm.cattle.io"),
-        "{err}"
+    .await
+    .unwrap()
+    .unwrap();
+    let seen = finish(client, server).await;
+    assert_eq!(seen[2].method, http::Method::PATCH);
+    assert_eq!(
+        seen[2].body["spec"]["containers"][0]["securityContext"]["privileged"],
+        true
     );
 }
 
 #[tokio::test]
-async fn apply_manifest_enforces_the_namespace_allowlist() {
-    let (client, handle) = client_with(ActionPermissions::default(), &["team-a"]);
+async fn enabled_apply_manifest_writes_cluster_scoped_rbac() {
+    // No kind gate and no bound-role lookup: a ClusterRoleBinding to
+    // cluster-admin is applied as given. (`serve` fails the test on any extra
+    // request, such as a GET of the bound role.)
+    let (client, handle) = raw_apply_client();
+    let crb = json!({
+        "apiVersion": "rbac.authorization.k8s.io/v1", "kind": "ClusterRoleBinding", "metadata": { "name": "admins" },
+        "roleRef": { "apiGroup": "rbac.authorization.k8s.io", "kind": "ClusterRole", "name": "cluster-admin" },
+        "subjects": [{ "kind": "Group", "name": "platform-admins", "apiGroup": "rbac.authorization.k8s.io" }]
+    });
+    let server = serve(
+        handle,
+        vec![rbac_v1_discovery(), not_found(), (200, crb.clone())],
+    );
+    handle_tool(
+        &client,
+        "apply_manifest",
+        &json!({ "manifest": crb.to_string() }),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    let seen = finish(client, server).await;
+    assert_eq!(
+        seen[2].path,
+        "/apis/rbac.authorization.k8s.io/v1/clusterrolebindings/admins"
+    );
+}
+
+#[tokio::test]
+async fn enabled_apply_manifest_still_enforces_the_namespace_allowlist() {
+    let (client, handle) = client_with(
+        ActionPermissions::default().with_apply_manifest(true),
+        &["team-a"],
+    );
     let manifest = json!({ "apiVersion": "v1", "kind": "ConfigMap", "metadata": { "name": "c", "namespace": "kube-system" } });
     let err = rejected_offline(
         client,
@@ -293,7 +248,7 @@ async fn apply_manifest_enforces_the_namespace_allowlist() {
 }
 
 // ---------------------------------------------------------------------------
-// apply_manifest: allowed path, permission parity, managed-by label
+// apply_manifest (enabled): allowed path, create/update switches, managed-by label
 // ---------------------------------------------------------------------------
 
 fn apps_v1_discovery() -> (u16, Value) {
@@ -319,7 +274,7 @@ fn clean_deployment(rv: &str) -> Value {
 
 #[tokio::test]
 async fn apply_manifest_applies_a_clean_deployment_with_the_managed_by_label() {
-    let (client, handle) = strict_client();
+    let (client, handle) = raw_apply_client();
     let manifest = clean_deployment("1");
     let server = serve(
         handle,
@@ -441,7 +396,7 @@ async fn create_pod_rejects_privileged_and_host_settings() {
 }
 
 #[tokio::test]
-async fn create_deployment_rejects_what_apply_manifest_rejects() {
+async fn create_deployment_rejects_a_privileged_container() {
     let (client, handle) = strict_client();
     let err = rejected_offline(
         client,

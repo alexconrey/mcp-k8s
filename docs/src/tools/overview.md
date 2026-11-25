@@ -277,7 +277,7 @@ See [Cluster Resources](./cluster.md) for full parameter details.
 
 | Tool | Action | Description |
 |------|--------|-------------|
-| `apply_manifest` | Create | Last resort: apply a JSON manifest via server-side apply, with the same guardrails as the typed tools (prefer the typed tools) |
+| `apply_manifest` | Create | Raw server-side apply of a JSON manifest, without the workload guardrails. Off unless `--enable-apply-manifest`; clients confirm each call with the user |
 | `get_resource_json` | Read | Get any resource as JSON via API discovery |
 | `get_resource_yaml` | Read | Deprecated alias for `get_resource_json` (returns JSON) |
 

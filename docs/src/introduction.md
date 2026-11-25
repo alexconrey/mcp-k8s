@@ -20,7 +20,7 @@ mcp-k8s bridges the gap between AI assistants and Kubernetes clusters. It transl
 - **Multi-cluster support** -- Load multiple kubeconfig contexts with `--contexts` and switch between clusters at runtime using `list_clusters`, `switch_cluster`, and `get_active_cluster` tools.
 - **Watch/subscribe** -- `watch_resource` tool watches any resource type for ADDED, MODIFIED, and DELETED events over a configurable time window.
 - **CRD discovery** -- `list_crds`, `get_crd`, `list_custom_resources`, `get_custom_resource`, `create_custom_resource`, `update_custom_resource`, and `delete_custom_resource` tools provide full lifecycle management of any installed CRD via dynamic API discovery.
-- **Generic tools** -- `apply_manifest` (server-side apply, a last resort behind the typed tools) and `get_resource_json` work with any Kubernetes resource type, including CRDs.
+- **Generic tools** -- `apply_manifest` (an unrestricted raw server-side apply, off unless the operator enables it) and `get_resource_json` work with any Kubernetes resource type, including CRDs.
 - **Auth introspection** -- `whoami`, `can_i`, and `list_my_permissions` tools let the AI understand its own access level.
 - **TLS and bearer token auth** -- Optional `--tls-cert`/`--tls-key` for HTTPS and `--auth-token` for bearer token authentication on the HTTP server.
 - **Swagger UI** -- Interactive API documentation at `GET /swagger-ui` with OpenAPI spec at `GET /openapi.json`.

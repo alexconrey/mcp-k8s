@@ -33,7 +33,7 @@ src/
 │   ├── network.rs      # Service rules (NodePort/LoadBalancer/ExternalName/externalIPs) and Ingress rules (snippets, nginx injection)
 │   ├── rbac.rs         # RBAC escalation rules, service-account token Secrets, pod-security namespace labels
 │   ├── manifest.rs     # check_object: kind dispatch, raw-manifest kind gates, custom resource group allowlist + deep scan
-│   ├── admission.rs    # admit_manifest (apply_manifest/custom resources), patch_checked (dry-run updates), check_typed, bound role lookup
+│   ├── admission.rs    # admit_manifest (custom resources: full policy; apply_manifest: scoping only), patch_checked (dry-run updates), check_typed, bound role lookup
 │   └── tests.rs        # One test per rule: rejection and opt-in acceptance
 ├── types.rs            # Core summary/detail structs + re-exports from resource modules
 ├── extract.rs          # K8s API objects → summary/detail extraction functions
@@ -69,7 +69,7 @@ src/
     ├── endpoints.rs     # Endpoints (read-only, legacy)
     ├── endpointslice.rs # EndpointSlice (read-only)
     ├── flowcontrol.rs   # FlowSchema + PriorityLevelConfiguration (read-only)
-    ├── generic.rs       # apply_manifest (server-side apply, last resort, same guardrails via admit_manifest), get_resource_json (+ deprecated get_resource_yaml alias)
+    ├── generic.rs       # apply_manifest (raw server-side apply; off by default, no workload policy, destructiveHint), get_resource_json (+ deprecated get_resource_yaml alias)
     ├── hpa.rs           # HorizontalPodAutoscaler CRUD
     ├── ingress.rs       # Ingress get/create/update/delete (rules, TLS, default backend)
     ├── ingressclass.rs  # IngressClass (read-only, cluster-scoped)
@@ -118,7 +118,8 @@ context at runtime.
 
 **Permissions** (`permissions.rs`): `ActionPermissions` struct with global
 create/update/delete disable flags, per-resource overrides,
-`secret_decode_enabled`, `apply_manifest_enabled`, and the `WorkloadPolicy`
+`secret_decode_enabled`, `apply_manifest_enabled` (off by default;
+`with_apply_manifest(true)`), and the `WorkloadPolicy`
 (`with_workload_policy`, `workload_policy()`). Disabled tools are filtered
 from `tools/list` and rejected in `tools/call`. `exec_pod` counts as an
 update (`pod-update`).
@@ -131,10 +132,12 @@ through it:
 - updates that can change pod templates, Service/Ingress specs or namespace
   labels: `policy::patch_checked` (server-side dry run, check, then write
   with the dry run's `resourceVersion`);
-- raw manifests: `policy::admit_manifest` (static checks, kind gates,
-  discovery, namespace allowlist, create/update permission parity, bound
-  roles).
-A new write tool that skips these is a guardrail bypass. Rejections name the
+- custom resource manifests: `policy::admit_manifest` (static checks, kind
+  gates, discovery, namespace allowlist, bound roles). For `apply_manifest`
+  it runs only discovery, the namespace allowlist and the create/update
+  switches: `apply_manifest` skips the policy by design (see Security
+  posture).
+A new typed write tool that skips these is a guardrail bypass. Rejections name the
 flag that allows them (`policy::flags`); keep CLI flags in `main.rs`, the
 flags table and the docs in sync.
 
@@ -282,7 +285,8 @@ mcp-k8s --http --tls-cert /path/cert.pem --tls-key /path/key.pem
 | `--auth-token` | `AUTH_TOKEN` | (none) | Bearer token for HTTP auth |
 | `--tls-cert` | `TLS_CERT` | (none) | TLS certificate PEM path |
 | `--tls-key` | `TLS_KEY` | (none) | TLS private key PEM path |
-| `--disable-apply-manifest` | `DISABLE_APPLY_MANIFEST` | `false` | Block the `apply_manifest` tool entirely |
+| `--enable-apply-manifest` | `ENABLE_APPLY_MANIFEST` | `false` | Enable `apply_manifest`: unrestricted raw server-side apply, no workload policy (namespace allowlist and disable switches still apply) |
+| `--disable-apply-manifest` | `DISABLE_APPLY_MANIFEST` | `false` | Deprecated (off by default); still wins over `--enable-apply-manifest` |
 | `--allow-privileged` | `MCP_K8S_ALLOW_PRIVILEGED` | `false` | Guardrail opt-in: privileged containers |
 | `--allow-privilege-escalation` | `MCP_K8S_ALLOW_PRIVILEGE_ESCALATION` | `false` | Guardrail opt-in |
 | `--allow-capabilities` | `MCP_K8S_ALLOW_CAPABILITIES` | (none) | Extra capabilities (`ALL` = any) |
@@ -297,7 +301,7 @@ mcp-k8s --http --tls-cert /path/cert.pem --tls-key /path/key.pem
 | `--allow-external-services` | `MCP_K8S_ALLOW_EXTERNAL_SERVICES` | `false` | ExternalName, externalIPs |
 | `--allow-ingress-snippets` | `MCP_K8S_ALLOW_INGRESS_SNIPPETS` | `false` | Snippet annotations, nginx config syntax |
 | `--ingress-annotation-allowlist` / `--ingress-annotation-denylist` | `MCP_K8S_INGRESS_ANNOTATION_ALLOWLIST` / `_DENYLIST` | (none) | Ingress annotation filters |
-| `--allow-manifest-kinds` | `MCP_K8S_ALLOW_MANIFEST_KINDS` | (none) | Kinds apply_manifest may write despite the kind gates |
+| `--allow-manifest-kinds` | `MCP_K8S_ALLOW_MANIFEST_KINDS` | (none) | Cluster-scoped custom resource kinds the custom resource tools may write |
 | `--allow-custom-resource-groups` | `MCP_K8S_ALLOW_CUSTOM_RESOURCE_GROUPS` | (none) | Custom resource groups that may be written |
 | `--allow-rbac-escalation` | `MCP_K8S_ALLOW_RBAC_ESCALATION` | `false` | RBAC escalation primitives, SA token Secrets |
 | `--no-secure-defaults` | `MCP_K8S_NO_SECURE_DEFAULTS` | `false` | Skip the restricted securityContext defaults |
@@ -317,10 +321,17 @@ weaknesses as security issues. The current defaults are permissive:
 - `--listen` defaults to `0.0.0.0:8080`, and `--auth-token` is optional.
   Without a token the HTTP API is unauthenticated.
 - The router uses `CorsLayer::permissive()` and doesn't validate `Origin`.
-- Secret decoding and `apply_manifest` are on by default
-  (`ActionPermissions::default()`, which deckwatch also uses). apply_manifest
-  enforces the same workload guardrails as the typed tools, which are
-  restrictive by default (`WorkloadPolicy::default()`).
+- Secret decoding is on by default (`ActionPermissions::default()`, which
+  deckwatch also uses). The workload guardrails are restrictive by default
+  (`WorkloadPolicy::default()`).
+- `apply_manifest` is **off by default**. Enabled (`--enable-apply-manifest`),
+  it's an unrestricted raw server-side apply that skips the workload policy.
+  That's deliberate, the maintainer's call: it's for users who know exactly
+  what they're applying, and the risk is an agent that's confident while its
+  user isn't. So the controls belong to humans: an operator opt-in, the
+  `destructiveHint` annotation (clients ask the user per call), and
+  agent-facing text that requires the user's explicit request and
+  confirmation.
 - An empty namespace allowlist means every namespace.
 
 Rules:
@@ -342,10 +353,17 @@ Rules:
   manager) doesn't handle.
 - Every namespaced tool must check the namespace allowlist and
   `ActionPermissions`. New tools need tests that prove both.
-- Every write tool must run the workload policy (see Key Components,
-  "Workload policy"). apply_manifest and the custom resource tools must never
-  be a way around a rule a typed tool enforces; add a parity test
+- Every typed write tool and the custom resource tools must run the workload
+  policy (see Key Components, "Workload policy"). The custom resource tools
+  must never be a way around a rule a typed tool enforces; add a test
   (`tests/guardrails.rs`) for each new rule.
+- **Don't add guardrails to `apply_manifest`, and don't turn it on by
+  default.** Keep its description, `SERVER_INSTRUCTIONS` and the policy
+  rejection message telling agents to use it only on the user's explicit
+  request, never as a workaround, and keep its `destructiveHint: true`
+  annotation (tests check all of these). Anything that enumerates "every
+  tool" (telemetry's known-tool list, the canary test, tool counts) must use
+  `ActionPermissions::default().with_apply_manifest(true)`.
 - Don't loosen defaults. Tightening a default is a breaking change: record it
   in `CHANGELOG.md` and ship it in a minor release, coordinated with
   deckwatch.
@@ -389,7 +407,7 @@ mcp-k8s/
 ├── src/                    # Rust source (lib + bin)
 ├── tests/
 │   ├── integration.rs      # Tower-test mock integration tests (8 tests)
-│   ├── guardrails.rs       # Mock-API guardrail/parity tests for typed tools and apply_manifest (30 tests)
+│   ├── guardrails.rs       # Mock-API guardrail tests for the typed tools; apply_manifest off by default / raw when enabled (27 tests)
 │   ├── k3s_integration.rs  # Testcontainers k3s tests (13 tests, #[ignore]; k3s v1.35, MCP_K8S_K3S_TAG overrides)
 │   └── k3s_workloads.rs    # k3s tests for the typed workload tools and guardrails (2 tests, #[ignore])
 ├── docs/                   # mdBook documentation (GitHub Pages)
@@ -449,7 +467,7 @@ CI workflow (build, test, clippy, fmt) runs against them before merge.
 
 ```bash
 cargo build --release       # Build
-cargo test                  # 549 unit + 11 binary (router, telemetry) + 8 integration + 30 guardrail tests
+cargo test                  # 549 unit + 11 binary (router, telemetry) + 8 integration + 27 guardrail tests
 cargo test --no-default-features  # Same tests without `server` (what deckwatch compiles)
 cargo test --test k3s_integration -- --ignored  # k3s integration tests (needs Docker)
 cargo test --test k3s_workloads -- --ignored --test-threads=1  # k3s workload/guardrail tests

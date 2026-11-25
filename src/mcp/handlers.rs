@@ -54,6 +54,14 @@ async fn handle_tool_metered(
         if let Some(rule) = client.permissions().denied_by(name) {
             telemetry::record_denial(&rule);
         }
+        if name == "apply_manifest" && !client.permissions().apply_manifest_enabled {
+            return Some(Err(
+                "apply_manifest is disabled on this server. Use the typed \
+                 create_*/update_* tools. The operator can enable it with \
+                 --enable-apply-manifest, but don't ask for that to get around a rejection."
+                    .to_string(),
+            ));
+        }
         return Some(Err(format!(
             "action '{action}' is not allowed on this tool: {name}"
         )));

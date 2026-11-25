@@ -15,9 +15,9 @@ use super::{flags, Remedy, Violation, WorkloadPolicy};
 pub enum Source {
     /// A typed tool built it from validated arguments. Content rules apply.
     Typed,
-    /// A caller supplied it as a raw manifest (`apply_manifest`, the custom
-    /// resource tools). Content rules apply, plus the kind and custom resource
-    /// group gates.
+    /// A caller supplied it as a raw manifest (the custom resource tools, or a
+    /// library user checking a manifest). Content rules apply, plus the kind
+    /// and custom resource group gates.
     Manifest,
 }
 
@@ -162,8 +162,8 @@ pub fn kind_not_allowed(group: &str, kind: &str, why: &str) -> Violation {
 /// Check a Kubernetes object (its JSON form) against the policy.
 ///
 /// Typed tools call this on the object they built (or, for updates, on the
-/// server's dry-run result); `apply_manifest` and the custom resource tools
-/// call it on the caller's manifest. Returns every violation found; an empty
+/// server's dry-run result); the custom resource tools call it on the
+/// caller's manifest. Returns every violation found; an empty
 /// vector means the object is allowed.
 pub fn check_object(policy: &WorkloadPolicy, object: &Value, source: Source) -> Vec<Violation> {
     let mut out = Vec::new();

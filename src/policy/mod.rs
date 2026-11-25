@@ -1,12 +1,17 @@
 //! Workload guardrail policy.
 //!
-//! Every write path in mcp-k8s runs the same checks: the typed `create_*` and
-//! `update_*` tools (on the object they built, or on the server's dry-run
-//! result for updates), `apply_manifest`, and `create_custom_resource` /
-//! `update_custom_resource`. The checks work on the Kubernetes JSON form of an
-//! object, so a typed tool and a raw manifest that describe the same object get
-//! the same verdict. `apply_manifest` can't be used to get around a rule the
-//! typed tools enforce.
+//! The typed `create_*` and `update_*` tools (on the object they built, or on
+//! the server's dry-run result for updates) and `create_custom_resource` /
+//! `update_custom_resource` run the same checks. The checks work on the
+//! Kubernetes JSON form of an object, so a typed tool and a custom resource
+//! manifest that describe the same thing get the same verdict.
+//!
+//! `apply_manifest` is the exception, on purpose: it's a raw server-side apply
+//! for users who know exactly what they're applying. It's off unless the
+//! operator enables it, it's marked destructive so MCP clients ask the user
+//! before each call, and it skips this policy (it still honours the namespace
+//! allowlist and the create/update switches). Library users can still run
+//! [`check_object`] on a manifest themselves.
 //!
 //! The defaults are restrictive. Each relaxation is an explicit opt-in on
 //! [`WorkloadPolicy`] (library users) or a CLI flag / environment variable
@@ -41,8 +46,8 @@ pub const MANAGED_BY_VALUE: &str = "mcp-k8s";
 /// runtime's default set, host namespaces, `hostPath` volumes and host ports,
 /// risky volume types, unconfined seccomp/AppArmor profiles, NodePort and
 /// LoadBalancer Services, ingress-nginx snippet annotations, RBAC escalation
-/// primitives, and (for `apply_manifest` and the custom resource tools)
-/// RBAC/admission/CRD/cluster-scoped kinds and custom resources.
+/// primitives, and (for the custom resource tools) cluster-scoped kinds and
+/// custom resource groups that aren't allowlisted.
 ///
 /// Relax individual rules by setting fields (the struct is `#[non_exhaustive]`,
 /// so start from `default()`):
@@ -99,7 +104,8 @@ pub struct WorkloadPolicy {
     pub ingress_annotation_allowlist: Vec<String>,
     /// Ingress annotation keys that are always rejected (same pattern syntax).
     pub ingress_annotation_denylist: Vec<String>,
-    /// Kinds `apply_manifest` and the custom resource tools may write although
+    /// Kinds the custom resource tools (and [`check_object`] with
+    /// [`Source::Manifest`]) may write although
     /// they are rejected by default (RBAC, admission webhooks and policies,
     /// CRDs, APIServices, Endpoints/EndpointSlices, ControllerRevisions, and
     /// every cluster-scoped kind). Entries are `Kind` or `group/Kind`
@@ -216,7 +222,7 @@ impl WorkloadPolicy {
         })
     }
 
-    /// Whether `apply_manifest` / the custom resource tools may write `kind`
+    /// Whether the custom resource tools may write `kind`
     /// in API group `group` despite the kind being rejected by default.
     pub fn manifest_kind_allowed(&self, group: &str, kind: &str) -> bool {
         self.allowed_manifest_kinds.iter().any(|entry| {
@@ -515,7 +521,7 @@ impl fmt::Display for PolicyError {
         }
         write!(
             f,
-            "These guardrails apply to every tool, including apply_manifest and the custom resource tools."
+            "These guardrails apply to every typed tool and the custom resource tools. Don't work around a rejection with another tool (including apply_manifest): report it to the user."
         )
     }
 }

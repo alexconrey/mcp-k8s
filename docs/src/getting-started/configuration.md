@@ -70,7 +70,8 @@ mcp-k8s provides global and per-resource flags to restrict which CRUD actions ar
 | `--disable-create` | `DISABLE_CREATE` | `false` | Globally disable all create tools. When set, tools like `create_deployment`, `create_pod`, `create_service`, and `apply_manifest` are removed from the tool list. |
 | `--disable-update` | `DISABLE_UPDATE` | `false` | Globally disable all update tools. When set, tools like `update_deployment`, `scale_deployment`, `restart_deployment`, `cordon_node`, and `drain_node` are removed. |
 | `--disable-delete` | `DISABLE_DELETE` | `false` | Globally disable all delete tools. When set, tools like `delete_deployment`, `delete_pod`, and `evict_pod` are removed. |
-| `--disable-apply-manifest` | `DISABLE_APPLY_MANIFEST` | `false` | Completely disable the `apply_manifest` tool. Unlike `--disable-create`, this is a dedicated kill-switch for `apply_manifest`. apply_manifest already enforces the same guardrails and per-resource create/update switches as the typed tools; disable it to restrict agents to the typed tools. See [Permissions](../permissions.md#apply_manifest) for details. |
+| `--enable-apply-manifest` | `ENABLE_APPLY_MANIFEST` | `false` | Enable the `apply_manifest` tool. It's an **unrestricted** raw server-side apply that skips the workload guardrails below (the namespace allowlist and the create/update switches still apply), for users who know exactly what they're applying. It's marked destructive, so MCP clients ask the user before each call. See [Permissions](../permissions.md#apply_manifest). |
+| `--disable-apply-manifest` | `DISABLE_APPLY_MANIFEST` | `false` | Deprecated: apply_manifest is off by default. Still honoured, and wins over `--enable-apply-manifest`. |
 
 ### Per-Resource Flags
 
@@ -94,7 +95,7 @@ See the [Permissions](../permissions.md) page for full details on the permission
 
 ## Workload Guardrails
 
-Every write tool, including `apply_manifest` and the custom resource tools, enforces a workload policy. The defaults are restrictive; each flag relaxes one rule. Errors name the flag that would allow the rejected setting. See [Permissions: Workload Guardrails](../permissions.md#workload-guardrails) for the full rules.
+Every typed write tool and the custom resource tools enforce a workload policy (`apply_manifest`, when enabled, doesn't). The defaults are restrictive; each flag relaxes one rule. Errors name the flag that would allow the rejected setting. See [Permissions: Workload Guardrails](../permissions.md#workload-guardrails) for the full rules.
 
 | Flag | Env Var | Default | Allows |
 |------|---------|---------|--------|
@@ -113,7 +114,7 @@ Every write tool, including `apply_manifest` and the custom resource tools, enfo
 | `--allow-ingress-snippets` | `MCP_K8S_ALLOW_INGRESS_SNIPPETS` | `false` | `*-snippet` annotations and nginx config syntax in ingress-nginx annotation values |
 | `--ingress-annotation-allowlist` | `MCP_K8S_INGRESS_ANNOTATION_ALLOWLIST` | *(none)* | When set, only these Ingress annotation keys (trailing `*` = prefix) |
 | `--ingress-annotation-denylist` | `MCP_K8S_INGRESS_ANNOTATION_DENYLIST` | *(none)* | Ingress annotation keys that are always rejected |
-| `--allow-manifest-kinds` | `MCP_K8S_ALLOW_MANIFEST_KINDS` | *(none)* | Kinds `apply_manifest` and the custom resource tools may write although rejected by default (RBAC, webhooks, CRDs, Endpoints, cluster-scoped kinds); `Kind` or `group/Kind`, `*` for all |
+| `--allow-manifest-kinds` | `MCP_K8S_ALLOW_MANIFEST_KINDS` | *(none)* | Cluster-scoped custom resource kinds the custom resource tools may write; `Kind` or `group/Kind`, `*` for all |
 | `--allow-custom-resource-groups` | `MCP_K8S_ALLOW_CUSTOM_RESOURCE_GROUPS` | *(none)* | Custom resource API groups that may be written (`*` for any) |
 | `--allow-rbac-escalation` | `MCP_K8S_ALLOW_RBAC_ESCALATION` | `false` | escalate/bind/impersonate verbs, wildcards, aggregation, binding cluster-admin or anonymous subjects, service-account token Secrets |
 | `--no-secure-defaults` | `MCP_K8S_NO_SECURE_DEFAULTS` | `false` | Don't fill in the restricted securityContext and `automountServiceAccountToken: false` defaults |
@@ -257,7 +258,6 @@ mcp-k8s \
   --listen 0.0.0.0:9090 \
   --namespaces default,production \
   --disable-delete \
-  --disable-apply-manifest \
   --disable deployment-create,secret-create \
   --auth-token my-secret-token \
   --tls-cert /etc/certs/tls.crt \
@@ -268,4 +268,4 @@ mcp-k8s \
   --contexts staging,production
 ```
 
-This starts mcp-k8s as an HTTPS server on port 9090 with bearer token authentication, restricted to the `default` and `production` namespaces, with all delete operations disabled globally, `apply_manifest` blocked entirely, deployment/secret creation disabled individually, secret decoding disabled, structured JSON logging enabled, a 30-second response cache, and two cluster contexts loaded (`staging` active by default).
+This starts mcp-k8s as an HTTPS server on port 9090 with bearer token authentication, restricted to the `default` and `production` namespaces, with all delete operations disabled globally (`apply_manifest` stays off, its default), deployment/secret creation disabled individually, secret decoding disabled, structured JSON logging enabled, a 30-second response cache, and two cluster contexts loaded (`staging` active by default).

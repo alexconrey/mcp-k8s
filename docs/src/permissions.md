@@ -113,18 +113,18 @@ mcp-k8s --disable \
 
 ## Workload Guardrails
 
-The permission switches above decide **which tools** run. The workload policy decides **what those tools may create**. Every write path enforces it, with the same code:
+The permission switches above decide **which tools** run. The workload policy decides **what those tools may create**. The typed tools and the custom resource tools enforce it, with the same code:
 
 - the typed `create_*` tools check the object they built;
 - the typed `update_*` tools check the server's dry-run result of the patch;
-- `apply_manifest`, `create_custom_resource` and `update_custom_resource` check the raw manifest (or, for updates, the dry-run result).
+- `create_custom_resource` and `update_custom_resource` check the raw manifest (or, for updates, the dry-run result).
 
-So `apply_manifest` can't be used to get around a rule the typed tools enforce. The defaults are restrictive. Each relaxation is an explicit opt-in, and every rejection names the flag that allows it, for example:
+`apply_manifest` is the one exception, on purpose: it's off by default, and when an operator enables it it's an unrestricted raw apply (see [`apply_manifest`](#apply_manifest)). The defaults are restrictive. Each relaxation is an explicit opt-in, and every rejection names the flag that allows it, for example:
 
 ```text
 rejected by the mcp-k8s workload policy (1 violation):
 - spec.template.spec.containers[0] (agent).securityContext: privileged: true gives the container full access to the node; an operator can allow this with --allow-privileged (env MCP_K8S_ALLOW_PRIVILEGED=true; library: WorkloadPolicy.allow_privileged)
-These guardrails apply to every tool, including apply_manifest and the custom resource tools.
+These guardrails apply to every typed tool and the custom resource tools. Don't work around a rejection with another tool (including apply_manifest): report it to the user.
 ```
 
 ### Rules and flags
@@ -146,10 +146,10 @@ These guardrails apply to every tool, including apply_manifest and the custom re
 | `*-snippet(s)` annotations (any controller); characters and words that inject nginx config (`;`, `{`, `}`, quotes, `\`, newlines, `_by_lua`, `load_module`, …) in ingress-nginx annotation values; `auth-url`/`auth-signin`/`mirror-target`/redirect values that aren't plain http(s) URLs; paths with injection characters (the IngressNightmare class: CVE-2025-1097, CVE-2025-1098, CVE-2025-24514) | Ingresses | `--allow-ingress-snippets` / `MCP_K8S_ALLOW_INGRESS_SNIPPETS` | `allow_ingress_snippets` |
 | Annotations not in the allowlist (when set) / in the denylist; trailing `*` matches a prefix | Ingresses | `--ingress-annotation-allowlist`, `--ingress-annotation-denylist` / `MCP_K8S_INGRESS_ANNOTATION_ALLOWLIST`, `MCP_K8S_INGRESS_ANNOTATION_DENYLIST` | `ingress_annotation_allowlist`, `ingress_annotation_denylist` |
 | RBAC escalation primitives: verbs `escalate`, `bind`, `impersonate`; wildcard verbs, resources (`*`, `x/*`), apiGroups or nonResourceURLs; aggregated ClusterRoles and `aggregate-to-*` labels; binding `cluster-admin`, or a role whose rules contain any of the above (fetched live); binding `system:anonymous`/`system:unauthenticated`; `kubernetes.io/service-account-token` Secrets | Roles, ClusterRoles, bindings, Secrets | `--allow-rbac-escalation` / `MCP_K8S_ALLOW_RBAC_ESCALATION` | `allow_rbac_escalation` |
-| Raw-manifest kinds: RBAC objects, admission webhooks and policies, CRDs, APIServices, Endpoints/EndpointSlices, ControllerRevisions, and every cluster-scoped kind | `apply_manifest`, custom resource tools | `--allow-manifest-kinds ClusterRole,rbac.authorization.k8s.io/RoleBinding` (`*` = all) / `MCP_K8S_ALLOW_MANIFEST_KINDS` | `allowed_manifest_kinds` |
-| Custom resources (any non-built-in API group). Operators can turn them into pods or RBAC objects; pod specs, containers and manifests embedded in an allowlisted custom resource still get the rules above. | `apply_manifest`, custom resource tools | `--allow-custom-resource-groups cert-manager.io` (`*` = any) / `MCP_K8S_ALLOW_CUSTOM_RESOURCE_GROUPS` | `allowed_custom_resource_groups` |
+| Cluster-scoped custom resource kinds | custom resource tools | `--allow-manifest-kinds ClusterRole,rbac.authorization.k8s.io/RoleBinding` (`*` = all) / `MCP_K8S_ALLOW_MANIFEST_KINDS` | `allowed_manifest_kinds` |
+| Custom resources (any non-built-in API group). Operators can turn them into pods or RBAC objects; pod specs, containers and manifests embedded in an allowlisted custom resource still get the rules above. | custom resource tools | `--allow-custom-resource-groups cert-manager.io` (`*` = any) / `MCP_K8S_ALLOW_CUSTOM_RESOURCE_GROUPS` | `allowed_custom_resource_groups` |
 
-The namespace allowlist (`--namespaces`) applies to every tool, including the object's namespace in `apply_manifest` manifests.
+The namespace allowlist (`--namespaces`) applies to every tool, including the object's namespace in `apply_manifest` manifests (even when the workload policy doesn't).
 
 ### Secure defaults
 
@@ -196,16 +196,17 @@ Use Pod Security Admission, an admission policy engine and Kubernetes RBAC for c
 
 ## `apply_manifest`
 
-`apply_manifest` uses server-side apply to create **or** update an object from a raw JSON manifest. It is a last resort: the typed tools cover the common kinds and fields (see [Typed Tool Coverage](./tools/coverage.md)). Its guardrails match the typed tools':
+`apply_manifest` uses server-side apply to create **or** update an object from a raw JSON manifest. It's for users who know exactly what they're applying, and it's built so that the decision stays with them rather than with the agent:
 
-- **The same workload policy.** The pod rules on every pod template (Pod, PodTemplate, ReplicationController, ReplicaSet, Deployment, StatefulSet, DaemonSet, Job, CronJob), plus the Service, Ingress, RBAC, Secret and Namespace rules.
-- **Kind gates.** RBAC objects, admission webhooks and policies, CRDs, APIServices, Endpoints/EndpointSlices, ControllerRevisions and every cluster-scoped kind are rejected unless listed in `--allow-manifest-kinds`. Custom resources need `--allow-custom-resource-groups`.
-- **The same permissions.** apply_manifest looks the object up first. Creating it needs `<resource>-create`; updating an existing one needs `<resource>-update`, using the same keys as the typed tools (e.g. `deployment-update`). So `--disable-update` and `--disable deployment-create` hold for apply_manifest too. Before this change it could update anything because it was classified as a create.
-- **The namespace allowlist** on the manifest's namespace.
+- **Off by default.** It isn't listed in `tools/list` and calls are refused until the operator starts mcp-k8s with `--enable-apply-manifest` (`ENABLE_APPLY_MANIFEST=true`; Helm `permissions.enableApplyManifest`; library `ActionPermissions::with_apply_manifest(true)`). An agent can't turn it on. The old `--disable-apply-manifest` still works and wins over `--enable-apply-manifest`.
+- **Unrestricted when enabled.** It skips the workload policy entirely: no pod rules, no Service/Ingress/RBAC rules, no kind gates, no custom resource group allowlist. It can create privileged pods, `hostPath` mounts, RBAC bindings, webhooks and CRDs.
+- **Still scoped by the operator.** The namespace allowlist applies to the manifest's namespace, and the per-resource switches apply: it looks the object up first, so creating it needs `<resource>-create` and updating an existing one needs `<resource>-update`, with the typed tools' keys (e.g. `deployment-update`). `--disable-create` removes it.
+- **The human confirms each call.** Its tool definition carries the MCP annotation `destructiveHint: true`, so clients such as Claude Code ask the user before running it. Its description and the server instructions tell agents to use it only when the user explicitly asks for a manifest to be applied, to show the user the full manifest first, and never to use it to get around a rejection or a missing typed-tool field.
+- A manifest without a managed-by label gets `app.kubernetes.io/managed-by: mcp-k8s`.
 
-`--disable-apply-manifest` / `DISABLE_APPLY_MANIFEST` still removes the tool entirely without affecting the typed create tools.
+**Why not guard it like the other tools?** A guarded `apply_manifest` (as in early v0.6.0 drafts) is just a worse typed tool, and the risky case is an agent that's confident while the person behind it doesn't know what the manifest does. An operator opt-in plus per-call human confirmation addresses that directly; a policy only an operator can relax doesn't help a user who really does need a raw manifest.
 
-**Recommendation.** Keep `apply_manifest` enabled by default. Now that it enforces the same guardrails, it can't do more than the typed tools allow; it only covers kinds and fields they don't. Disabling it by default would be a breaking change for existing users and for library consumers. Operators who want agents restricted to the typed tools can set `--disable-apply-manifest`, and embedding applications should expose it as a setting.
+**Recommendation.** Leave it off for shared or agent-driven deployments; agents get everything they need from the typed tools (see [Typed Tool Coverage](./tools/coverage.md)). Enable it for a person who manages the cluster and wants a raw escape hatch, ideally with a narrow `--namespaces` list.
 
 ## How It Works Internally
 
@@ -231,7 +232,7 @@ The resource name is extracted from the tool name by stripping the action prefix
 | `exec_pod` | `pod` | Update |
 | `apply_manifest` | `apply_manifest` | Create |
 
-The override key format is `<resource>-<action>`, all lowercase. So to disable `apply_manifest`, you would use `--disable apply_manifest-create` (or `--disable-apply-manifest`). Inside `apply_manifest`, the object's own kind is checked against the same keys, e.g. `deployment-create` or `deployment-update`.
+The override key format is `<resource>-<action>`, all lowercase. `apply_manifest` is off unless `--enable-apply-manifest` is set; when it's enabled, `--disable apply_manifest-create` also removes it. Inside `apply_manifest`, the object's own kind is checked against the same keys, e.g. `deployment-create` or `deployment-update`.
 
 ## Relationship to Kubernetes RBAC
 

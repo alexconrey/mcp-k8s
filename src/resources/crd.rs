@@ -51,7 +51,7 @@ async fn get_dynamic_api_with_scope(
 }
 
 /// The custom resource tools only handle custom resources: built-in kinds go
-/// through their typed tools or apply_manifest, which apply the full policy.
+/// through their typed tools, which apply the full policy.
 fn reject_builtin(group: &str, kind: &str, tool: &str) -> Result<(), String> {
     if crate::policy::is_builtin_group(group) {
         let shown = if group.is_empty() {
@@ -61,7 +61,7 @@ fn reject_builtin(group: &str, kind: &str, tool: &str) -> Result<(), String> {
         };
         return Err(format!(
             "{tool} only handles custom resources; {kind} in {shown} is a built-in kind. \
-             Use its typed create_*/update_* tool, or apply_manifest."
+             Use its typed create_*/update_* tool."
         ));
     }
     Ok(())
@@ -172,7 +172,7 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
         }),
         serde_json::json!({
             "name": "create_custom_resource",
-            "description": "Create a custom resource from a JSON manifest. Uses dynamic API discovery to resolve the resource type from group/version/kind. Custom resources can make operators create pods or RBAC objects, so writes are only accepted for API groups the server operator allowlists (--allow-custom-resource-groups); cluster-scoped kinds also need --allow-manifest-kinds. Pod specs, containers and manifests embedded in the resource get the same guardrails as the typed tools. Built-in kinds are rejected: use their typed tools or apply_manifest.",
+            "description": "Create a custom resource from a JSON manifest. Uses dynamic API discovery to resolve the resource type from group/version/kind. Custom resources can make operators create pods or RBAC objects, so writes are only accepted for API groups the server operator allowlists (--allow-custom-resource-groups); cluster-scoped kinds also need --allow-manifest-kinds. Pod specs, containers and manifests embedded in the resource get the same guardrails as the typed tools. Built-in kinds are rejected: use their typed tools.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -203,7 +203,7 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
         }),
         serde_json::json!({
             "name": "update_custom_resource",
-            "description": "Merge-patch a custom resource. Uses dynamic API discovery to resolve the resource type from group/version/kind. Same rules as create_custom_resource: only allowlisted API groups, and the patched result is checked against the guardrails with a server-side dry run before it is written. Built-in kinds are rejected: use their typed update_* tools or apply_manifest.",
+            "description": "Merge-patch a custom resource. Uses dynamic API discovery to resolve the resource type from group/version/kind. Same rules as create_custom_resource: only allowlisted API groups, and the patched result is checked against the guardrails with a server-side dry run before it is written. Built-in kinds are rejected: use their typed update_* tools.",
             "inputSchema": {
                 "type": "object",
                 "properties": {

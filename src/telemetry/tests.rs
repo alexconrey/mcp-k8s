@@ -247,7 +247,9 @@ fn action_class_follows_the_permission_classification() {
     use crate::permissions::Action;
     // For every tool, the label agrees with what the permission check uses,
     // so a call labelled `read` can never be one that a disable flag gates.
-    for tool in crate::mcp::tool_definitions(&ActionPermissions::default()) {
+    for tool in
+        crate::mcp::tool_definitions(&ActionPermissions::default().with_apply_manifest(true))
+    {
         let name = tool["name"].as_str().unwrap();
         let expected = match ActionPermissions::action_for_tool(name) {
             _ if name.starts_with("exec_") => ActionClass::Exec,
@@ -535,7 +537,8 @@ fn denied_by_matches_is_tool_allowed() {
             false,
         ),
     ];
-    let tools = crate::mcp::tool_definitions(&ActionPermissions::default());
+    let tools =
+        crate::mcp::tool_definitions(&ActionPermissions::default().with_apply_manifest(true));
     for perms in &configs {
         for tool in &tools {
             let name = tool["name"].as_str().unwrap();
@@ -1087,7 +1090,8 @@ async fn call_like_the_server(
 
 #[tokio::test]
 async fn canary_no_argument_value_reaches_telemetry() {
-    let tools = crate::mcp::tool_definitions(&ActionPermissions::default());
+    let tools =
+        crate::mcp::tool_definitions(&ActionPermissions::default().with_apply_manifest(true));
     assert!(
         tools.len() > 200,
         "expected every tool, got {}",

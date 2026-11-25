@@ -45,7 +45,16 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
     vec![
         serde_json::json!({
             "name": "apply_manifest",
-            "description": "Last resort: apply an arbitrary Kubernetes manifest, given as JSON, using server-side apply. Prefer the typed create_*/update_* tools (for example create_deployment, create_job, create_pod, create_service, create_ingress), which validate their input and cover the common fields; use apply_manifest only for resource types or fields that have no typed tool. apply_manifest enforces the same guardrails as the typed tools: the pod security rules on every pod template (Pod, Deployment, StatefulSet, DaemonSet, ReplicaSet, Job, CronJob, …), the Service and Ingress rules, the namespace allowlist and the per-resource create/update permissions. RBAC objects, admission webhooks and policies, CRDs, Endpoints, other cluster-scoped kinds and custom resources are rejected unless the server operator allowlists them. YAML is not accepted: convert it to JSON first. Returns the applied object's metadata (name, namespace, kind, resource_version).",
+            "description": "Raw server-side apply of an arbitrary Kubernetes manifest, given as JSON. UNRESTRICTED: unlike every other write tool it skips the server's workload policy, so it can create privileged pods, hostPath mounts, RBAC bindings, webhooks, CRDs and any other kind. Only the namespace allowlist and the per-resource create/update switches still apply. Only call it when the user has explicitly asked for this manifest to be applied: show them the complete manifest and get their confirmation first. Never choose it yourself in place of a typed create_*/update_* tool, and never use it to get around a rejection from another tool. YAML is not accepted: convert it to JSON first. Returns the applied object's metadata (name, namespace, kind, resource_version).",
+            // MCP tool annotations: clients such as Claude Code use these to
+            // ask the user before running a destructive tool.
+            "annotations": {
+                "title": "Apply raw manifest (unrestricted)",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -60,7 +69,7 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
         }),
         serde_json::json!({
             "name": "get_resource_json",
-            "description": "Get any Kubernetes resource as JSON, the object as the API server returns it. Accepts apiVersion, kind, name, and optional namespace. Uses API discovery to resolve the resource type. The output can be edited and passed back to apply_manifest; convert it to YAML yourself if a person needs YAML.",
+            "description": "Get any Kubernetes resource as JSON, the object as the API server returns it. Accepts apiVersion, kind, name, and optional namespace. Uses API discovery to resolve the resource type. Use it to inspect an object before changing it with a typed update_* tool; convert it to YAML yourself if a person needs YAML.",
             "inputSchema": resource_ref_schema()
         }),
         serde_json::json!({
@@ -100,8 +109,8 @@ async fn apply_manifest(client: &K8sClient, args: &serde_json::Value) -> Result<
         return Err("manifest must be a JSON object".to_string());
     }
 
-    // Same guardrails as the typed tools, plus the kind and custom resource
-    // gates for raw manifests; resolves the target API.
+    // No workload policy (on purpose; see admit_manifest): only the namespace
+    // allowlist and the create/update switches. Resolves the target API.
     let target = crate::policy::admit_manifest(
         client,
         &mut manifest,
@@ -290,12 +299,18 @@ mod tests {
             .unwrap();
         assert!(!desc.contains("YAML or JSON"), "{desc}");
         assert!(desc.contains("YAML is not accepted"), "{desc}");
-        // Agents must be steered to the typed tools, which carry the guardrails.
-        assert!(desc.starts_with("Last resort"), "{desc}");
+        // It bypasses the workload policy: the description must say so, and
+        // put the user, not the agent, in charge of using it.
+        assert!(desc.contains("UNRESTRICTED"), "{desc}");
+        assert!(desc.contains("explicitly asked"), "{desc}");
+        assert!(desc.contains("get their confirmation first"), "{desc}");
         assert!(
-            desc.contains("Prefer the typed create_*/update_* tools"),
+            desc.contains("never use it to get around a rejection"),
             "{desc}"
         );
+        // MCP clients use the annotation to ask the user before each call.
+        assert_eq!(def["annotations"]["destructiveHint"], true);
+        assert_eq!(def["annotations"]["readOnlyHint"], false);
         assert!(
             param.contains("JSON") && param.contains("not accepted"),
             "{param}"

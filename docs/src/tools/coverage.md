@@ -2,7 +2,7 @@
 
 This page shows how far the typed tools go, kind by kind. The goal is that agents never need `apply_manifest` for everyday work: the "reasons to use apply_manifest" column should be empty or justified.
 
-`apply_manifest` enforces the same [guardrails](../permissions.md#workload-guardrails), so the fields listed there are a convenience gap, not a way around a rule. "Gated" means the field is in the typed schema but rejected unless an operator enables the named flag. The typed tool can express it once the flag is set.
+`apply_manifest` is off by default and, when an operator enables it, skips the [guardrails](../permissions.md#workload-guardrails) entirely; it's for people who know what they're applying, not a fallback for agents. So a gap listed here is a reason to extend the typed tools. "Gated" means the field is in the typed schema but rejected unless an operator enables the named flag. The typed tool can express it once the flag is set.
 
 The pod template fields (containers, init containers and sidecars, env, probes, resources, volumes, scheduling, security) are shared by every workload tool and described on [Pod Template Arguments](./pod-template.md).
 
@@ -30,14 +30,13 @@ ClusterRoles and ClusterRoleBindings work like Roles and RoleBindings. ClusterRo
 
 ## Kinds only apply_manifest writes
 
-These kinds have no typed write tool. Raw manifests for them are **rejected by default** (`--allow-manifest-kinds` enables them one by one):
+These kinds have no typed write tool, so only `apply_manifest` can write them:
 
-- RBAC objects, when written through apply_manifest rather than the typed RBAC tools;
 - admission webhooks and admission policies, CustomResourceDefinitions and APIServices;
-- Endpoints and EndpointSlices, which can redirect a Service's traffic (CVE-2021-25740);
+- Endpoints and EndpointSlices;
 - ControllerRevisions;
-- every cluster-scoped kind (Namespaces, PersistentVolumes, StorageClasses, PriorityClasses, …).
+- most cluster-scoped kinds (Namespaces have typed tools; PersistentVolumes, StorageClasses, PriorityClasses, … don't);
+- fields the typed tools don't cover, for example some ResourceQuota and LimitRange fields, ReplicaSets, ReplicationControllers and PodTemplates.
 
-Custom resources need their API group in `--allow-custom-resource-groups`, because operators can turn a custom resource into pods or RBAC objects.
+`apply_manifest` is off unless the operator passes `--enable-apply-manifest`, and it applies these as given, without the workload policy. Custom resources can also go through the custom resource tools, which do apply the policy (their API group needs `--allow-custom-resource-groups`).
 
-Everything else (for example ResourceQuota and LimitRange fields the typed tools don't cover, ReplicaSets, ReplicationControllers and PodTemplates) goes through apply_manifest with the same pod, Service and Ingress rules as the typed tools.

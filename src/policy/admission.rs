@@ -57,11 +57,19 @@ fn policy_error(violations: Vec<Violation>) -> Result<(), String> {
 /// Check a raw manifest before `apply_manifest` or `create_custom_resource`
 /// writes it, and resolve where it goes.
 ///
-/// Runs the static policy ([`check_object`] with [`Source::Manifest`]), the
-/// namespace allowlist, the cluster-scope gate (custom cluster-scoped kinds
-/// are only known after discovery), the per-resource create/update
-/// permissions, and, for bindings, the rules of the bound role. Adds the
-/// `app.kubernetes.io/managed-by` label when the manifest has none.
+/// Both get the namespace allowlist and the `app.kubernetes.io/managed-by`
+/// label (when the manifest has none). `create_custom_resource` also gets the
+/// workload policy: the static checks ([`check_object`] with
+/// [`Source::Manifest`]), the cluster-scope gate (custom cluster-scoped kinds
+/// are only known after discovery) and, for bindings, the rules of the bound
+/// role.
+///
+/// `apply_manifest` deliberately skips the workload policy. It's the raw
+/// escape hatch for users who know exactly what they're applying: off unless
+/// the operator enables it (`--enable-apply-manifest`), and marked destructive
+/// so MCP clients ask the user to confirm each call. It still honours the
+/// operator's scoping: the namespace allowlist and the per-resource
+/// create/update switches.
 pub(crate) async fn admit_manifest(
     client: &K8sClient,
     manifest: &mut Value,
@@ -87,8 +95,11 @@ pub(crate) async fn admit_manifest(
     });
     let group = group_of(&api_version).to_string();
     let policy = client.policy();
+    let guarded = origin != AdmissionOrigin::ApplyManifest;
 
-    policy_error(check_object(policy, manifest, Source::Manifest))?;
+    if guarded {
+        policy_error(check_object(policy, manifest, Source::Manifest))?;
+    }
 
     if let Some(ns) = &namespace {
         if !client.is_namespace_allowed(ns) {
@@ -113,7 +124,7 @@ pub(crate) async fn admit_manifest(
             ));
         }
         (Scope::Cluster, _) => {
-            if !policy.manifest_kind_allowed(&group, &kind) {
+            if guarded && !policy.manifest_kind_allowed(&group, &kind) {
                 policy_error(vec![kind_not_allowed(
                     &group,
                     &kind,
@@ -152,7 +163,8 @@ pub(crate) async fn admit_manifest(
         }
     }
 
-    if group == "rbac.authorization.k8s.io"
+    if guarded
+        && group == "rbac.authorization.k8s.io"
         && (kind == "RoleBinding" || kind == "ClusterRoleBinding")
     {
         let violations =

@@ -12,14 +12,16 @@ release workflow refuses a tag that doesn't match `Cargo.toml`,
 
 ## [Unreleased]
 
-Typed workload tools that cover the pod template, and workload guardrails on
-every write path, `apply_manifest` included.
+Typed workload tools that cover the pod template, workload guardrails on every
+typed write tool, and `apply_manifest` turned into an opt-in, unrestricted
+escape hatch for users who know what they're applying.
 
 ### Breaking changes
-- **Workload guardrails, restrictive by default.** Every write path now runs a
-  workload policy (`mcp_k8s::policy::WorkloadPolicy`, on `ActionPermissions`):
-  the typed create tools, the update tools, `apply_manifest`,
-  `create_custom_resource` and `update_custom_resource`. By default it rejects:
+- **Workload guardrails, restrictive by default.** The typed create tools, the
+  update tools, `create_custom_resource` and `update_custom_resource` now run
+  a workload policy (`mcp_k8s::policy::WorkloadPolicy`, on
+  `ActionPermissions`). `apply_manifest` doesn't (see below). By default the
+  policy rejects:
   - privileged containers, `allowPrivilegeEscalation: true`, capabilities
     beyond the runtime's default set, `hostNetwork`/`hostPID`/`hostIPC`,
     `hostPath`, `hostPort`, volume types outside the safe set (nfs, inline csi,
@@ -37,18 +39,26 @@ every write path, `apply_manifest` included.
   pass `ActionPermissions::default()` (deckwatch does) get the restrictive
   policy; `ActionPermissions::default().with_workload_policy(WorkloadPolicy::permissive())`
   restores the old behaviour.
-- **`apply_manifest` rejects more kinds by default.** RBAC objects, admission
-  webhooks and policies, CRDs, APIServices, Endpoints/EndpointSlices,
-  ControllerRevisions and every cluster-scoped kind are rejected unless listed
-  in `--allow-manifest-kinds`. It also honours the per-resource switches: it
-  looks the object up and needs `<resource>-create` or, for an existing object,
+- **`apply_manifest` is off by default.** It's hidden from `tools/list` and
+  refused until the operator passes `--enable-apply-manifest`
+  (`ENABLE_APPLY_MANIFEST`; Helm `permissions.enableApplyManifest`; library
+  `ActionPermissions::with_apply_manifest(true)`). `ActionPermissions::default()`
+  now has `apply_manifest_enabled: false`. Enabled, it's still a raw
+  server-side apply **without the workload policy**: for users who know exactly
+  what they're applying. It's marked `destructiveHint: true`, so MCP clients
+  ask the user before each call, and its description and the server
+  instructions tell agents to use it only on the user's explicit request,
+  after showing them the manifest, and never to get around a rejection.
+  `--disable-apply-manifest` is deprecated but still honoured, and wins.
+- **`apply_manifest` honours the per-resource switches.** It looks the object
+  up and needs `<resource>-create` or, for an existing object,
   `<resource>-update`. `--disable-update` used to be bypassable through it.
+  The namespace allowlist still applies too.
 - **Custom resource writes need an allowlisted API group**
   (`--allow-custom-resource-groups`), because operators can turn custom
   resources into pods or RBAC objects. This covers `create_custom_resource`,
-  `update_custom_resource` and custom resources in `apply_manifest`. Reads are
-  unaffected. The custom resource tools also refuse built-in kinds; use the
-  typed tools or `apply_manifest`.
+  `update_custom_resource`. Reads are unaffected. The custom resource tools
+  also refuse built-in kinds; use the typed tools.
 - **Secure defaults in the typed create tools.** When the caller doesn't set
   them, pods get `runAsNonRoot: true`, seccomp `RuntimeDefault`,
   `allowPrivilegeEscalation: false`, `capabilities.drop: [ALL]` (non-root
@@ -113,25 +123,24 @@ every write path, `apply_manifest` included.
   `non_resource_urls`.
 - MCP `instructions` in the `initialize` response, steering agents to the typed
   tools (`mcp_k8s::mcp::SERVER_INSTRUCTIONS` for library users).
-- Helm chart: `permissions.disableApplyManifest` and `extraEnv` (to set the
-  `MCP_K8S_ALLOW_*` guardrail variables).
+- Helm chart: `permissions.enableApplyManifest` and `extraEnv` (to set the
+  `MCP_K8S_ALLOW_*` guardrail variables). `permissions.disableApplyManifest`
+  is deprecated.
+- `ActionPermissions::with_apply_manifest(bool)`.
 - Docs: `docs/src/tools/coverage.md` (typed tool coverage matrix),
   `docs/src/tools/pod-template.md`, and a guardrails section in
   `docs/src/permissions.md`.
 
 ### Changed
 - Every `create_*`/`update_*` tool description says it is preferred over
-  `apply_manifest`. The `apply_manifest` description lists the guardrails it
-  enforces.
+  `apply_manifest`. `get_resource_json` no longer suggests passing its output
+  back to `apply_manifest`.
 - `apply_manifest` adds `app.kubernetes.io/managed-by: mcp-k8s` when the
   manifest has no managed-by label. The typed tools now also label pod
   templates with it.
 - `create_service`, `create_ingress` and `update_ingress` moved from
   `mcp/handlers.rs` into the `service` and `ingress` resource modules. Their
   names and original arguments are unchanged.
-- `--disable-apply-manifest` keeps its default (off). apply_manifest now
-  enforces the same guardrails as the typed tools; see
-  `docs/src/permissions.md` for the recommendation.
 
 ### Fixed
 - `update_deployment_affinity` sent `required_node_affinity` terms with

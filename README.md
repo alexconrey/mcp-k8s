@@ -9,7 +9,7 @@ endpoint for in-cluster deployment.
 
 - **211 MCP tools** across 49 resource modules covering every GA Kubernetes API group
 - **Typed workload tools that cover the pod template**: containers, init containers and native sidecars, env from secrets/configmaps/fields, probes, lifecycle hooks, resources, volumes, scheduling, security context, rollout strategies, Services and Ingresses (see [coverage](docs/src/tools/coverage.md)), so agents don't need `apply_manifest` for everyday work
-- **Workload guardrails on every write path**: privileged containers, host namespaces, hostPath, host ports, extra capabilities, NodePort/LoadBalancer Services, ingress snippet annotations and RBAC escalation are rejected unless an operator opts in, and `apply_manifest` enforces the same rules
+- **Workload guardrails on every typed write tool**: privileged containers, host namespaces, hostPath, host ports, extra capabilities, NodePort/LoadBalancer Services, ingress snippet annotations and RBAC escalation are rejected unless an operator opts in. The raw `apply_manifest` escape hatch is off by default; an operator can enable it for users who know what they're applying, and MCP clients ask the user before each call
 - **Two runtime modes**: stdio (for Claude Code) and HTTP (for in-cluster deployment)
 - **SSE transport**: `POST /mcp/sse` endpoint for Server-Sent Events streaming
 - **Multi-cluster support**: load multiple kubeconfig contexts and switch between clusters at runtime
@@ -92,7 +92,7 @@ otherwise the tool returns the API server's 404.
 | **Certificates** | CertificateSigningRequests (list, get, approve, deny) |
 | **Admission** | MutatingWebhookConfigs, ValidatingWebhookConfigs, ValidatingAdmissionPolicies |
 | **Auth** | `can_i`, `whoami`, `list_my_permissions` |
-| **Generic** | `apply_manifest` (server-side apply), `get_resource_json` (full object as JSON; `get_resource_yaml` is a deprecated alias) |
+| **Generic** | `apply_manifest` (raw server-side apply; off unless `--enable-apply-manifest`), `get_resource_json` (full object as JSON; `get_resource_yaml` is a deprecated alias) |
 | **Metrics** | Pod and node CPU/memory from metrics-server |
 | **CRDs** | `list_crds`, `get_crd`, `list_custom_resources`, `get_custom_resource`, `create_custom_resource`, `update_custom_resource`, `delete_custom_resource` |
 | **Watch** | `watch_resource` (observe ADDED/MODIFIED/DELETED events over a time window) |
@@ -100,7 +100,7 @@ otherwise the tool returns the API server's 404.
 
 ## Guardrails
 
-Every write tool runs the same workload policy: the typed `create_*`/`update_*` tools, `apply_manifest`, and the custom resource tools. The defaults are restrictive and every rejection names the flag that relaxes it. Typed creates also default to a restricted securityContext (runAsNonRoot, seccomp `RuntimeDefault`, no privilege escalation, drop ALL capabilities) and don't mount a service account token unless asked.
+The typed `create_*`/`update_*` tools and the custom resource tools run the same workload policy. (`apply_manifest` doesn't: it's off by default, and when an operator enables it, it's an unrestricted raw apply that MCP clients confirm with the user. See [Permissions](docs/src/permissions.md#apply_manifest).) The defaults are restrictive and every rejection names the flag that relaxes it. Typed creates also default to a restricted securityContext (runAsNonRoot, seccomp `RuntimeDefault`, no privilege escalation, drop ALL capabilities) and don't mount a service account token unless asked.
 
 | Rejected by default | Opt-in flag |
 |---------------------|-------------|
@@ -114,7 +114,7 @@ Every write tool runs the same workload policy: the typed `create_*`/`update_*` 
 | NodePort / LoadBalancer / ExternalName Services | `--allow-nodeport` / `--allow-loadbalancer` / `--allow-external-services` |
 | Ingress `*-snippet` annotations and nginx config injection | `--allow-ingress-snippets` |
 | RBAC escalation (escalate/bind/impersonate, wildcards, binding cluster-admin) | `--allow-rbac-escalation` |
-| RBAC, webhook, CRD and cluster-scoped kinds in `apply_manifest` | `--allow-manifest-kinds Kind,...` |
+| Cluster-scoped custom resource kinds | `--allow-manifest-kinds Kind,...` |
 | Custom resource writes | `--allow-custom-resource-groups group,...` |
 
 Each flag has an `MCP_K8S_*` environment variable. Optional tightening: `--allowed-registries`, `--ingress-annotation-allowlist`, `--ingress-annotation-denylist`. See [Permissions](docs/src/permissions.md#workload-guardrails).
@@ -141,7 +141,7 @@ Beyond standard CRUD, the server supports:
 | `--auth-token` | `AUTH_TOKEN` | (none) | Bearer token for HTTP endpoint authentication |
 | `--tls-cert` | `TLS_CERT` | (none) | Path to TLS certificate PEM file (enables HTTPS) |
 | `--tls-key` | `TLS_KEY` | (none) | Path to TLS private key PEM file (enables HTTPS) |
-| `--disable-apply-manifest` | `DISABLE_APPLY_MANIFEST` | `false` | Block the `apply_manifest` tool entirely (it already enforces the same guardrails as the typed tools) |
+| `--enable-apply-manifest` | `ENABLE_APPLY_MANIFEST` | `false` | Enable `apply_manifest`: an unrestricted raw server-side apply that skips the workload guardrails, for users who know what they're applying (the namespace allowlist and disable switches still apply). `--disable-apply-manifest` is deprecated but still wins |
 | `--allow-*`, `--allowed-registries`, `--ingress-annotation-*`, `--no-secure-defaults` | `MCP_K8S_ALLOW_*` etc. | restrictive | Workload guardrails, see [Guardrails](#guardrails) |
 | `--disable-secret-decode` | `DISABLE_SECRET_DECODE` | `false` | Prevent secret value decoding |
 | `--cache-ttl` | `CACHE_TTL` | `0` | Response cache TTL in seconds (0 = disabled) |
@@ -345,7 +345,7 @@ page have the full recipe; the binary's `src/otel.rs` is a working example.
 ## Testing
 
 ```bash
-cargo test                                      # 549 unit + 11 binary + 8 integration + 30 guardrail tests
+cargo test                                      # 549 unit + 11 binary + 8 integration + 27 guardrail tests
 cargo test --no-default-features                # the same, as library consumers build it
 cargo test --test k3s_integration -- --ignored  # 13 k3s tests (needs Docker)
 cargo test --test k3s_workloads -- --ignored --test-threads=1  # 2 k3s tests for the typed workload tools and guardrails
@@ -356,8 +356,8 @@ permission filtering, the pod template builder, every guardrail rule and
 telemetry, including a canary test that runs every tool with marker values in
 all its string arguments and fails if one outside the allowlist reaches a span,
 metric or log. `tests/guardrails.rs` drives the tools against a mock API server
-to check that the typed tools and `apply_manifest` reject the same things
-before anything reaches the cluster. The binary's tests export the real
+to check that the typed tools reject policy violations before anything reaches
+the cluster, and that `apply_manifest` is off by default and raw when enabled. The binary's tests export the real
 dispatch path into in-memory OpenTelemetry exporters. Never run a bare
 `cargo test -- --ignored`: other ignored tests load your kubeconfig. The k3s
 tests run against `rancher/k3s:v1.35.10-k3s1`;

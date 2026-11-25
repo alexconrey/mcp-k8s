@@ -36,11 +36,15 @@ pub struct ActionPermissions {
     /// When `false`, the `decode: true` parameter in `get_secret` is ignored
     /// and secret values are never returned.
     pub secret_decode_enabled: bool,
-    /// When `false`, the `apply_manifest` tool is blocked regardless of other
-    /// permission settings.
+    /// When `false` (the default), the `apply_manifest` tool is hidden from
+    /// `tools/list` and refused. When `true`, it's a raw server-side apply
+    /// that skips the [`WorkloadPolicy`] (it still honours the namespace
+    /// allowlist and the create/update switches), so enable it only for users
+    /// who know exactly what they're applying.
     pub apply_manifest_enabled: bool,
-    /// Guardrails every write path enforces (typed tools, `apply_manifest`,
-    /// custom resources). Restrictive by default; see [`WorkloadPolicy`].
+    /// Guardrails the typed tools and the custom resource tools enforce.
+    /// Restrictive by default; see [`WorkloadPolicy`]. `apply_manifest`
+    /// doesn't apply it.
     workload_policy: WorkloadPolicy,
 }
 
@@ -79,6 +83,13 @@ impl ActionPermissions {
 
     /// Replace the workload guardrail policy (the default is
     /// [`WorkloadPolicy::default()`], which is restrictive).
+    /// Enable or disable `apply_manifest` (off by default). Enabled, it
+    /// bypasses the workload policy; see [`Self::apply_manifest_enabled`].
+    pub fn with_apply_manifest(mut self, enabled: bool) -> Self {
+        self.apply_manifest_enabled = enabled;
+        self
+    }
+
     pub fn with_workload_policy(mut self, policy: WorkloadPolicy) -> Self {
         self.workload_policy = policy;
         self
@@ -193,7 +204,8 @@ impl ActionPermissions {
     /// [`Self::is_tool_allowed`] allows it. Used as `mcp_k8s.denied_rule` in
     /// telemetry:
     ///
-    /// * `apply_manifest:disabled` — `--disable-apply-manifest`
+    /// * `apply_manifest:disabled` — apply_manifest not enabled
+    ///   (`--enable-apply-manifest`)
     /// * `override:<resource>-<action>` — a `--disable` entry
     /// * `global:<action>` — `--disable-create`/`-update`/`-delete`
     pub fn denied_by(&self, tool_name: &str) -> Option<String> {
@@ -252,8 +264,9 @@ impl ActionPermissions {
 }
 
 impl Default for ActionPermissions {
-    /// All actions enabled, no overrides, secret decode enabled, apply_manifest
-    /// enabled, and the restrictive default [`WorkloadPolicy`].
+    /// All actions enabled, no overrides, secret decode enabled, the
+    /// restrictive default [`WorkloadPolicy`], and **apply_manifest disabled**:
+    /// it bypasses the workload policy, so only an operator should turn it on.
     fn default() -> Self {
         Self {
             global_create_enabled: true,
@@ -261,7 +274,7 @@ impl Default for ActionPermissions {
             global_delete_enabled: true,
             resource_overrides: HashMap::new(),
             secret_decode_enabled: true,
-            apply_manifest_enabled: true,
+            apply_manifest_enabled: false,
             workload_policy: WorkloadPolicy::default(),
         }
     }
@@ -734,8 +747,15 @@ mod tests {
     }
 
     #[test]
-    fn default_allows_apply_manifest() {
+    fn default_disables_apply_manifest() {
         let perms = ActionPermissions::default();
-        assert!(perms.is_tool_allowed("apply_manifest"));
+        assert!(!perms.is_tool_allowed("apply_manifest"));
+        assert_eq!(
+            perms.denied_by("apply_manifest").as_deref(),
+            Some("apply_manifest:disabled")
+        );
+        assert!(ActionPermissions::default()
+            .with_apply_manifest(true)
+            .is_tool_allowed("apply_manifest"));
     }
 }

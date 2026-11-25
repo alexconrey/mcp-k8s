@@ -115,9 +115,17 @@ struct Cli {
     #[arg(long, env = "DISABLE_SECRET_DECODE")]
     disable_secret_decode: bool,
 
-    /// Disable the apply_manifest tool. When set, apply_manifest calls are
-    /// rejected regardless of other permission settings.
-    #[arg(long, env = "DISABLE_APPLY_MANIFEST")]
+    /// Enable the apply_manifest tool (off by default). It's a raw server-side
+    /// apply that skips the workload guardrails below (the namespace allowlist
+    /// and the --disable switches still apply), for users who know exactly
+    /// what they're applying. MCP clients are told it's destructive.
+    #[arg(long, env = "ENABLE_APPLY_MANIFEST")]
+    enable_apply_manifest: bool,
+
+    /// Keep apply_manifest disabled even if --enable-apply-manifest is set.
+    /// It's off by default since v0.6.0; this flag still works so existing
+    /// deployments that pass it keep starting.
+    #[arg(long, env = "DISABLE_APPLY_MANIFEST", hide = true)]
     disable_apply_manifest: bool,
 
     /// Log output format: "text" (default) or "json" for structured JSON logging.
@@ -129,8 +137,9 @@ struct Cli {
     #[arg(long, env = "CACHE_TTL", default_value = "0")]
     cache_ttl: u64,
 
-    // --- Workload guardrails (see docs/src/permissions.md). Every write path,
-    // including apply_manifest, enforces them; each flag relaxes one rule.
+    // --- Workload guardrails (see docs/src/permissions.md). The typed tools and
+    // the custom resource tools enforce them (apply_manifest, when enabled,
+    // doesn't); each flag relaxes one rule.
     /// Allow privileged containers (and Windows hostProcess, and namespaces
     /// labelled pod-security.kubernetes.io/*=privileged).
     #[arg(long, env = "MCP_K8S_ALLOW_PRIVILEGED")]
@@ -210,10 +219,9 @@ struct Cli {
     )]
     ingress_annotation_denylist: Vec<String>,
 
-    /// Comma-separated kinds apply_manifest and the custom resource tools may
-    /// write although they are rejected by default (RBAC, admission webhooks,
-    /// CRDs, Endpoints, cluster-scoped kinds). "Kind" or "group/Kind"; "*"
-    /// allows all.
+    /// Comma-separated kinds the custom resource tools may write although they
+    /// are rejected by default (cluster-scoped kinds). "Kind" or "group/Kind";
+    /// "*" allows all.
     #[arg(long, env = "MCP_K8S_ALLOW_MANIFEST_KINDS", value_delimiter = ',')]
     allow_manifest_kinds: Vec<String>,
 
@@ -286,7 +294,7 @@ async fn main() {
         cli.disable_delete,
         cli.disable_actions,
         !cli.disable_secret_decode,
-        !cli.disable_apply_manifest,
+        cli.enable_apply_manifest && !cli.disable_apply_manifest,
     )
     .with_workload_policy(policy);
 

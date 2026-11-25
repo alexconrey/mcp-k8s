@@ -277,8 +277,13 @@ fn all_tool_schemas_are_valid() {
 #[test]
 fn tool_count_matches_the_documentation() {
     // Keep in sync with README.md, CLAUDE.md and docs/src/tools/overview.md.
-    let tools = super::definitions::tool_definitions(&ActionPermissions::default());
+    // The documented count includes apply_manifest, which is off by default.
+    let all = ActionPermissions::default().with_apply_manifest(true);
+    let tools = super::definitions::tool_definitions(&all);
     assert_eq!(tools.len(), 211, "update the documented tool count");
+    let default_tools = super::definitions::tool_definitions(&ActionPermissions::default());
+    assert_eq!(default_tools.len(), 210);
+    assert!(default_tools.iter().all(|t| t["name"] != "apply_manifest"));
 }
 
 #[test]
@@ -331,5 +336,12 @@ fn typed_workload_tools_are_listed() {
 fn server_instructions_steer_to_typed_tools() {
     let text = super::SERVER_INSTRUCTIONS;
     assert!(text.contains("create_deployment") && text.contains("apply_manifest"));
-    assert!(text.contains("same guardrails"));
+    // apply_manifest bypasses the policy: agents must be told to use it only
+    // on the user's explicit request, never as a workaround.
+    assert!(text.contains("skips the workload policy"), "{text}");
+    assert!(text.contains("get their confirmation first"), "{text}");
+    assert!(
+        text.contains("never use it to get around a rejection"),
+        "{text}"
+    );
 }

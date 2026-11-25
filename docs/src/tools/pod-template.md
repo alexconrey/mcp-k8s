@@ -2,7 +2,7 @@
 
 `create_pod`, `create_job`, `create_cronjob`, `create_deployment`, `create_statefulset` and `create_daemonset` take the same container and pod arguments. One module (`src/resources/podspec.rs`) parses them, so a field means the same thing in every tool. The matching `update_*` tools take the same fields, all optional.
 
-Use these tools rather than `apply_manifest`. They validate input, fill in secure defaults, and run the [workload guardrails](../permissions.md#workload-guardrails). `apply_manifest` runs the same guardrails, so it can't do anything the typed tools refuse.
+Use these tools rather than `apply_manifest`. They validate input, fill in secure defaults, and run the [workload guardrails](../permissions.md#workload-guardrails). `apply_manifest` is off by default and, when an operator enables it, is an unrestricted raw apply for people who know what they're applying; agents shouldn't fall back to it.
 
 ## Conventions
 
