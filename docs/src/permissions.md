@@ -164,6 +164,18 @@ A node's request for its own serving certificate is allowed: signer `kubernetes.
 
 `get_csr` shows the parsed subject (`subject.common_names`, `subject.organizations`). `--allow-privileged-csr` (`MCP_K8S_ALLOW_PRIVILEGED_CSR`, `WorkloadPolicy.allow_privileged_csr`) turns the check off. `deny_csr` is never restricted.
 
+### CSR approval
+
+Approving a CertificateSigningRequest lets its signer issue a certificate for the identity the request names: the subject's CN becomes the user and every O a group. A request for `O=system:masters` signed by `kubernetes.io/kube-apiserver-client` is a cluster-admin credential that RBAC can't take away, and `system:` names impersonate nodes, control-plane components or service accounts. So `approve_csr` parses `spec.request` and, by default, refuses:
+
+- group `system:masters`, whatever the signer;
+- any other user or group starting with `system:`, whatever the signer. This includes kubelet client certificates (`kubernetes.io/kube-apiserver-client-kubelet`): kube-controller-manager approves the legitimate ones itself, so a pending one that needs a human is suspect;
+- requests that aren't exactly one parseable `CERTIFICATE REQUEST` PEM block.
+
+A node's request for its own serving certificate is allowed: signer `kubernetes.io/kubelet-serving`, subject `CN=system:node:<name>, O=system:nodes`, and `spec.username` `system:node:<name>`. kube-controller-manager doesn't approve these, so clusters with `serverTLSBootstrap` approve them by hand. mcp-k8s doesn't check their SANs against the node's addresses; use a dedicated approver (such as kubelet-csr-approver) if you need that.
+
+`get_csr` shows the parsed subject (`subject.common_names`, `subject.organizations`). `--allow-privileged-csr` (`MCP_K8S_ALLOW_PRIVILEGED_CSR`, `WorkloadPolicy.allow_privileged_csr`) turns the check off. `deny_csr` is never restricted.
+
 ### Secure defaults
 
 The typed create tools also fill in a restricted securityContext when the caller leaves it unset:
