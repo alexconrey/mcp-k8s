@@ -12,6 +12,12 @@ release workflow refuses a tag that doesn't match `Cargo.toml`,
 
 ## [Unreleased]
 
+### Security
+- kube 5.1.0 → 5.2.0 (RUSTSEC-2026-0600: kube-client's OpenSSL connector
+  trusted the system certificate store in addition to the kubeconfig CA).
+  mcp-k8s uses the rustls connector, so it wasn't affected, but the advisory
+  was flagged on every build.
+
 ## [0.6.0] - 2026-11-24
 
 Typed workload tools that cover the pod template, workload guardrails on every
