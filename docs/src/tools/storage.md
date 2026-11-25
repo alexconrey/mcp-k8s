@@ -167,7 +167,7 @@ List CSI Storage Capacities. Shows available storage capacity per CSI driver and
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `namespace` | string | Yes | Kubernetes namespace |
+| `namespace` | string | No | Kubernetes namespace. Omit to list every namespace; with a namespace allowlist, omitting it is refused. |
 
 ### list_volumeattachments
 

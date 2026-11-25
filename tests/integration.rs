@@ -501,3 +501,99 @@ async fn test_namespace_not_allowed() {
         "error should mention namespace not allowed, got: {err}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Secret values: opt-in (--enable-secret-decode), redacted on every path
+// ---------------------------------------------------------------------------
+
+const APPLIED: &str = r#"{"apiVersion":"v1","data":{"password":"aHVudGVyMg=="},"kind":"Secret"}"#;
+
+/// Serve core/v1 discovery, then the Secret.
+fn serve_secret(
+    handle: mock::Handle<Request<Body>, Response<Body>>,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut handle = pin!(handle);
+        let (req, send) = handle.next_request().await.expect("discovery request");
+        assert_eq!(req.uri().path(), "/api/v1");
+        send.send_response(json_response(&serde_json::json!({
+            "kind": "APIResourceList", "apiVersion": "v1", "groupVersion": "v1",
+            "resources": [{ "name": "secrets", "singularName": "secret", "namespaced": true, "kind": "Secret", "verbs": ["get", "list"] }]
+        })));
+        let (req, send) = handle.next_request().await.expect("secret request");
+        assert_eq!(req.uri().path(), "/api/v1/namespaces/default/secrets/db");
+        send.send_response(json_response(&serde_json::json!({
+            "apiVersion": "v1", "kind": "Secret",
+            "metadata": { "name": "db", "namespace": "default",
+                "annotations": { "kubectl.kubernetes.io/last-applied-configuration": APPLIED, "owner": "me" } },
+            "type": "Opaque",
+            "data": { "password": "aHVudGVyMg==" }
+        })));
+    })
+}
+
+#[tokio::test]
+async fn get_resource_json_redacts_secret_values_by_default() {
+    let (client, handle) = mock_client_with_permissions(ActionPermissions::default());
+    let server = serve_secret(handle);
+    let out = mcp_k8s::mcp::handle_tool(
+        &client,
+        "get_resource_json",
+        &serde_json::json!({ "api_version": "v1", "kind": "Secret", "namespace": "default", "name": "db" }),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    server.await.unwrap();
+    assert!(!out.contains("aHVudGVyMg=="), "{out}");
+    let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert!(v["data"]["password"].as_str().unwrap().contains("redacted"));
+    let annotations = &v["metadata"]["annotations"];
+    assert!(
+        annotations["kubectl.kubernetes.io/last-applied-configuration"]
+            .as_str()
+            .unwrap()
+            .contains("redacted")
+    );
+    assert_eq!(annotations["owner"], "me");
+}
+
+#[tokio::test]
+async fn get_resource_json_returns_secret_values_when_decoding_is_enabled() {
+    let (client, handle) =
+        mock_client_with_permissions(ActionPermissions::default().with_secret_decode(true));
+    let server = serve_secret(handle);
+    let out = mcp_k8s::mcp::handle_tool(
+        &client,
+        "get_resource_json",
+        &serde_json::json!({ "api_version": "v1", "kind": "Secret", "namespace": "default", "name": "db" }),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    server.await.unwrap();
+    assert!(out.contains("aHVudGVyMg=="), "{out}");
+}
+
+#[tokio::test]
+async fn get_secret_refuses_decode_by_default_without_calling_the_api() {
+    let (client, handle) = mock_client_with_permissions(ActionPermissions::default());
+    let server = tokio::spawn(async move {
+        let mut handle = pin!(handle);
+        assert!(
+            handle.next_request().await.is_none(),
+            "no API call expected"
+        );
+    });
+    let err = mcp_k8s::mcp::handle_tool(
+        &client,
+        "get_secret",
+        &serde_json::json!({ "namespace": "default", "name": "db", "decode": true }),
+    )
+    .await
+    .unwrap()
+    .unwrap_err();
+    drop(client);
+    server.await.unwrap();
+    assert!(err.contains("--enable-secret-decode"), "{err}");
+}

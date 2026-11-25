@@ -47,13 +47,14 @@ Mark a node as schedulable again.
 
 ### drain_node
 
-Drain pods from a node. Evicts pods respecting PodDisruptionBudgets and cordons the node. DaemonSet pods are skipped by default.
+Cordon a node and delete its pods. DaemonSet pods are skipped.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | Yes | Node name |
 | `grace_period_seconds` | integer | No | Grace period for pod termination |
-| `ignore_daemonsets` | boolean | No | Ignore DaemonSet pods (default: true) |
+
+With a namespace allowlist (`--namespaces`), `drain_node` first lists the node's pods and refuses, before cordoning, if any non-DaemonSet pod is in a namespace outside the allowlist (the error gives a count, not pod names). A pod that lands outside the allowlist between that check and the eviction is skipped and counted in `skipped_outside_allowlist`.
 
 ---
 
@@ -299,7 +300,7 @@ No required parameters.
 
 ### get_csr
 
-Get detailed info for a single CSR.
+Get detailed info for a single CSR, including the identity it requests: `subject.common_names` (the user) and `subject.organizations` (the groups), parsed from `spec.request`, plus the requester's own groups (`requestor_groups`).
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -307,11 +308,14 @@ Get detailed info for a single CSR.
 
 ### approve_csr
 
-Approve a CertificateSigningRequest.
+Approve a pending CertificateSigningRequest.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | Yes | CSR name |
+| `message` | string | No | Approval message |
+
+Before approving, mcp-k8s parses the request's subject and refuses privileged identities unless the operator sets `--allow-privileged-csr`: group `system:masters` (a cluster-admin certificate), any other `system:` user or group (nodes, control-plane components, service accounts, `system:anonymous`, `system:unauthenticated`), and requests it can't parse. A node's request for its own serving certificate (signer `kubernetes.io/kubelet-serving`) is allowed. See [CSR approval](../permissions.md#csr-approval).
 
 ### deny_csr
 
@@ -377,9 +381,9 @@ Watch a Kubernetes resource type for changes over a specified duration. Since MC
 |-----------|------|----------|-------------|
 | `api_version` | string | Yes | API version (e.g. `v1`, `apps/v1`, `networking.k8s.io/v1`) |
 | `kind` | string | Yes | Resource kind (e.g. `Pod`, `Deployment`, `Service`) |
-| `namespace` | string | No | Kubernetes namespace. Omit for cluster-scoped resources or to watch across all namespaces. |
+| `namespace` | string | No | Kubernetes namespace. Omit for cluster-scoped resources or to watch across all namespaces. With a namespace allowlist, required for namespaced kinds (omitting it is refused). |
 | `label_selector` | string | No | Label selector to filter watched resources (e.g. `app=nginx`) |
-| `duration_seconds` | integer | No | How long to watch in seconds (default: 10, max: 60) |
+| `duration_seconds` | integer | No | How long to watch in seconds (default: 10, max: 30) |
 
 Example:
 
@@ -440,7 +444,7 @@ List instances of a custom resource. Uses dynamic API discovery to resolve the r
 | `group` | string | Yes | API group of the custom resource (e.g. `stable.example.com`) |
 | `version` | string | Yes | API version (e.g. `v1`, `v1alpha1`) |
 | `kind` | string | Yes | Resource kind (e.g. `CronTab`) |
-| `namespace` | string | No | Kubernetes namespace. Omit for cluster-scoped custom resources. |
+| `namespace` | string | No | Kubernetes namespace. Omit for cluster-scoped custom resources, or to list a namespaced kind across all namespaces (refused when a namespace allowlist is set). |
 
 Example:
 
@@ -466,7 +470,7 @@ Get a single custom resource by name.
 | `version` | string | Yes | API version |
 | `kind` | string | Yes | Resource kind |
 | `name` | string | Yes | Resource name |
-| `namespace` | string | No | Kubernetes namespace. Omit for cluster-scoped custom resources. |
+| `namespace` | string | No | Kubernetes namespace. Required for namespaced kinds; omit for cluster-scoped custom resources. |
 
 ### create_custom_resource
 
@@ -478,7 +482,7 @@ Create a custom resource from a JSON manifest.
 | `version` | string | Yes | API version |
 | `kind` | string | Yes | Resource kind |
 | `manifest` | object | Yes | Full resource manifest (must include apiVersion, kind, metadata, and spec) |
-| `namespace` | string | No | Kubernetes namespace. Omit for cluster-scoped custom resources. |
+| `namespace` | string | No | Kubernetes namespace. Required for namespaced kinds; omit for cluster-scoped custom resources. |
 
 ### update_custom_resource
 
@@ -491,7 +495,7 @@ Merge-patch a custom resource.
 | `kind` | string | Yes | Resource kind |
 | `name` | string | Yes | Resource name |
 | `patch` | object | Yes | JSON merge-patch object to apply to the resource |
-| `namespace` | string | No | Kubernetes namespace. Omit for cluster-scoped custom resources. |
+| `namespace` | string | No | Kubernetes namespace. Required for namespaced kinds; omit for cluster-scoped custom resources. |
 
 Example:
 
@@ -519,4 +523,4 @@ Delete a custom resource by name.
 | `version` | string | Yes | API version |
 | `kind` | string | Yes | Resource kind |
 | `name` | string | Yes | Resource name |
-| `namespace` | string | No | Kubernetes namespace. Omit for cluster-scoped custom resources. |
+| `namespace` | string | No | Kubernetes namespace. Required for namespaced kinds; omit for cluster-scoped custom resources. |

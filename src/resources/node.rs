@@ -159,7 +159,7 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
         }),
         serde_json::json!({
             "name": "drain_node",
-            "description": "Drain a node by cordoning it and evicting all non-DaemonSet pods.",
+            "description": "Drain a node by cordoning it and evicting all non-DaemonSet pods. When the server has a namespace allowlist, refused (before cordoning) if the node runs non-DaemonSet pods in namespaces outside it.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -336,9 +336,45 @@ async fn uncordon_node(client: &K8sClient, args: &serde_json::Value) -> Result<S
     serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
 }
 
+/// Whether a pod is owned by a DaemonSet (drain leaves those alone).
+fn is_daemonset_pod(pod: &Pod) -> bool {
+    pod.metadata
+        .owner_references
+        .as_ref()
+        .map(|refs| refs.iter().any(|r| r.kind == "DaemonSet"))
+        .unwrap_or(false)
+}
+
+/// Non-DaemonSet pods on the node whose namespace is outside the allowlist.
+fn pods_outside_allowlist(client: &K8sClient, pods: &[Pod]) -> usize {
+    pods.iter()
+        .filter(|p| !is_daemonset_pod(p))
+        .filter(|p| {
+            !client.is_namespace_allowed(p.metadata.namespace.as_deref().unwrap_or("default"))
+        })
+        .count()
+}
+
 async fn drain_node(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let name = args["name"].as_str().ok_or("name is required")?;
     let grace_period = args["grace_period_seconds"].as_i64();
+
+    let pod_api: kube::Api<Pod> = kube::Api::all(client.inner().clone());
+    let lp = ListParams::default().fields(&format!("spec.nodeName={name}"));
+
+    // Draining deletes pods in every namespace on the node. Under a namespace
+    // allowlist, refuse up front (before cordoning) if that would touch a
+    // namespace outside it. The pod names are not reported.
+    if client.has_namespace_allowlist() {
+        let pods = pod_api.list(&lp).await.map_err(|e| e.to_string())?;
+        let outside = pods_outside_allowlist(client, &pods.items);
+        if outside > 0 {
+            return Err(format!(
+                "Refusing to drain node '{name}': it runs {outside} non-DaemonSet pod(s) in namespaces \
+                 outside the allowed list, and draining would evict them"
+            ));
+        }
+    }
 
     // Step 1: Cordon the node
     let node_api = api(client);
@@ -357,8 +393,6 @@ async fn drain_node(client: &K8sClient, args: &serde_json::Value) -> Result<Stri
         .map_err(|e| e.to_string())?;
 
     // Step 2: List all pods on this node
-    let pod_api: kube::Api<Pod> = kube::Api::all(client.inner().clone());
-    let lp = ListParams::default().fields(&format!("spec.nodeName={name}"));
     let pod_list = pod_api.list(&lp).await.map_err(|e| e.to_string())?;
 
     // Step 3: Evict non-DaemonSet pods
@@ -368,20 +402,21 @@ async fn drain_node(client: &K8sClient, args: &serde_json::Value) -> Result<Stri
     }
 
     let mut evicted_count: u32 = 0;
+    let mut skipped_outside_allowlist: u32 = 0;
     for pod in &pod_list {
         // Skip pods owned by a DaemonSet
-        let is_daemonset = pod
-            .metadata
-            .owner_references
-            .as_ref()
-            .map(|refs| refs.iter().any(|r| r.kind == "DaemonSet"))
-            .unwrap_or(false);
-        if is_daemonset {
+        if is_daemonset_pod(pod) {
             continue;
         }
 
         let pod_name = pod.metadata.name.as_deref().unwrap_or("");
         let pod_ns = pod.metadata.namespace.as_deref().unwrap_or("default");
+        // A pod scheduled outside the allowlist after the check above is
+        // left alone.
+        if !client.is_namespace_allowed(pod_ns) {
+            skipped_outside_allowlist += 1;
+            continue;
+        }
 
         let ns_pod_api: kube::Api<Pod> = kube::Api::namespaced(client.inner().clone(), pod_ns);
         ns_pod_api
@@ -391,12 +426,15 @@ async fn drain_node(client: &K8sClient, args: &serde_json::Value) -> Result<Stri
         evicted_count += 1;
     }
 
-    let result = serde_json::json!({
+    let mut result = serde_json::json!({
         "node": name,
         "action": "drain",
         "cordoned": true,
         "evicted_pods": evicted_count
     });
+    if skipped_outside_allowlist > 0 {
+        result["skipped_outside_allowlist"] = skipped_outside_allowlist.into();
+    }
     serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
 }
 

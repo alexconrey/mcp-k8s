@@ -158,6 +158,11 @@ pub const METRIC_ATTRIBUTES: &[&str] = &[
 
 /// `tracing` target of the request span and the end-of-call log events.
 pub const TARGET: &str = "mcp_k8s::telemetry";
+/// `tracing` target of the audit event: one per tool call that writes,
+/// deletes or execs, or that was denied. Same redacted fields as the
+/// `tool call finished` event, so operators can route this target to its own
+/// sink.
+pub const AUDIT_TARGET: &str = "mcp_k8s::audit";
 /// `tracing` target of the metric events. They carry no message; filter this
 /// target out of console logs and OTLP log export (the binary does).
 pub const METRICS_TARGET: &str = "mcp_k8s::telemetry::metrics";

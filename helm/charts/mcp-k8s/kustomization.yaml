@@ -1,10 +1,7 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
+# Full access (the base). Overlays: read-only/ (recommended starting point)
+# and network-policy/.
 resources:
-  - namespace.yaml
-  - serviceaccount.yaml
-  - clusterrole.yaml
-  - clusterrolebinding.yaml
-  - deployment.yaml
-  - service.yaml
+  - base

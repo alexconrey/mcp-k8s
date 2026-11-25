@@ -1150,3 +1150,129 @@ fn helper_predicates() {
     );
     assert_eq!(normalize_capability(" cap_net_raw "), "NET_RAW");
 }
+
+// ---------------------------------------------------------------------------
+// CertificateSigningRequest approval (--allow-privileged-csr)
+// ---------------------------------------------------------------------------
+
+mod csr_approval {
+    use super::super::csr_fixtures::{self as fx, csr};
+    use super::*;
+
+    const CLIENT: &str = "kubernetes.io/kube-apiserver-client";
+    const KUBELET_CLIENT: &str = "kubernetes.io/kube-apiserver-client-kubelet";
+    const SERVING: &str = "kubernetes.io/kubelet-serving";
+
+    fn check(
+        policy: &WorkloadPolicy,
+        request: &str,
+        signer: &str,
+        user: Option<&str>,
+    ) -> Vec<Violation> {
+        let mut out = Vec::new();
+        check_csr(policy, &csr(request, signer, user), &mut out);
+        out
+    }
+
+    #[test]
+    fn parses_subject_cn_and_organizations() {
+        let id = parse_csr_identity(fx::USER.as_bytes()).unwrap();
+        assert_eq!(id.common_names, ["jane"]);
+        assert_eq!(id.organizations, ["dev", "qa"]);
+        let id = parse_csr_identity(fx::MASTERS_SECOND_O.as_bytes()).unwrap();
+        assert_eq!(id.organizations, ["dev", "system:masters"]);
+    }
+
+    #[test]
+    fn system_masters_is_refused_for_every_signer() {
+        for signer in [CLIENT, KUBELET_CLIENT, SERVING, "example.com/custom"] {
+            for request in [fx::MASTERS, fx::MASTERS_SECOND_O] {
+                let v = check(&strict(), request, signer, Some("someone"));
+                assert_flags(&v, &["--allow-privileged-csr"]);
+                assert!(
+                    v.iter().any(|v| v.reason.contains("system:masters")),
+                    "{signer}: {v:#?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn normal_user_is_allowed() {
+        assert!(check(&strict(), fx::USER, CLIENT, Some("jane")).is_empty());
+        assert!(check(&strict(), fx::USER, "example.com/custom", None).is_empty());
+    }
+
+    #[test]
+    fn system_identities_are_refused() {
+        for request in [fx::ANONYMOUS, fx::SERVICEACCOUNTS_GROUP, fx::NODE] {
+            let v = check(&strict(), request, CLIENT, Some("admin"));
+            assert_flags(&v, &["--allow-privileged-csr"]);
+        }
+        // A kubelet client certificate is a node credential.
+        let v = check(
+            &strict(),
+            fx::NODE,
+            KUBELET_CLIENT,
+            Some("system:node:node-1"),
+        );
+        assert_flags(&v, &["--allow-privileged-csr"]);
+    }
+
+    #[test]
+    fn node_serving_certificate_for_itself_is_allowed() {
+        assert!(check(&strict(), fx::NODE, SERVING, Some("system:node:node-1")).is_empty());
+        // Requested by someone else, or for another signer: refused.
+        let v = check(&strict(), fx::NODE, SERVING, Some("system:node:node-2"));
+        assert_flags(&v, &["--allow-privileged-csr"]);
+        let v = check(&strict(), fx::NODE, SERVING, Some("mallory"));
+        assert_flags(&v, &["--allow-privileged-csr"]);
+        let v = check(&strict(), fx::NODE, CLIENT, Some("system:node:node-1"));
+        assert_flags(&v, &["--allow-privileged-csr"]);
+    }
+
+    #[test]
+    fn unparseable_requests_are_refused() {
+        let garbage = [
+            "",
+            "not a pem",
+            "-----BEGIN CERTIFICATE REQUEST-----\nAAAA\n-----END CERTIFICATE REQUEST-----\n",
+            "-----BEGIN CERTIFICATE REQUEST-----\n!!!!\n-----END CERTIFICATE REQUEST-----\n",
+        ];
+        for request in garbage {
+            let v = check(&strict(), request, CLIENT, Some("jane"));
+            assert_flags(&v, &["--allow-privileged-csr"]);
+            assert_eq!(v[0].location, "spec.request");
+        }
+        // Wrong block type, and a second block smuggled after a harmless one.
+        let wrong = fx::USER.replace("CERTIFICATE REQUEST", "CERTIFICATE");
+        assert_flags(
+            &check(&strict(), &wrong, CLIENT, None),
+            &["--allow-privileged-csr"],
+        );
+        let two = format!("{}{}", fx::USER, fx::MASTERS);
+        assert_flags(
+            &check(&strict(), &two, CLIENT, None),
+            &["--allow-privileged-csr"],
+        );
+    }
+
+    #[test]
+    fn opt_in_allows_privileged_requests() {
+        let mut p = strict();
+        p.allow_privileged_csr = true;
+        for request in [fx::MASTERS, fx::NODE, fx::ANONYMOUS, "garbage"] {
+            assert!(check(&p, request, CLIENT, None).is_empty());
+        }
+        assert!(check(&WorkloadPolicy::permissive(), fx::MASTERS, CLIENT, None).is_empty());
+    }
+
+    #[test]
+    fn rejection_names_the_flag() {
+        let err = into_result(check(&strict(), fx::MASTERS, CLIENT, None)).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("--allow-privileged-csr"), "{msg}");
+        assert!(msg.contains("MCP_K8S_ALLOW_PRIVILEGED_CSR"), "{msg}");
+        assert!(msg.contains("WorkloadPolicy.allow_privileged_csr"), "{msg}");
+    }
+}

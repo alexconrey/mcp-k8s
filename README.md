@@ -18,7 +18,7 @@ endpoint for in-cluster deployment.
 - **MCP resources and prompts**: `resources/read` for direct `k8s://` URI access, built-in diagnostic prompts
 - **OpenTelemetry**: one SERVER span per MCP request, the `mcp.server.operation.duration` histogram and logs over OTLP (http/protobuf), named after the OpenTelemetry MCP conventions, with tool arguments redacted to an allowlist ([Telemetry](#telemetry))
 - **Prometheus metrics**: `GET /metrics` endpoint with request counts and tool call latency histograms
-- **Bearer token auth and TLS**: `--auth-token` for HTTP authentication, `--tls-cert`/`--tls-key` for HTTPS
+- **Bearer token auth, TLS and browser protections**: `--auth-token`/`--auth-token-file` for HTTP authentication, `--tls-cert`/`--tls-key` for HTTPS, a `Host` allowlist against DNS rebinding, and no CORS or cross-site writes unless allowlisted
 - **Action permission controls**: disable create/update/delete globally or per-resource via CLI flags and env vars
 - **Namespace allowlisting**: restrict operations to specific namespaces
 - **Token-efficient responses**: focused summary/detail types instead of raw K8s API objects
@@ -114,6 +114,7 @@ The typed `create_*`/`update_*` tools and the custom resource tools run the same
 | NodePort / LoadBalancer / ExternalName Services | `--allow-nodeport` / `--allow-loadbalancer` / `--allow-external-services` |
 | Ingress `*-snippet` annotations and nginx config injection | `--allow-ingress-snippets` |
 | RBAC escalation (escalate/bind/impersonate, wildcards, binding cluster-admin) | `--allow-rbac-escalation` |
+| Approving CSRs for `system:masters` or other `system:` identities, or unparseable CSRs | `--allow-privileged-csr` |
 | Cluster-scoped custom resource kinds | `--allow-manifest-kinds Kind,...` |
 | Custom resource writes | `--allow-custom-resource-groups group,...` |
 
@@ -139,11 +140,15 @@ Beyond standard CRUD, the server supports:
 | `--disable-delete` | `DISABLE_DELETE` | `false` | Disable all delete operations |
 | `--disable` | `MCP_K8S_DISABLE` | (none) | Comma-separated per-resource disables (e.g. `deployment-delete,secret-create`) |
 | `--auth-token` | `AUTH_TOKEN` | (none) | Bearer token for HTTP endpoint authentication |
+| `--auth-token-file` | `AUTH_TOKEN_FILE` | (none) | Read the bearer token from a file (keeps it out of `ps`) |
+| `--allowed-hosts` | `MCP_K8S_ALLOWED_HOSTS` | loopback names on loopback, else any | Host names the server answers to (DNS-rebinding protection) |
+| `--cors-allowed-origins` | `MCP_K8S_CORS_ALLOWED_ORIGINS` | (none) | Origins browser-based clients may call from; cross-site browser writes get 403 otherwise |
+| `--max-request-bytes` / `--request-timeout-secs` | `MCP_K8S_MAX_REQUEST_BYTES` / `MCP_K8S_REQUEST_TIMEOUT_SECS` | 4 MiB / 360 s | Request size and time limits |
 | `--tls-cert` | `TLS_CERT` | (none) | Path to TLS certificate PEM file (enables HTTPS) |
 | `--tls-key` | `TLS_KEY` | (none) | Path to TLS private key PEM file (enables HTTPS) |
 | `--enable-apply-manifest` | `ENABLE_APPLY_MANIFEST` | `false` | Enable `apply_manifest`: an unrestricted raw server-side apply that skips the workload guardrails, for users who know what they're applying (the namespace allowlist and disable switches still apply). `--disable-apply-manifest` is deprecated but still wins |
 | `--allow-*`, `--allowed-registries`, `--ingress-annotation-*`, `--no-secure-defaults` | `MCP_K8S_ALLOW_*` etc. | restrictive | Workload guardrails, see [Guardrails](#guardrails) |
-| `--disable-secret-decode` | `DISABLE_SECRET_DECODE` | `false` | Prevent secret value decoding |
+| `--enable-secret-decode` | `ENABLE_SECRET_DECODE` | `false` | Let tools return Secret values; redacted everywhere otherwise (`--disable-secret-decode` is deprecated) |
 | `--cache-ttl` | `CACHE_TTL` | `0` | Response cache TTL in seconds (0 = disabled) |
 | `--log-format` | `LOG_FORMAT` | `text` | Log format: `text` or `json` (stderr in stdio mode) |
 | — | `KUBECONFIG` | in-cluster | Kubernetes config path |
@@ -235,28 +240,42 @@ Uses `gcr.io/distroless/cc-debian12:nonroot` as the runtime base. Runs
 ### Helm
 
 ```bash
+# Read-only: the recommended starting point
+helm install mcp-k8s ./helm/mcp-k8s --set rbac.readOnly=true
+
+# Writes allowed, limited to two namespaces, no deletes
 helm install mcp-k8s ./helm/mcp-k8s \
   --set namespaces="{staging,production}" \
   --set permissions.disableDelete=true
 ```
 
-See [helm/mcp-k8s/values.yaml](helm/mcp-k8s/values.yaml) for all configuration options.
+The chart runs the pod under the Pod Security "restricted" profile (non-root,
+read-only root filesystem, no capabilities, seccomp `RuntimeDefault`), grants
+RBAC scoped to what the tools use (no wildcards), and has an optional
+NetworkPolicy (`networkPolicy.enabled`) that limits ingress to the MCP port
+and egress to the API server, DNS and the OTLP collector. See
+[helm/mcp-k8s/values.yaml](helm/mcp-k8s/values.yaml) and the
+[Helm docs](docs/src/deployment/helm.md) for all configuration options.
 
 ### Kustomize
 
 ```bash
+# Read-only mode (recommended starting point)
+kubectl apply -k helm/charts/mcp-k8s/read-only/
+
 # Full access
 kubectl apply -k helm/charts/mcp-k8s/
 
-# Read-only mode
-kubectl apply -k helm/charts/mcp-k8s/read-only/
+# Full access plus a NetworkPolicy (edit network-policy/networkpolicy.yaml first)
+kubectl apply -k helm/charts/mcp-k8s/network-policy/
 ```
 
 ### RBAC
 
 The server needs a ServiceAccount with appropriate K8s RBAC permissions.
-See [docs/RBAC.md](docs/src/deployment/rbac.md) for full-access, read-only,
-and per-namespace ClusterRole examples.
+See [RBAC Setup](docs/src/deployment/rbac.md) for the full-access, read-only
+and per-namespace rules, the tool behind each rule, and why Secrets access is
+worth leaving out if you don't need the secret tools.
 
 ## Library Usage
 
@@ -345,7 +364,7 @@ page have the full recipe; the binary's `src/otel.rs` is a working example.
 ## Testing
 
 ```bash
-cargo test                                      # 553 unit + 11 binary + 8 integration + 27 guardrail + 9 typed-tool tests
+cargo test                                      # 568 unit + 26 binary + 11 integration + 36 guardrail + 15 namespace-allowlist + 9 typed-tool tests
 cargo test --no-default-features                # the same, as library consumers build it
 cargo test --test k3s_integration -- --ignored  # 13 k3s tests (needs Docker)
 cargo test --test k3s_workloads -- --ignored --test-threads=1  # 3 k3s tests for the typed tools and guardrails

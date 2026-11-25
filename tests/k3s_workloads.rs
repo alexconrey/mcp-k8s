@@ -671,6 +671,26 @@ async fn k3s_typed_resource_tools() {
     let raw = get_json(&client, "v1", "Secret", ns, "s").await;
     assert_eq!(raw["immutable"], true);
     assert_eq!(raw["metadata"]["annotations"]["owner"], "me");
+    // Secret values are opt-in: redacted by default, refused through get_secret.
+    assert!(
+        raw["data"]["token"].as_str().unwrap().contains("redacted"),
+        "{raw}"
+    );
+    let err = call(
+        &client,
+        "get_secret",
+        json!({ "namespace": ns, "name": "s", "decode": true }),
+    )
+    .await
+    .unwrap_err();
+    assert!(err.contains("--enable-secret-decode"), "{err}");
+    let decoding = K8sClient::new(
+        client.inner().clone(),
+        vec![],
+        ActionPermissions::default().with_secret_decode(true),
+    );
+    let raw = get_json(&decoding, "v1", "Secret", ns, "s").await;
+    assert_eq!(raw["data"]["token"], "c2VjcmV0");
 
     ok(&client, "create_serviceaccount", json!({ "namespace": ns, "name": "builder", "image_pull_secrets": ["regcred"], "labels": { "team": "ci" } })).await;
     let raw = get_json(&client, "v1", "ServiceAccount", ns, "builder").await;

@@ -12,10 +12,183 @@ release workflow refuses a tag that doesn't match `Cargo.toml`,
 
 ## [Unreleased]
 
+### Breaking changes
+- **Tool errors are MCP tool results, not JSON-RPC errors.** A tool that ran
+  and failed, or was refused (permissions, workload policy), now returns a
+  successful JSON-RPC response with `isError: true` and the message in
+  `content`, as the MCP spec requires, so the model sees why. It used to be a
+  JSON-RPC error `-32000`. An unknown tool, or an unknown prompt in
+  `prompts/get`, is now `-32602` (invalid params).
+- **Secret values are opt-in.** `ActionPermissions::default()` now has
+  `secret_decode_enabled: false` (`with_secret_decode(true)` enables it), and
+  the server needs `--enable-secret-decode` (`ENABLE_SECRET_DECODE`).
+  Without it `get_secret` refuses `decode: true` with an error naming the
+  flag (it used to ignore it silently). `--disable-secret-decode` is
+  deprecated but still honoured, and wins.
+
+### Security
+- **Namespace allowlist bypasses fixed.** With `--namespaces` (or a library
+  allowlist) set:
+  - `delete_namespace`, `update_namespace` and `create_namespace` acted on any
+    namespace (e.g. `delete_namespace kube-system`); they now refuse
+    namespaces outside the allowlist, like `get_namespace`.
+  - `watch_resource` and `list_custom_resources` without a namespace, on a
+    namespaced kind, and `list_csistoragecapacities` without a namespace,
+    acted across **all** namespaces; they now refuse with `namespace is
+    required`. Without an allowlist they behave as before.
+  - `drain_node` deleted pods in every namespace on the node; it now refuses,
+    before cordoning, when non-DaemonSet pods outside the allowlist would be
+    evicted.
+  - `create_rolebinding` fetched the bound Role from the target namespace
+    before checking the allowlist (leaking whether it exists and its
+    rules in the error); the check now comes first, and the bound-role lookup
+    checks the allowlist itself.
+  - `can_i` and `list_my_permissions` answered for any namespace; they now
+    refuse namespaces outside the allowlist.
+  - The custom resource tools ran API discovery before refusing a disallowed
+    namespace; they now refuse before any request.
+- New `tests/namespace_allowlist.rs` calls every tool that takes a namespace
+  with one outside the allowlist and requires a refusal before any API
+  request, and fails for a new tool without a namespace argument unless it
+  is listed as exempt with a reason.
+- **Secret values leaked through the generic tools.** `get_resource_json`,
+  its `get_resource_yaml` alias and `k8s://<ns>/secrets/<name>` resources
+  returned a Secret's base64 `data` even with secret decoding disabled. They
+  now redact `data`, `stringData` and the
+  `kubectl.kubernetes.io/last-applied-configuration` annotation unless
+  decoding is enabled.
+- `get_secret` redacts the `last-applied-configuration` annotation (the full
+  applied manifest, values included, for Secrets created with
+  `kubectl apply`) unless values are being returned.
+- **`approve_csr` checks the identity a CSR requests** (breaking default for
+  server operators and library users). It parses the PEM/PKCS#10
+  `spec.request` and refuses to approve: group `system:masters` (a
+  cluster-admin client certificate) for any signer; any other `system:` user
+  (CN) or group (O), such as nodes, control-plane components, service
+  accounts, `system:anonymous` and `system:unauthenticated`, including kubelet
+  client certificates; and requests it can't parse. A node's request for its
+  own serving certificate (`kubernetes.io/kubelet-serving`,
+  `CN=system:node:<name>`, `O=system:nodes`, requested by that node) is still
+  allowed. The rejection names the opt-in below, and the tool call is recorded
+  as denied (`policy:allow_privileged_csr`). The approval patch carries the
+  checked CSR's `resourceVersion`, so a CSR recreated under the same name in
+  between isn't approved unchecked.
+- **No CORS by default, and cross-site browser requests are refused.** The
+  HTTP server used `CorsLayer::permissive()`, so any web page could call it
+  from a visitor's browser. It now sends no CORS headers unless
+  `--cors-allowed-origins` lists the origin, and a browser-initiated
+  cross-site request that could change state (`Origin`/`Sec-Fetch-Site` from
+  another site) gets 403. MCP clients and curl send neither header.
+- **DNS-rebinding protection** (required by the MCP Streamable HTTP spec):
+  `--allowed-hosts` (`MCP_K8S_ALLOWED_HOSTS`) refuses requests for other
+  `Host` names with 403. On a loopback `--listen` it defaults to
+  `localhost`, `127.0.0.1` and `[::1]`. Otherwise any host is accepted and a
+  warning is logged. `/healthz` is exempt.
+- **Request limits:** `--max-request-bytes` (default 4 MiB, 413) and
+  `--request-timeout-secs` (default 360 s, 408).
+- `--auth-token-file` (`AUTH_TOKEN_FILE`) reads the token from a file, so it
+  stays out of `ps`. An empty token is a startup error. The server warns at
+  startup when it serves HTTP without a token on a non-loopback address.
+- kube 5.1.0 → 5.2.0 (RUSTSEC-2026-0600: kube-client's OpenSSL connector
+  trusted the system certificate store in addition to the kubeconfig CA).
+  mcp-k8s uses the rustls connector, so it wasn't affected, but the advisory
+  was flagged on every build.
+
+### Added
+- Helm chart: `podSecurityContext` and `securityContext` values, defaulting to
+  the Pod Security "restricted" profile (non-root 65534, read-only root
+  filesystem, no privilege escalation, all capabilities dropped, seccomp
+  `RuntimeDefault`). The Kustomize Deployment gets the same.
+- Helm chart: `rbac.readOnly` (get/list/watch only, and the server's
+  create/update/delete switches turned on so `tools/list` matches), the
+  recommended starting point; `rbac.secrets` to leave Secrets out of the role;
+  `rbac.csrSigners` for the signer `approve` permission `approve_csr` and
+  `deny_csr` need; `rbac.extraRules` (for custom resources) and
+  `rbac.allowWildcards`.
+- Helm chart NetworkPolicy: egress restricted to the API server, DNS and the
+  OTLP endpoint (`networkPolicy.egress.*`), and `networkPolicy.extraIngressFrom`.
+- Kustomize `network-policy/` overlay.
+- **Audit events:** every tool call that writes, deletes or execs, and every
+  denied call, emits an `audit` event on the `tracing` target
+  `mcp_k8s::audit` with the tool, action, decision and denied rule, outcome,
+  target and argument keys. Argument values are never included. Route the
+  target to its own sink for an audit trail.
+- **`apply_manifest` takes a `namespace` argument** (deckwatch passes one; it
+  used to be ignored). It fills `metadata.namespace` when the manifest has
+  none, a mismatch with `metadata.namespace` is refused, and both are checked
+  against the namespace allowlist. `create_custom_resource` gets the same
+  filling. The workload policy still doesn't apply to `apply_manifest`.
+- `K8sClient::has_namespace_allowlist()` and
+  `K8sClient::namespace_required_error()`.
+- `--allow-privileged-csr` / `MCP_K8S_ALLOW_PRIVILEGED_CSR` and
+  `WorkloadPolicy.allow_privileged_csr` (on in `WorkloadPolicy::permissive()`)
+  to approve such CSRs anyway. Library: `policy::check_csr`,
+  `policy::parse_csr_identity` and `policy::CsrIdentity`.
+- `get_csr` returns the parsed subject (`subject.common_names`,
+  `subject.organizations`) and the requester's groups (`requestor_groups`).
+- Dependencies: `x509-cert` 0.3 (RustCrypto, without its `pem` feature) and
+  `pem` 4 (already used by kube-client) in the library.
+
+### Changed
+- The chart's RBAC rules, and the Kustomize ClusterRole, are scoped to what the
+  tools use: write verbs only on resources that have write tools, read-only
+  everywhere else (leases, endpointslices, events, endpoints, admission
+  configuration, flow control, priority/runtime classes, CSI internals,
+  metrics), the self-review APIs `create` only, and `nodes` `patch` and
+  `persistentvolumes` `delete` instead of full CRUD. Rules were added for what
+  tools used without a grant: `pods/exec`, `pods/portforward`,
+  `pods/eviction`, `customresourcedefinitions` and the read-only DRA,
+  IPAddress/ServiceCIDR, VolumeAttributesClass, LeaseCandidate,
+  ClusterTrustBundle, MutatingAdmissionPolicy, StorageVersion and
+  StorageVersionMigration APIs.
+- `rbac.clusterWide: false` now creates a Role and RoleBinding in each
+  namespace of `namespaces` (the release namespace when empty) and leaves out
+  cluster-scoped resources; it used to create one Role in the release
+  namespace only.
+- The Kustomize manifests moved to `helm/charts/mcp-k8s/base/`
+  (`kubectl apply -k helm/charts/mcp-k8s/` still works). The `read-only/`
+  overlay now also narrows the ClusterRole to get/list/watch.
+- When `networkPolicy.enabled`, egress is now restricted too (set
+  `networkPolicy.egress.enabled: false` for the old ingress-only policy), and
+  the ingress rule targets the container's `http` port instead of
+  `service.port`.
+- **`exec_pod` refuses pods with node-level access** (privileged containers,
+  `hostNetwork`/`hostPID`/`hostIPC`, `hostPath` volumes, added capabilities,
+  Unconfined profiles) unless the operator allows the setting with the
+  matching `--allow-*` flag. The error names the flag(s). It reads the pod
+  first, so it now needs `get` on pods as well as `create` on `pods/exec`.
+- **`exec_pod` has a timeout and an output cap.** New `timeout_secs` argument
+  (default 60, max 300): a command still running at the deadline returns the
+  output so far with `timed_out: true` and the exec session is closed. Each of
+  stdout and stderr is capped at 1 MiB with a truncation marker. stdout and
+  stderr are now read concurrently, which also fixes a hang when a command
+  wrote more than about 1 KiB to stderr before closing stdout.
+- `port_forward_check` gives up after 10 seconds instead of waiting forever.
+- `get_custom_resource`, `update_custom_resource` and `delete_custom_resource`
+  require `namespace` for namespaced kinds (they used to address the
+  cluster-scoped path and fail with a 404), and address cluster-scoped kinds
+  without a namespace even if one is passed.
+
+### Deprecated
+- The Prometheus metrics `mcp_k8s_tool_calls_total`,
+  `mcp_k8s_tool_call_duration_seconds` and `mcp_requests_total` are
+  deprecated and will be removed in v0.8.0. Use the OpenTelemetry metric
+  `mcp.server.operation.duration`. Their `# HELP` text says so.
+
+### Fixed
+- `kubectl apply -k helm/charts/mcp-k8s/read-only/` failed with a kustomize
+  cycle error (the overlay sat inside its own base).
+- The chart's NetworkPolicy rendered two `from:` keys when both
+  `allowedCIDRs` and `allowedNamespaces` were set, dropping one of them.
+
 ### Internal
 - The k3s tests pin their images by multi-arch index digest: the k3s image
   (`MCP_K8S_K3S_TAG` still overrides it) and the busybox and pause images k3s
   pulls for the workloads.
+- The aws-lc-rs TLS provider (and its cmake build) is no longer compiled.
+  ring was already the provider in use: `rustls` is built without default
+  features and `axum-server` with `tls-rustls-no-provider`.
+
 
 ## [0.6.0] - 2026-11-24
 
