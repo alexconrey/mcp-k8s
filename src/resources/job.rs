@@ -1,12 +1,15 @@
 use std::collections::BTreeMap;
 
-use k8s_openapi::api::batch::v1::{Job, JobSpec};
-use k8s_openapi::api::core::v1::{Container, PodSpec, PodTemplateSpec};
-use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
+use k8s_openapi::api::batch::v1::{CronJob, Job, JobSpec, PodFailurePolicy, SuccessPolicy};
+use k8s_openapi::api::core::v1::PodTemplateSpec;
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::{ObjectMeta, OwnerReference};
 use kube::api::{DeleteParams, ListParams, PostParams, PropagationPolicy};
 use serde::Serialize;
+use serde_json::{json, Value};
 
 use crate::client::K8sClient;
+use crate::policy::{MANAGED_BY_LABEL, MANAGED_BY_VALUE};
+use crate::resources::podspec::{self, WorkloadKind};
 
 fn api(client: &K8sClient, ns: &str) -> Result<kube::Api<Job>, String> {
     if !client.is_namespace_allowed(ns) {
@@ -226,29 +229,23 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
         }),
         serde_json::json!({
             "name": "create_job",
-            "description": "Create a Kubernetes Job. Accepts namespace, name, image, optional command, restart_policy (default Never), and backoff_limit (default 6).",
+            "description": format!(
+                "Create a Kubernetes Job (backoff_limit defaults to 6, restart_policy to Never). Job settings: backoff_limit, ttl_seconds_after_finished, active_deadline_seconds, completions, parallelism, completion_mode (Indexed), backoff_limit_per_index, max_failed_indexes, pod_failure_policy, success_policy, pod_replacement_policy, suspend. {}",
+                podspec::CREATE_DESCRIPTION
+            ),
+            "inputSchema": create_job_schema()
+        }),
+        serde_json::json!({
+            "name": "create_job_from_cronjob",
+            "description": "Run a CronJob now: create a Job from its job template, like `kubectl create job --from=cronjob/NAME`. Preferred over apply_manifest. The Job is owned by the CronJob and annotated cronjob.kubernetes.io/instantiate=manual. The template is checked against the server's guardrails like any other workload.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "namespace": { "type": "string", "description": "Kubernetes namespace" },
-                    "name": { "type": "string", "description": "Job name" },
-                    "image": { "type": "string", "description": "Container image to run" },
-                    "command": {
-                        "type": "array",
-                        "items": { "type": "string" },
-                        "description": "Command to run in the container (optional)"
-                    },
-                    "restart_policy": {
-                        "type": "string",
-                        "description": "Pod restart policy (default: Never)",
-                        "enum": ["Never", "OnFailure"]
-                    },
-                    "backoff_limit": {
-                        "type": "integer",
-                        "description": "Number of retries before marking the job as failed (default: 6)"
-                    }
+                    "cronjob": { "type": "string", "description": "Name of the CronJob" },
+                    "name": { "type": "string", "description": "Job name (default: <cronjob>-manual-<timestamp>)" }
                 },
-                "required": ["namespace", "name", "image"],
+                "required": ["namespace", "cronjob"],
                 "additionalProperties": false
             }
         }),
@@ -268,6 +265,95 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
     ]
 }
 
+/// Job spec fields shared by `create_job` and (for the job template)
+/// `create_cronjob`. `with_suspend` adds the Job-level `suspend`.
+pub(crate) fn job_properties(with_suspend: bool) -> Value {
+    let mut props = json!({
+        "backoff_limit": { "type": "integer", "description": "Retries before the job is marked failed (Kubernetes default: 6)" },
+        "ttl_seconds_after_finished": { "type": "integer", "description": "Delete the job this many seconds after it finishes" },
+        "active_deadline_seconds": { "type": "integer", "description": "Fail the job if it runs longer than this" },
+        "completions": { "type": "integer", "description": "Successful pods needed (default: 1)" },
+        "parallelism": { "type": "integer", "description": "Pods running at once (default: 1)" },
+        "completion_mode": { "type": "string", "enum": ["NonIndexed", "Indexed"], "description": "Indexed gives each pod a completion index (JOB_COMPLETION_INDEX)" },
+        "backoff_limit_per_index": { "type": "integer", "description": "Retries per index (Indexed jobs)" },
+        "max_failed_indexes": { "type": "integer", "description": "Failed indexes tolerated before the job fails (Indexed jobs, with backoff_limit_per_index)" },
+        "pod_failure_policy": { "type": "object", "description": "Kubernetes PodFailurePolicy: {rules: [{action: FailJob|Ignore|Count|FailIndex, onExitCodes: {operator, values} | onPodConditions: [{type, status}]}]}; snake_case keys are accepted too" },
+        "success_policy": { "type": "object", "description": "Kubernetes SuccessPolicy for Indexed jobs: {rules: [{succeededIndexes, succeededCount}]}" },
+        "pod_replacement_policy": { "type": "string", "enum": ["TerminatingOrFailed", "Failed"] }
+    });
+    if with_suspend {
+        props["suspend"] = json!({ "type": "boolean", "description": "Create the job suspended" });
+    }
+    props
+}
+
+fn create_job_schema() -> Value {
+    podspec::workload_schema(
+        WorkloadKind::Job,
+        job_properties(true),
+        &["namespace", "name"],
+    )
+}
+
+fn opt_i32(args: &Value, key: &str) -> Result<Option<i32>, String> {
+    match args.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(v) => v
+            .as_i64()
+            .and_then(|n| i32::try_from(n).ok())
+            .map(Some)
+            .ok_or_else(|| format!("{key} must be a 32-bit integer")),
+    }
+}
+
+/// Build a JobSpec from the job settings in `args` and a pod template.
+///
+/// `with_suspend` reads the Job-level `suspend`; CronJobs pass `false`
+/// because their `suspend` argument belongs to the CronJob.
+pub(crate) fn job_spec_from_args(
+    args: &Value,
+    template: PodTemplateSpec,
+    default_backoff_limit: Option<i32>,
+    with_suspend: bool,
+) -> Result<JobSpec, String> {
+    if let Some(mode) = args.get("completion_mode").and_then(Value::as_str) {
+        podspec::check_enum(mode, &["NonIndexed", "Indexed"], "completion_mode")?;
+    }
+    if let Some(p) = args.get("pod_replacement_policy").and_then(Value::as_str) {
+        podspec::check_enum(
+            p,
+            &["TerminatingOrFailed", "Failed"],
+            "pod_replacement_policy",
+        )?;
+    }
+    Ok(JobSpec {
+        template,
+        backoff_limit: opt_i32(args, "backoff_limit")?.or(default_backoff_limit),
+        ttl_seconds_after_finished: opt_i32(args, "ttl_seconds_after_finished")?,
+        active_deadline_seconds: args.get("active_deadline_seconds").and_then(Value::as_i64),
+        completions: opt_i32(args, "completions")?,
+        parallelism: opt_i32(args, "parallelism")?,
+        completion_mode: args
+            .get("completion_mode")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        backoff_limit_per_index: opt_i32(args, "backoff_limit_per_index")?,
+        max_failed_indexes: opt_i32(args, "max_failed_indexes")?,
+        pod_failure_policy: podspec::passthrough::<PodFailurePolicy>(args, "pod_failure_policy")?,
+        success_policy: podspec::passthrough::<SuccessPolicy>(args, "success_policy")?,
+        pod_replacement_policy: args
+            .get("pod_replacement_policy")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        suspend: if with_suspend {
+            args.get("suspend").and_then(Value::as_bool)
+        } else {
+            None
+        },
+        ..Default::default()
+    })
+}
+
 pub async fn handle_tool(
     client: &K8sClient,
     name: &str,
@@ -277,6 +363,7 @@ pub async fn handle_tool(
         "list_jobs" => list_jobs(client, args).await,
         "get_job" => get_job(client, args).await,
         "create_job" => create_job(client, args).await,
+        "create_job_from_cronjob" => create_job_from_cronjob(client, args).await,
         "delete_job" => delete_job(client, args).await,
         _ => return None,
     };
@@ -313,61 +400,102 @@ async fn get_job(client: &K8sClient, args: &serde_json::Value) -> Result<String,
 }
 
 async fn create_job(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
+    let args = podspec::normalize_args(args, &create_job_schema())?;
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
-    let image = args["image"].as_str().ok_or("image is required")?;
-    let command: Option<Vec<String>> = args
-        .get("command")
-        .and_then(|v| serde_json::from_value(v.clone()).ok());
-    let restart_policy = args["restart_policy"]
-        .as_str()
-        .unwrap_or("Never")
-        .to_string();
-    let backoff_limit = args["backoff_limit"].as_i64().unwrap_or(6) as i32;
+    let job_api = api(client, ns)?;
 
-    let mut labels = BTreeMap::new();
-    labels.insert("app".to_string(), name.to_string());
-    labels.insert(
-        "app.kubernetes.io/managed-by".to_string(),
-        "mcp-k8s".to_string(),
-    );
-
+    let (meta, template) =
+        podspec::build_template(&args, name, WorkloadKind::Job, client.policy())?;
     let job = Job {
         metadata: ObjectMeta {
             name: Some(name.to_string()),
             namespace: Some(ns.to_string()),
-            labels: Some(labels.clone()),
+            labels: Some(meta.labels),
+            annotations: meta.annotations,
             ..Default::default()
         },
-        spec: Some(JobSpec {
-            backoff_limit: Some(backoff_limit),
-            template: PodTemplateSpec {
-                metadata: Some(ObjectMeta {
-                    labels: Some(labels),
-                    ..Default::default()
-                }),
-                spec: Some(PodSpec {
-                    containers: vec![Container {
-                        name: name.to_string(),
-                        image: Some(image.to_string()),
-                        command,
-                        ..Default::default()
-                    }],
-                    restart_policy: Some(restart_policy),
-                    ..Default::default()
-                }),
-            },
-            ..Default::default()
-        }),
+        spec: Some(job_spec_from_args(&args, template, Some(6), true)?),
         ..Default::default()
     };
+    crate::policy::check_typed(client, &job)?;
 
-    let job_api = api(client, ns)?;
     let created = job_api
         .create(&PostParams::default(), &job)
         .await
         .map_err(|e| e.to_string())?;
 
+    let summary = extract_summary(&created);
+    serde_json::to_string_pretty(&summary).map_err(|e| e.to_string())
+}
+
+/// `<cronjob>-manual-<hex unix time>`, kept within the 63-character label limit.
+fn manual_job_name(cronjob: &str) -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or_default();
+    let suffix = format!("-manual-{secs:x}");
+    let keep = 63usize.saturating_sub(suffix.len()).min(cronjob.len());
+    format!("{}{suffix}", cronjob[..keep].trim_end_matches('-'))
+}
+
+async fn create_job_from_cronjob(
+    client: &K8sClient,
+    args: &serde_json::Value,
+) -> Result<String, String> {
+    let ns = args["namespace"].as_str().ok_or("namespace is required")?;
+    let cronjob_name = args["cronjob"].as_str().ok_or("cronjob is required")?;
+    let job_api = api(client, ns)?;
+    let cj_api: kube::Api<CronJob> = kube::Api::namespaced(client.inner().clone(), ns);
+
+    let cronjob = cj_api.get(cronjob_name).await.map_err(|e| e.to_string())?;
+    let template = cronjob
+        .spec
+        .as_ref()
+        .map(|s| s.job_template.clone())
+        .ok_or_else(|| format!("CronJob '{cronjob_name}' has no spec"))?;
+    let name = args["name"]
+        .as_str()
+        .map(str::to_string)
+        .unwrap_or_else(|| manual_job_name(cronjob_name));
+
+    let template_meta = template.metadata.unwrap_or_default();
+    let mut labels = template_meta.labels.unwrap_or_default();
+    labels.insert(MANAGED_BY_LABEL.to_string(), MANAGED_BY_VALUE.to_string());
+    let mut annotations = template_meta.annotations.unwrap_or_default();
+    annotations.insert(
+        "cronjob.kubernetes.io/instantiate".to_string(),
+        "manual".to_string(),
+    );
+
+    let job = Job {
+        metadata: ObjectMeta {
+            name: Some(name),
+            namespace: Some(ns.to_string()),
+            labels: Some(labels),
+            annotations: Some(annotations),
+            owner_references: cronjob.metadata.uid.clone().map(|uid| {
+                vec![OwnerReference {
+                    api_version: "batch/v1".to_string(),
+                    kind: "CronJob".to_string(),
+                    name: cronjob_name.to_string(),
+                    uid,
+                    controller: Some(true),
+                    block_owner_deletion: Some(true),
+                }]
+            }),
+            ..Default::default()
+        },
+        spec: template.spec,
+        ..Default::default()
+    };
+    crate::policy::check_typed(client, &job)?;
+
+    let created = job_api
+        .create(&PostParams::default(), &job)
+        .await
+        .map_err(|e| e.to_string())?;
     let summary = extract_summary(&created);
     serde_json::to_string_pretty(&summary).map_err(|e| e.to_string())
 }
@@ -395,13 +523,14 @@ mod tests {
     use super::*;
     use k8s_openapi::api::batch::v1::JobCondition;
     use k8s_openapi::api::batch::v1::JobStatus;
+    use k8s_openapi::api::core::v1::{Container, PodSpec};
     use k8s_openapi::apimachinery::pkg::apis::meta::v1::Time;
     use k8s_openapi::jiff;
 
     #[test]
-    fn tool_definitions_returns_four_tools() {
+    fn tool_definitions_returns_five_tools() {
         let defs = tool_definitions();
-        assert_eq!(defs.len(), 4);
+        assert_eq!(defs.len(), 5);
 
         let names: Vec<&str> = defs.iter().map(|d| d["name"].as_str().unwrap()).collect();
 
@@ -413,7 +542,82 @@ mod tests {
         assert!(names.contains(&"list_jobs"));
         assert!(names.contains(&"get_job"));
         assert!(names.contains(&"create_job"));
+        assert!(names.contains(&"create_job_from_cronjob"));
         assert!(names.contains(&"delete_job"));
+    }
+
+    #[test]
+    fn manual_job_names_fit_the_label_limit() {
+        let short = manual_job_name("nightly");
+        assert!(short.starts_with("nightly-manual-"), "{short}");
+        let long = manual_job_name(&"x".repeat(52));
+        assert!(long.len() <= 63, "{} chars: {long}", long.len());
+        assert!(long.contains("-manual-"));
+    }
+
+    #[test]
+    fn job_spec_parses_every_job_setting() {
+        let args = json!({
+            "backoff_limit": 2,
+            "ttl_seconds_after_finished": 300,
+            "active_deadline_seconds": 600,
+            "completions": 5,
+            "parallelism": 2,
+            "completion_mode": "Indexed",
+            "backoff_limit_per_index": 1,
+            "max_failed_indexes": 2,
+            "pod_failure_policy": { "rules": [{ "action": "FailJob", "on_exit_codes": { "operator": "In", "values": [42] } }] },
+            "success_policy": { "rules": [{ "succeededCount": 3 }] },
+            "pod_replacement_policy": "Failed",
+            "suspend": true
+        });
+        let spec = job_spec_from_args(&args, PodTemplateSpec::default(), Some(6), true).unwrap();
+        assert_eq!(spec.backoff_limit, Some(2));
+        assert_eq!(spec.ttl_seconds_after_finished, Some(300));
+        assert_eq!(spec.active_deadline_seconds, Some(600));
+        assert_eq!(spec.completions, Some(5));
+        assert_eq!(spec.parallelism, Some(2));
+        assert_eq!(spec.completion_mode.as_deref(), Some("Indexed"));
+        assert_eq!(spec.backoff_limit_per_index, Some(1));
+        assert_eq!(spec.max_failed_indexes, Some(2));
+        let rule = &spec.pod_failure_policy.unwrap().rules[0];
+        assert_eq!(rule.action, "FailJob");
+        assert_eq!(rule.on_exit_codes.as_ref().unwrap().values, vec![42]);
+        assert_eq!(
+            spec.success_policy.unwrap().rules[0].succeeded_count,
+            Some(3)
+        );
+        assert_eq!(spec.pod_replacement_policy.as_deref(), Some("Failed"));
+        assert_eq!(spec.suspend, Some(true));
+    }
+
+    #[test]
+    fn job_spec_defaults_and_validation() {
+        let spec =
+            job_spec_from_args(&json!({}), PodTemplateSpec::default(), Some(6), true).unwrap();
+        assert_eq!(
+            spec.backoff_limit,
+            Some(6),
+            "create_job keeps its default of 6"
+        );
+        assert!(spec.completion_mode.is_none());
+        let err = job_spec_from_args(
+            &json!({"completion_mode": "Sometimes"}),
+            PodTemplateSpec::default(),
+            None,
+            true,
+        )
+        .unwrap_err();
+        assert!(err.contains("completion_mode"), "{err}");
+        // A CronJob's suspend belongs to the CronJob, not its job template.
+        let spec = job_spec_from_args(
+            &json!({"suspend": true}),
+            PodTemplateSpec::default(),
+            None,
+            false,
+        )
+        .unwrap();
+        assert_eq!(spec.suspend, None);
     }
 
     #[test]

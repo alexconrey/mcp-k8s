@@ -1,15 +1,16 @@
 use std::collections::BTreeMap;
 
-use k8s_openapi::api::apps::v1::{Deployment, DeploymentSpec, ReplicaSet};
-use k8s_openapi::api::core::v1::{
-    ConfigMapEnvSource, Container, ContainerPort, EnvFromSource, EnvVar, PodSpec, PodTemplateSpec,
-    SecretEnvSource,
+use k8s_openapi::api::apps::v1::{
+    Deployment, DeploymentSpec, DeploymentStrategy, ReplicaSet, RollingUpdateDeployment,
 };
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::{LabelSelector, ObjectMeta};
 use kube::api::{DeleteParams, ListParams, Patch, PatchParams, PostParams};
 use serde::Serialize;
+use serde_json::{json, Map, Value};
 
 use crate::client::K8sClient;
+use crate::policy::{PatchKind, Source};
+use crate::resources::podspec::{self, WorkloadKind};
 
 fn api(client: &K8sClient, ns: &str) -> Result<kube::Api<Deployment>, String> {
     if !client.is_namespace_allowed(ns) {
@@ -83,101 +84,94 @@ fn extract_summary(dep: &Deployment) -> DeploymentSummary {
     }
 }
 
-/// Build env vars from an optional JSON object of key-value pairs.
-fn env_from_args(args: &serde_json::Value) -> Option<Vec<EnvVar>> {
-    args.get("env").and_then(|v| v.as_object()).map(|obj| {
-        obj.iter()
-            .map(|(k, v)| EnvVar {
-                name: k.clone(),
-                value: Some(v.as_str().unwrap_or_default().to_string()),
-                ..Default::default()
-            })
-            .collect()
+fn deployment_properties() -> Value {
+    json!({
+        "replicas": { "type": "integer", "description": "Number of replicas (default: 1)" },
+        "strategy": {
+            "type": "object",
+            "description": "Rollout strategy",
+            "properties": {
+                "type": { "type": "string", "enum": ["RollingUpdate", "Recreate"] },
+                "max_surge": { "type": ["integer", "string"], "description": "Extra pods during a rolling update (number or percentage, default 25%)" },
+                "max_unavailable": { "type": ["integer", "string"], "description": "Pods that may be unavailable during a rolling update (number or percentage, default 25%)" }
+            },
+            "additionalProperties": false
+        },
+        "min_ready_seconds": { "type": "integer", "description": "Seconds a new pod must be ready before it counts as available" },
+        "revision_history_limit": { "type": "integer", "description": "Old ReplicaSets to keep for rollback (default: 10)" },
+        "progress_deadline_seconds": { "type": "integer", "description": "Seconds before a stalled rollout is reported as failed (default: 600)" }
     })
 }
 
-/// Build envFrom sources from an optional JSON array of source references.
-/// Each item must have either `secret_ref` or `config_map_ref` set to the
-/// resource name.
-fn env_from_sources_from_args(args: &serde_json::Value) -> Option<Vec<EnvFromSource>> {
-    args.get("env_from").and_then(|v| v.as_array()).map(|arr| {
-        arr.iter()
-            .filter_map(|item| {
-                if let Some(secret_name) = item.get("secret_ref").and_then(|v| v.as_str()) {
-                    Some(EnvFromSource {
-                        secret_ref: Some(SecretEnvSource {
-                            name: secret_name.to_string(),
-                            ..Default::default()
-                        }),
-                        ..Default::default()
-                    })
-                } else {
-                    item.get("config_map_ref")
-                        .and_then(|v| v.as_str())
-                        .map(|cm_name| EnvFromSource {
-                            config_map_ref: Some(ConfigMapEnvSource {
-                                name: cm_name.to_string(),
-                                ..Default::default()
-                            }),
-                            ..Default::default()
-                        })
-                }
-            })
-            .collect()
-    })
+fn create_deployment_schema() -> Value {
+    podspec::workload_schema(
+        WorkloadKind::Deployment,
+        deployment_properties(),
+        &["namespace", "name"],
+    )
 }
 
-/// Build a Kubernetes probe JSON value from probe args under the given key.
-///
-/// Returns `None` when the key is absent from `args` (probe left unchanged).
-/// The returned value is a JSON object ready to insert into a strategic merge
-/// patch container object (e.g. as `"livenessProbe"`).
-fn probe_from_args(args: &serde_json::Value, probe_key: &str) -> Option<serde_json::Value> {
-    let probe_args = args.get(probe_key)?;
+fn update_deployment_schema() -> Value {
+    podspec::workload_update_schema(WorkloadKind::Deployment, deployment_properties())
+}
 
-    let probe_type = probe_args.get("probe_type")?.as_str()?;
-    let mut probe = serde_json::Map::new();
-
-    // Timing / threshold fields — each is optional.
-    macro_rules! maybe_insert_int {
-        ($field:literal, $key:literal) => {
-            if let Some(v) = probe_args.get($key).and_then(|v| v.as_i64()) {
-                probe.insert($field.to_string(), serde_json::json!(v));
-            }
-        };
+fn opt_i32(args: &Value, key: &str) -> Result<Option<i32>, String> {
+    match args.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(v) => v
+            .as_i64()
+            .and_then(|n| i32::try_from(n).ok())
+            .map(Some)
+            .ok_or_else(|| format!("{key} must be a 32-bit integer")),
     }
-    maybe_insert_int!("initialDelaySeconds", "initial_delay_seconds");
-    maybe_insert_int!("periodSeconds", "period_seconds");
-    maybe_insert_int!("timeoutSeconds", "timeout_seconds");
-    maybe_insert_int!("failureThreshold", "failure_threshold");
-    maybe_insert_int!("successThreshold", "success_threshold");
+}
 
-    let port = probe_args
-        .get("port")
-        .and_then(|v| v.as_i64())
-        .unwrap_or(80);
-
-    match probe_type {
-        "httpGet" => {
-            let mut http_get = serde_json::Map::new();
-            if let Some(path) = probe_args.get("path").and_then(|v| v.as_str()) {
-                http_get.insert("path".to_string(), serde_json::json!(path));
-            }
-            http_get.insert("port".to_string(), serde_json::json!(port));
-            probe.insert("httpGet".to_string(), serde_json::Value::Object(http_get));
-        }
-        "tcpSocket" => {
-            probe.insert("tcpSocket".to_string(), serde_json::json!({ "port": port }));
-        }
-        "exec" => {
-            if let Some(cmd) = probe_args.get("command") {
-                probe.insert("exec".to_string(), serde_json::json!({ "command": cmd }));
-            }
-        }
-        _ => {}
+fn strategy_from_args(args: &Value) -> Result<Option<DeploymentStrategy>, String> {
+    let Some(s) = args.get("strategy").filter(|v| !v.is_null()) else {
+        return Ok(None);
+    };
+    let obj = s.as_object().ok_or("strategy must be an object")?;
+    if let Some(k) = obj.keys().find(|k| {
+        ![
+            "type",
+            "max_surge",
+            "max_unavailable",
+            "maxSurge",
+            "maxUnavailable",
+        ]
+        .contains(&k.as_str())
+    }) {
+        return Err(format!(
+            "strategy: unknown field '{k}' (expected type, max_surge, max_unavailable)"
+        ));
     }
-
-    Some(serde_json::Value::Object(probe))
+    let type_ = s["type"].as_str().unwrap_or("RollingUpdate");
+    podspec::check_enum(type_, &["RollingUpdate", "Recreate"], "strategy.type")?;
+    let get = |snake: &str, camel: &str| {
+        s.get(snake)
+            .or_else(|| s.get(camel))
+            .filter(|v| !v.is_null())
+    };
+    let max_surge = get("max_surge", "maxSurge")
+        .map(|v| podspec::int_or_string(v, "strategy.max_surge"))
+        .transpose()?;
+    let max_unavailable = get("max_unavailable", "maxUnavailable")
+        .map(|v| podspec::int_or_string(v, "strategy.max_unavailable"))
+        .transpose()?;
+    if type_ == "Recreate" && (max_surge.is_some() || max_unavailable.is_some()) {
+        return Err(
+            "strategy: max_surge and max_unavailable only apply to RollingUpdate".to_string(),
+        );
+    }
+    Ok(Some(DeploymentStrategy {
+        type_: Some(type_.to_string()),
+        rolling_update: (max_surge.is_some() || max_unavailable.is_some()).then_some(
+            RollingUpdateDeployment {
+                max_surge,
+                max_unavailable,
+            },
+        ),
+    }))
 }
 
 /// Format the current UTC time as an RFC 3339 string using only std.
@@ -229,117 +223,19 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
     vec![
         serde_json::json!({
             "name": "create_deployment",
-            "description": "Create a new deployment in the specified namespace.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "namespace": { "type": "string", "description": "Kubernetes namespace" },
-                    "name": { "type": "string", "description": "Deployment name" },
-                    "image": { "type": "string", "description": "Container image" },
-                    "replicas": { "type": "integer", "description": "Number of replicas (default: 1)" },
-                    "port": { "type": "integer", "description": "Container port to expose (optional)" },
-                    "env": {
-                        "type": "object",
-                        "description": "Environment variables as key-value string pairs (optional)",
-                        "additionalProperties": { "type": "string" }
-                    },
-                    "env_from": {
-                        "type": "array",
-                        "description": "List of sources to populate env vars in bulk. Each item must have either 'secret_ref' or 'config_map_ref' set to the resource name.",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "secret_ref": { "type": "string", "description": "Name of a Secret to load all keys as env vars" },
-                                "config_map_ref": { "type": "string", "description": "Name of a ConfigMap to load all keys as env vars" }
-                            }
-                        }
-                    }
-                },
-                "required": ["namespace", "name", "image"],
-                "additionalProperties": false
-            }
+            "description": format!(
+                "Create a Deployment (pods selected by app=<name>). Deployment settings: replicas, strategy (RollingUpdate with max_surge/max_unavailable, or Recreate), min_ready_seconds, revision_history_limit, progress_deadline_seconds, pod_annotations. {}",
+                podspec::CREATE_DESCRIPTION
+            ),
+            "inputSchema": create_deployment_schema()
         }),
         serde_json::json!({
             "name": "update_deployment",
-            "description": "Update (merge patch) an existing deployment. Supports changing image, replicas, env vars, and readiness/liveness/startup probes.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "namespace": { "type": "string", "description": "Kubernetes namespace" },
-                    "name": { "type": "string", "description": "Deployment name" },
-                    "image": { "type": "string", "description": "New container image (optional)" },
-                    "replicas": { "type": "integer", "description": "New replica count (optional)" },
-                    "env": {
-                        "type": "object",
-                        "description": "Environment variables as key-value string pairs (optional, replaces all env vars)",
-                        "additionalProperties": { "type": "string" }
-                    },
-                    "env_from": {
-                        "type": "array",
-                        "description": "List of sources to populate env vars in bulk. Each item must have either 'secret_ref' or 'config_map_ref' set to the resource name.",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "secret_ref": { "type": "string", "description": "Name of a Secret to load all keys as env vars" },
-                                "config_map_ref": { "type": "string", "description": "Name of a ConfigMap to load all keys as env vars" }
-                            }
-                        }
-                    },
-                    "liveness_probe": {
-                        "type": "object",
-                        "description": "Liveness probe configuration (optional). If omitted, the existing probe is left unchanged.",
-                        "properties": {
-                            "probe_type": { "type": "string", "enum": ["httpGet", "exec", "tcpSocket"], "description": "Probe mechanism to use" },
-                            "path": { "type": "string", "description": "HTTP path for httpGet probes (e.g. \"/healthz\")" },
-                            "port": { "type": "integer", "description": "Port number for httpGet and tcpSocket probes (default: 80)" },
-                            "command": { "type": "array", "items": { "type": "string" }, "description": "Command and args for exec probes" },
-                            "initial_delay_seconds": { "type": "integer", "description": "Seconds to wait before the first probe (default: 0)" },
-                            "period_seconds": { "type": "integer", "description": "How often to perform the probe in seconds (default: 10)" },
-                            "timeout_seconds": { "type": "integer", "description": "Seconds after which the probe times out (default: 1)" },
-                            "failure_threshold": { "type": "integer", "description": "Consecutive failures before the container is restarted (default: 3)" },
-                            "success_threshold": { "type": "integer", "description": "Consecutive successes required after a failure (default: 1)" }
-                        },
-                        "required": ["probe_type"],
-                        "additionalProperties": false
-                    },
-                    "readiness_probe": {
-                        "type": "object",
-                        "description": "Readiness probe configuration (optional). If omitted, the existing probe is left unchanged.",
-                        "properties": {
-                            "probe_type": { "type": "string", "enum": ["httpGet", "exec", "tcpSocket"], "description": "Probe mechanism to use" },
-                            "path": { "type": "string", "description": "HTTP path for httpGet probes (e.g. \"/ready\")" },
-                            "port": { "type": "integer", "description": "Port number for httpGet and tcpSocket probes (default: 80)" },
-                            "command": { "type": "array", "items": { "type": "string" }, "description": "Command and args for exec probes" },
-                            "initial_delay_seconds": { "type": "integer", "description": "Seconds to wait before the first probe (default: 0)" },
-                            "period_seconds": { "type": "integer", "description": "How often to perform the probe in seconds (default: 10)" },
-                            "timeout_seconds": { "type": "integer", "description": "Seconds after which the probe times out (default: 1)" },
-                            "failure_threshold": { "type": "integer", "description": "Consecutive failures before the pod is removed from service (default: 3)" },
-                            "success_threshold": { "type": "integer", "description": "Consecutive successes required after a failure (default: 1)" }
-                        },
-                        "required": ["probe_type"],
-                        "additionalProperties": false
-                    },
-                    "startup_probe": {
-                        "type": "object",
-                        "description": "Startup probe configuration (optional). If omitted, the existing probe is left unchanged.",
-                        "properties": {
-                            "probe_type": { "type": "string", "enum": ["httpGet", "exec", "tcpSocket"], "description": "Probe mechanism to use" },
-                            "path": { "type": "string", "description": "HTTP path for httpGet probes" },
-                            "port": { "type": "integer", "description": "Port number for httpGet and tcpSocket probes (default: 80)" },
-                            "command": { "type": "array", "items": { "type": "string" }, "description": "Command and args for exec probes" },
-                            "initial_delay_seconds": { "type": "integer", "description": "Seconds to wait before the first probe (default: 0)" },
-                            "period_seconds": { "type": "integer", "description": "How often to perform the probe in seconds (default: 10)" },
-                            "timeout_seconds": { "type": "integer", "description": "Seconds after which the probe times out (default: 1)" },
-                            "failure_threshold": { "type": "integer", "description": "Consecutive failures before liveness kicks in (default: 3)" },
-                            "success_threshold": { "type": "integer", "description": "Consecutive successes required after a failure (default: 1)" }
-                        },
-                        "required": ["probe_type"],
-                        "additionalProperties": false
-                    }
-                },
-                "required": ["namespace", "name"],
-                "additionalProperties": false
-            }
+            "description": format!(
+                "Update (patch) an existing Deployment: replicas, strategy, rollout settings, and any container or pod field (image, env, env_from, resources, probes, volumes, …). {}",
+                podspec::UPDATE_DESCRIPTION
+            ),
+            "inputSchema": update_deployment_schema()
         }),
         serde_json::json!({
             "name": "delete_deployment",
@@ -526,72 +422,38 @@ pub async fn handle_tool(
 // ---------------------------------------------------------------------------
 
 async fn create_deployment(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
+    let args = podspec::normalize_args(args, &create_deployment_schema())?;
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
-    let image = args["image"].as_str().ok_or("image is required")?;
-    let replicas = args["replicas"].as_i64().unwrap_or(1) as i32;
-    let port = args["port"].as_i64().map(|p| p as i32);
-    let env = env_from_args(args);
-    let env_from = env_from_sources_from_args(args);
+    let dep_api = api(client, ns)?;
 
-    let mut labels = BTreeMap::new();
-    labels.insert("app".to_string(), name.to_string());
-    labels.insert(
-        "app.kubernetes.io/managed-by".to_string(),
-        "mcp-k8s".to_string(),
-    );
-
-    let ports = port.map(|p| {
-        vec![ContainerPort {
-            container_port: p,
-            ..Default::default()
-        }]
-    });
-
+    let (meta, template) =
+        podspec::build_template(&args, name, WorkloadKind::Deployment, client.policy())?;
     let dep = Deployment {
         metadata: ObjectMeta {
             name: Some(name.to_string()),
             namespace: Some(ns.to_string()),
-            labels: Some(labels.clone()),
+            labels: Some(meta.labels),
+            annotations: meta.annotations,
             ..Default::default()
         },
         spec: Some(DeploymentSpec {
-            replicas: Some(replicas),
+            replicas: Some(opt_i32(&args, "replicas")?.unwrap_or(1)),
             selector: LabelSelector {
-                match_labels: Some({
-                    let mut sel = BTreeMap::new();
-                    sel.insert("app".to_string(), name.to_string());
-                    sel
-                }),
+                match_labels: Some(meta.selector),
                 ..Default::default()
             },
-            template: PodTemplateSpec {
-                metadata: Some(ObjectMeta {
-                    labels: Some({
-                        let mut pod_labels = BTreeMap::new();
-                        pod_labels.insert("app".to_string(), name.to_string());
-                        pod_labels
-                    }),
-                    ..Default::default()
-                }),
-                spec: Some(PodSpec {
-                    containers: vec![Container {
-                        name: name.to_string(),
-                        image: Some(image.to_string()),
-                        ports,
-                        env,
-                        env_from,
-                        ..Default::default()
-                    }],
-                    ..Default::default()
-                }),
-            },
+            template,
+            strategy: strategy_from_args(&args)?,
+            min_ready_seconds: opt_i32(&args, "min_ready_seconds")?,
+            revision_history_limit: opt_i32(&args, "revision_history_limit")?,
+            progress_deadline_seconds: opt_i32(&args, "progress_deadline_seconds")?,
             ..Default::default()
         }),
         ..Default::default()
     };
+    crate::policy::check_typed(client, &dep)?;
 
-    let dep_api = api(client, ns)?;
     let created = dep_api
         .create(&PostParams::default(), &dep)
         .await
@@ -603,89 +465,64 @@ async fn create_deployment(client: &K8sClient, args: &serde_json::Value) -> Resu
 }
 
 async fn update_deployment(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
+    let args = podspec::normalize_args(args, &update_deployment_schema())?;
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
-    let image = args["image"].as_str();
-    let replicas = args["replicas"].as_i64().map(|r| r as i32);
-    let env = env_from_args(args);
-    let env_from = env_from_sources_from_args(args);
-    let liveness_probe = probe_from_args(args, "liveness_probe");
-    let readiness_probe = probe_from_args(args, "readiness_probe");
-    let startup_probe = probe_from_args(args, "startup_probe");
+    let dep_api = api(client, ns)?;
 
-    if image.is_none()
-        && replicas.is_none()
-        && env.is_none()
-        && env_from.is_none()
-        && liveness_probe.is_none()
-        && readiness_probe.is_none()
-        && startup_probe.is_none()
-    {
+    let target = if podspec::touches_container(&args) {
+        let current = dep_api.get(name).await.map_err(|e| e.to_string())?;
+        let pod_spec = current.spec.as_ref().and_then(|s| s.template.spec.as_ref());
+        Some(podspec::resolve_container(
+            pod_spec,
+            args["container"].as_str(),
+            name,
+        )?)
+    } else {
+        None
+    };
+
+    let mut spec = Map::new();
+    if let Some(r) = opt_i32(&args, "replicas")? {
+        spec.insert("replicas".into(), json!(r));
+    }
+    if let Some(strategy) = strategy_from_args(&args)? {
+        let mut value = serde_json::to_value(&strategy).map_err(|e| e.to_string())?;
+        if strategy.type_.as_deref() == Some("Recreate") {
+            // Recreate can't coexist with rollingUpdate parameters.
+            value["rollingUpdate"] = Value::Null;
+        }
+        spec.insert("strategy".into(), value);
+    }
+    for (arg, field) in [
+        ("min_ready_seconds", "minReadySeconds"),
+        ("revision_history_limit", "revisionHistoryLimit"),
+        ("progress_deadline_seconds", "progressDeadlineSeconds"),
+    ] {
+        if let Some(v) = opt_i32(&args, arg)? {
+            spec.insert(field.into(), json!(v));
+        }
+    }
+    if let Some(template) = podspec::build_template_patch(&args, target.as_deref())? {
+        spec.insert("template".into(), template);
+    }
+    if spec.is_empty() {
         return Err(
-            "At least one of 'image', 'replicas', 'env', 'env_from', 'liveness_probe', \
-             'readiness_probe', or 'startup_probe' must be provided"
+            "Nothing to update: give at least one field, e.g. image, replicas, env, env_from, resources, \
+             liveness_probe, readiness_probe, startup_probe, volumes or strategy"
                 .to_string(),
         );
     }
 
-    let mut patch = serde_json::json!({ "spec": {} });
-
-    if let Some(r) = replicas {
-        patch["spec"]["replicas"] = serde_json::json!(r);
-    }
-
-    let needs_container_patch = image.is_some()
-        || env.is_some()
-        || env_from.is_some()
-        || liveness_probe.is_some()
-        || readiness_probe.is_some()
-        || startup_probe.is_some();
-
-    if needs_container_patch {
-        let mut container = serde_json::json!({ "name": name });
-        if let Some(img) = image {
-            container["image"] = serde_json::json!(img);
-        }
-        if let Some(env_vars) = &env {
-            let env_json: Vec<serde_json::Value> = env_vars
-                .iter()
-                .map(|e| {
-                    serde_json::json!({
-                        "name": e.name,
-                        "value": e.value,
-                    })
-                })
-                .collect();
-            container["env"] = serde_json::json!(env_json);
-        }
-        if let Some(env_from_sources) = env_from {
-            let env_from_json: Vec<serde_json::Value> = env_from_sources
-                .iter()
-                .map(|ef| serde_json::to_value(ef).unwrap_or_default())
-                .collect();
-            container["envFrom"] = serde_json::json!(env_from_json);
-        }
-        if let Some(probe) = liveness_probe {
-            container["livenessProbe"] = probe;
-        }
-        if let Some(probe) = readiness_probe {
-            container["readinessProbe"] = probe;
-        }
-        if let Some(probe) = startup_probe {
-            container["startupProbe"] = probe;
-        }
-        patch["spec"]["template"] = serde_json::json!({
-            "spec": {
-                "containers": [container]
-            }
-        });
-    }
-
-    let dep_api = api(client, ns)?;
-    let patched = dep_api
-        .patch(name, &PatchParams::default(), &Patch::Strategic(patch))
-        .await
-        .map_err(|e| e.to_string())?;
+    let patched = crate::policy::patch_checked(
+        client,
+        &dep_api,
+        name,
+        json!({ "spec": spec }),
+        PatchKind::Strategic,
+        Source::Typed,
+    )
+    .await?;
 
     let summary = extract_summary(&patched);
     serde_json::to_string_pretty(&serde_json::to_value(summary).unwrap_or_default())
@@ -812,17 +649,23 @@ async fn rollback_deployment(
         .and_then(|s| s.template.clone())
         .ok_or("Target ReplicaSet has no pod template")?;
 
-    // Patch the deployment with the restored pod template.
+    // Patch the deployment with the restored pod template. An old revision
+    // may predate the guardrails, so the result is policy-checked.
     let patch = serde_json::json!({
         "spec": {
             "template": serde_json::to_value(&template).map_err(|e| e.to_string())?
         }
     });
 
-    let patched = dep_api
-        .patch(name, &PatchParams::default(), &Patch::Strategic(patch))
-        .await
-        .map_err(|e| e.to_string())?;
+    let patched = crate::policy::patch_checked(
+        client,
+        &dep_api,
+        name,
+        patch,
+        PatchKind::Strategic,
+        Source::Typed,
+    )
+    .await?;
 
     let summary = extract_summary(&patched);
     let result = serde_json::json!({
@@ -857,10 +700,15 @@ async fn update_deployment_labels(
     });
 
     let dep_api = api(client, ns)?;
-    let patched = dep_api
-        .patch(name, &PatchParams::default(), &Patch::Strategic(patch))
-        .await
-        .map_err(|e| e.to_string())?;
+    let patched = crate::policy::patch_checked(
+        client,
+        &dep_api,
+        name,
+        patch,
+        PatchKind::Strategic,
+        Source::Typed,
+    )
+    .await?;
 
     let summary = extract_summary(&patched);
     serde_json::to_string_pretty(&serde_json::to_value(summary).unwrap_or_default())
@@ -891,10 +739,15 @@ async fn update_deployment_annotations(
     });
 
     let dep_api = api(client, ns)?;
-    let patched = dep_api
-        .patch(name, &PatchParams::default(), &Patch::Strategic(patch))
-        .await
-        .map_err(|e| e.to_string())?;
+    let patched = crate::policy::patch_checked(
+        client,
+        &dep_api,
+        name,
+        patch,
+        PatchKind::Strategic,
+        Source::Typed,
+    )
+    .await?;
 
     let summary = extract_summary(&patched);
     serde_json::to_string_pretty(&serde_json::to_value(summary).unwrap_or_default())
@@ -921,9 +774,11 @@ async fn update_deployment_affinity(
         let mut node_affinity = serde_json::Map::new();
 
         if let Some(required) = args.get("required_node_affinity") {
+            // The input uses snake_case (match_expressions); the API needs
+            // matchExpressions, or the terms are silently dropped.
             node_affinity.insert(
                 "requiredDuringSchedulingIgnoredDuringExecution".to_string(),
-                serde_json::json!({ "nodeSelectorTerms": required }),
+                serde_json::json!({ "nodeSelectorTerms": podspec::camelize_keys(required) }),
             );
         }
 
@@ -971,10 +826,15 @@ async fn update_deployment_affinity(
     });
 
     let dep_api = api(client, ns)?;
-    let patched = dep_api
-        .patch(name, &PatchParams::default(), &Patch::Strategic(patch))
-        .await
-        .map_err(|e| e.to_string())?;
+    let patched = crate::policy::patch_checked(
+        client,
+        &dep_api,
+        name,
+        patch,
+        PatchKind::Strategic,
+        Source::Typed,
+    )
+    .await?;
 
     let summary = extract_summary(&patched);
     serde_json::to_string_pretty(&serde_json::to_value(summary).unwrap_or_default())
@@ -1163,26 +1023,127 @@ mod tests {
         assert_eq!(parsed["created_at"], "2025-01-01T00:00:00Z");
     }
 
-    #[test]
-    fn env_from_args_parses_object() {
-        let args = serde_json::json!({
-            "env": {
-                "FOO": "bar",
-                "BAZ": "qux"
-            }
-        });
-        let env = env_from_args(&args).unwrap();
-        assert_eq!(env.len(), 2);
+    /// The probe built from `args[key]`, as the JSON sent to the API server.
+    fn probe_from_args(args: &serde_json::Value, key: &str) -> Option<serde_json::Value> {
+        crate::resources::podspec::probe_from_args(args, key)
+            .expect("valid probe")
+            .map(|p| serde_json::to_value(p).unwrap())
+    }
 
+    fn built_container(args: serde_json::Value) -> k8s_openapi::api::core::v1::Container {
+        let policy = crate::policy::WorkloadPolicy::default();
+        let spec = crate::resources::podspec::build_pod_spec(
+            &args,
+            "web",
+            crate::resources::podspec::WorkloadKind::Deployment,
+            &policy,
+        )
+        .unwrap();
+        spec.containers.into_iter().next().unwrap()
+    }
+
+    #[test]
+    fn env_object_form_still_parses() {
+        // The original create_deployment env shape: {NAME: "value"}.
+        let c = built_container(serde_json::json!({
+            "image": "nginx",
+            "env": { "FOO": "bar", "BAZ": "qux" }
+        }));
+        let env = c.env.unwrap();
+        assert_eq!(env.len(), 2);
         let names: Vec<&str> = env.iter().map(|e| e.name.as_str()).collect();
         assert!(names.contains(&"FOO"));
         assert!(names.contains(&"BAZ"));
     }
 
     #[test]
-    fn env_from_args_returns_none_when_absent() {
-        let args = serde_json::json!({});
-        assert!(env_from_args(&args).is_none());
+    fn env_absent_means_no_env() {
+        let c = built_container(serde_json::json!({ "image": "nginx" }));
+        assert!(c.env.is_none());
+    }
+
+    #[test]
+    fn create_deployment_schema_keeps_the_original_arguments() {
+        let schema = create_deployment_schema();
+        let props = schema["properties"].as_object().unwrap();
+        for key in [
+            "namespace",
+            "name",
+            "image",
+            "replicas",
+            "port",
+            "env",
+            "env_from",
+        ] {
+            assert!(props.contains_key(key), "missing {key}");
+        }
+        for key in [
+            "strategy",
+            "min_ready_seconds",
+            "revision_history_limit",
+            "progress_deadline_seconds",
+            "liveness_probe",
+            "volumes",
+            "security_context",
+        ] {
+            assert!(props.contains_key(key), "missing {key}");
+        }
+        assert_eq!(schema["required"], serde_json::json!(["namespace", "name"]));
+    }
+
+    #[test]
+    fn update_deployment_schema_keeps_the_original_arguments() {
+        let schema = update_deployment_schema();
+        let props = schema["properties"].as_object().unwrap();
+        for key in [
+            "image",
+            "replicas",
+            "env",
+            "env_from",
+            "liveness_probe",
+            "readiness_probe",
+            "startup_probe",
+            "container",
+            "strategy",
+        ] {
+            assert!(props.contains_key(key), "missing {key}");
+        }
+        assert!(!props.contains_key("labels"), "labels have their own tool");
+    }
+
+    #[test]
+    fn strategy_parsing() {
+        let s = strategy_from_args(&serde_json::json!({
+            "strategy": { "type": "RollingUpdate", "max_surge": "50%", "max_unavailable": 0 }
+        }))
+        .unwrap()
+        .unwrap();
+        let ru = s.rolling_update.unwrap();
+        assert_eq!(
+            ru.max_surge,
+            Some(k8s_openapi::apimachinery::pkg::util::intstr::IntOrString::String("50%".into()))
+        );
+        assert_eq!(
+            ru.max_unavailable,
+            Some(k8s_openapi::apimachinery::pkg::util::intstr::IntOrString::Int(0))
+        );
+        let recreate =
+            strategy_from_args(&serde_json::json!({ "strategy": { "type": "Recreate" } }))
+                .unwrap()
+                .unwrap();
+        assert!(recreate.rolling_update.is_none());
+        assert!(strategy_from_args(
+            &serde_json::json!({ "strategy": { "type": "Recreate", "max_surge": 1 } })
+        )
+        .is_err());
+        assert!(
+            strategy_from_args(&serde_json::json!({ "strategy": { "type": "BlueGreen" } }))
+                .is_err()
+        );
+        assert!(strategy_from_args(
+            &serde_json::json!({ "strategy": { "maxSurge": 1, "bogus": 1 } })
+        )
+        .is_err());
     }
 
     #[test]
@@ -1328,9 +1289,9 @@ mod tests {
     }
 
     #[test]
-    fn probe_from_args_unknown_type_produces_empty_probe() {
-        // An unknown probe_type should produce a probe with only timing fields,
-        // no action field — callers decide whether to reject or pass through.
+    fn probe_from_args_grpc() {
+        // grpc used to be "unknown" and produced a probe without a handler,
+        // which the API server rejects; it is now supported.
         let args = serde_json::json!({
             "liveness_probe": {
                 "probe_type": "grpc",
@@ -1342,6 +1303,14 @@ mod tests {
         assert!(probe.get("httpGet").is_none());
         assert!(probe.get("tcpSocket").is_none());
         assert!(probe.get("exec").is_none());
+        assert_eq!(probe["grpc"]["port"], 50051);
         assert_eq!(probe["periodSeconds"], 5);
+    }
+
+    #[test]
+    fn probe_from_args_unknown_type_is_an_error() {
+        let args = serde_json::json!({ "liveness_probe": { "probe_type": "carrier-pigeon" } });
+        let err = crate::resources::podspec::probe_from_args(&args, "liveness_probe").unwrap_err();
+        assert!(err.contains("probe_type"), "{err}");
     }
 }

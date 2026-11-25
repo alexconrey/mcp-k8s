@@ -1,5 +1,6 @@
 use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1::CustomResourceDefinition;
-use kube::api::{Api, DeleteParams, DynamicObject, ListParams, Patch, PatchParams, PostParams};
+use kube::api::{Api, DeleteParams, DynamicObject, ListParams, PostParams};
+use kube::core::discovery::Scope;
 use kube::core::GroupVersionKind;
 use kube::discovery;
 use serde::Serialize;
@@ -21,19 +22,49 @@ async fn get_dynamic_api(
     kind: &str,
     namespace: Option<&str>,
 ) -> Result<Api<DynamicObject>, String> {
+    get_dynamic_api_with_scope(client, group, version, kind, namespace)
+        .await
+        .map(|(api, _)| api)
+}
+
+async fn get_dynamic_api_with_scope(
+    client: &K8sClient,
+    group: &str,
+    version: &str,
+    kind: &str,
+    namespace: Option<&str>,
+) -> Result<(Api<DynamicObject>, Scope), String> {
     let gvk = GroupVersionKind::gvk(group, version, kind);
-    let (ar, _caps) = discovery::pinned_kind(client.inner(), &gvk)
+    let (ar, caps) = discovery::pinned_kind(client.inner(), &gvk)
         .await
         .map_err(|e| format!("Failed to discover {kind}: {e}"))?;
+    let scope = caps.scope;
 
     if let Some(ns) = namespace {
         if !client.is_namespace_allowed(ns) {
             return Err(format!("Namespace '{ns}' is not in the allowed list"));
         }
-        Ok(Api::namespaced_with(client.inner().clone(), ns, &ar))
+        Ok((Api::namespaced_with(client.inner().clone(), ns, &ar), scope))
     } else {
-        Ok(Api::all_with(client.inner().clone(), &ar))
+        Ok((Api::all_with(client.inner().clone(), &ar), scope))
     }
+}
+
+/// The custom resource tools only handle custom resources: built-in kinds go
+/// through their typed tools, which apply the full policy.
+fn reject_builtin(group: &str, kind: &str, tool: &str) -> Result<(), String> {
+    if crate::policy::is_builtin_group(group) {
+        let shown = if group.is_empty() {
+            "the core API group".to_string()
+        } else {
+            format!("API group {group:?}")
+        };
+        return Err(format!(
+            "{tool} only handles custom resources; {kind} in {shown} is a built-in kind. \
+             Use its typed create_*/update_* tool."
+        ));
+    }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -141,7 +172,7 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
         }),
         serde_json::json!({
             "name": "create_custom_resource",
-            "description": "Create a custom resource from a JSON manifest. Uses dynamic API discovery to resolve the resource type from group/version/kind.",
+            "description": "Create a custom resource from a JSON manifest. Uses dynamic API discovery to resolve the resource type from group/version/kind. Custom resources can make operators create pods or RBAC objects, so writes are only accepted for API groups the server operator allowlists (--allow-custom-resource-groups); cluster-scoped kinds also need --allow-manifest-kinds. Pod specs, containers and manifests embedded in the resource get the same guardrails as the typed tools. Built-in kinds are rejected: use their typed tools.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -172,7 +203,7 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
         }),
         serde_json::json!({
             "name": "update_custom_resource",
-            "description": "Merge-patch a custom resource. Uses dynamic API discovery to resolve the resource type from group/version/kind.",
+            "description": "Merge-patch a custom resource. Uses dynamic API discovery to resolve the resource type from group/version/kind. Same rules as create_custom_resource: only allowlisted API groups, and the patched result is checked against the guardrails with a server-side dry run before it is written. Built-in kinds are rejected: use their typed update_* tools.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -351,13 +382,45 @@ async fn create_custom_resource(
     let version = args["version"].as_str().ok_or("version is required")?;
     let kind = args["kind"].as_str().ok_or("kind is required")?;
     let namespace = args["namespace"].as_str();
-    let manifest = args.get("manifest").ok_or("manifest is required")?.clone();
+    reject_builtin(group, kind, "create_custom_resource")?;
 
-    let api = get_dynamic_api(client, group, version, kind, namespace).await?;
+    let mut manifest = args.get("manifest").ok_or("manifest is required")?.clone();
+    if !manifest.is_object() {
+        return Err("manifest must be a JSON object".to_string());
+    }
+    // The manifest must describe the resource the arguments name.
+    let api_version = format!("{group}/{version}");
+    for (field, expected) in [("apiVersion", api_version.as_str()), ("kind", kind)] {
+        match manifest[field].as_str() {
+            None => manifest[field] = serde_json::Value::String(expected.to_string()),
+            Some(found) if found == expected => {}
+            Some(found) => {
+                return Err(format!(
+                    "manifest {field} {found:?} does not match the arguments ({expected:?})"
+                ))
+            }
+        }
+    }
+    if let (Some(ns), Some(found)) = (namespace, manifest["metadata"]["namespace"].as_str()) {
+        if ns != found {
+            return Err(format!(
+                "manifest metadata.namespace {found:?} does not match the namespace argument {ns:?}"
+            ));
+        }
+    }
+
+    let target = crate::policy::admit_manifest(
+        client,
+        &mut manifest,
+        crate::policy::AdmissionOrigin::CreateCustomResource,
+        namespace,
+    )
+    .await?;
 
     let obj: DynamicObject =
         serde_json::from_value(manifest).map_err(|e| format!("Invalid manifest: {e}"))?;
-    let created = api
+    let created = target
+        .api
         .create(&PostParams::default(), &obj)
         .await
         .map_err(|e| format!("Failed to create {kind}: {e}"))?;
@@ -381,12 +444,32 @@ async fn update_custom_resource(
     let name = args["name"].as_str().ok_or("name is required")?;
     let namespace = args["namespace"].as_str();
     let patch = args.get("patch").ok_or("patch is required")?.clone();
+    reject_builtin(group, kind, "update_custom_resource")?;
 
-    let api = get_dynamic_api(client, group, version, kind, namespace).await?;
-    let patched = api
-        .patch(name, &PatchParams::default(), &Patch::Merge(&patch))
-        .await
-        .map_err(|e| format!("Failed to update {kind}/{name}: {e}"))?;
+    let (api, scope) = get_dynamic_api_with_scope(client, group, version, kind, namespace).await?;
+    if matches!(scope, Scope::Cluster) && !client.policy().manifest_kind_allowed(group, kind) {
+        let error = crate::policy::PolicyError {
+            violations: vec![crate::policy::kind_not_allowed(
+                group,
+                kind,
+                "cluster-scoped objects affect every namespace",
+            )],
+        };
+        error.record_denial();
+        return Err(error.to_string());
+    }
+    // The dry-run result is checked like a raw manifest: the group must be
+    // allowlisted and embedded pod specs must pass the pod rules.
+    let patched = crate::policy::patch_checked(
+        client,
+        &api,
+        name,
+        patch,
+        crate::policy::PatchKind::Merge,
+        crate::policy::Source::Manifest,
+    )
+    .await
+    .map_err(|e| format!("Failed to update {kind}/{name}: {e}"))?;
 
     let result = serde_json::json!({
         "name": patched.metadata.name,

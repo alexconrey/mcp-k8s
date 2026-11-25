@@ -45,7 +45,16 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
     vec![
         serde_json::json!({
             "name": "apply_manifest",
-            "description": "Last resort: apply an arbitrary Kubernetes manifest, given as JSON, using server-side apply. Prefer the typed create_*/update_* tools (for example create_deployment, create_job, create_pod), which validate their input and enforce the server's guardrails; use apply_manifest only for resource types that have no typed tool. YAML is not accepted: convert it to JSON first. Returns the applied object's metadata (name, namespace, kind, resource_version).",
+            "description": "Raw server-side apply of an arbitrary Kubernetes manifest, given as JSON. UNRESTRICTED: unlike every other write tool it skips the server's workload policy, so it can create privileged pods, hostPath mounts, RBAC bindings, webhooks, CRDs and any other kind. Only the namespace allowlist and the per-resource create/update switches still apply. Only call it when the user has explicitly asked for this manifest to be applied: show them the complete manifest and get their confirmation first. Never choose it yourself in place of a typed create_*/update_* tool, and never use it to get around a rejection from another tool. YAML is not accepted: convert it to JSON first. Returns the applied object's metadata (name, namespace, kind, resource_version).",
+            // MCP tool annotations: clients such as Claude Code use these to
+            // ask the user before running a destructive tool.
+            "annotations": {
+                "title": "Apply raw manifest (unrestricted)",
+                "readOnlyHint": false,
+                "destructiveHint": true,
+                "idempotentHint": true,
+                "openWorldHint": false
+            },
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -60,7 +69,7 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
         }),
         serde_json::json!({
             "name": "get_resource_json",
-            "description": "Get any Kubernetes resource as JSON, the object as the API server returns it. Accepts apiVersion, kind, name, and optional namespace. Uses API discovery to resolve the resource type. The output can be edited and passed back to apply_manifest; convert it to YAML yourself if a person needs YAML.",
+            "description": "Get any Kubernetes resource as JSON, the object as the API server returns it. Accepts apiVersion, kind, name, and optional namespace. Uses API discovery to resolve the resource type. Use it to inspect an object before changing it with a typed update_* tool; convert it to YAML yourself if a person needs YAML.",
             "inputSchema": resource_ref_schema()
         }),
         serde_json::json!({
@@ -90,61 +99,38 @@ async fn apply_manifest(client: &K8sClient, args: &serde_json::Value) -> Result<
 
     // Parse the manifest string as JSON. If the input is YAML (not JSON),
     // this will fail with a clear error message.
-    let manifest: serde_json::Value = serde_json::from_str(manifest_str).map_err(|e| {
+    let mut manifest: serde_json::Value = serde_json::from_str(manifest_str).map_err(|e| {
         format!(
             "Failed to parse manifest as JSON: {e}. \
                  If providing YAML, please convert to JSON first."
         )
     })?;
-
-    // Extract required fields from the parsed manifest
-    let api_version = manifest["apiVersion"]
-        .as_str()
-        .ok_or("manifest must contain 'apiVersion'")?;
-    let kind = manifest["kind"]
-        .as_str()
-        .ok_or("manifest must contain 'kind'")?;
-    let resource_name = manifest["metadata"]["name"]
-        .as_str()
-        .ok_or("manifest must contain 'metadata.name'")?;
-    let namespace = manifest["metadata"]["namespace"].as_str();
-
-    // Check namespace access if present
-    if let Some(ns) = namespace {
-        if !client.is_namespace_allowed(ns) {
-            return Err(format!("Namespace '{ns}' is not in the allowed list"));
-        }
+    if !manifest.is_object() {
+        return Err("manifest must be a JSON object".to_string());
     }
 
-    // Resolve the GVK via API discovery
-    let (group, version) = parse_api_version(api_version);
-    let gvk = GroupVersionKind::gvk(group, version, kind);
-    let (ar, caps) = discovery::pinned_kind(client.inner(), &gvk)
-        .await
-        .map_err(|e| format!("Failed to discover resource {kind} ({api_version}): {e}"))?;
-
-    // Build the API handle based on scope
-    let api: Api<DynamicObject> = match (caps.scope, namespace) {
-        (Scope::Namespaced, Some(ns)) => Api::namespaced_with(client.inner().clone(), ns, &ar),
-        (Scope::Namespaced, None) => {
-            return Err(format!(
-                "Resource {kind} is namespaced but no namespace was provided in the manifest"
-            ));
-        }
-        (Scope::Cluster, _) => Api::all_with(client.inner().clone(), &ar),
-    };
+    // No workload policy (on purpose; see admit_manifest): only the namespace
+    // allowlist and the create/update switches. Resolves the target API.
+    let target = crate::policy::admit_manifest(
+        client,
+        &mut manifest,
+        crate::policy::AdmissionOrigin::ApplyManifest,
+        None,
+    )
+    .await?;
 
     // Server-side apply with force
     let patch_params = PatchParams::apply("mcp-k8s").force();
-    let applied = api
-        .patch(resource_name, &patch_params, &Patch::Apply(&manifest))
+    let applied = target
+        .api
+        .patch(&target.name, &patch_params, &Patch::Apply(&manifest))
         .await
         .map_err(|e| format!("Failed to apply manifest: {e}"))?;
 
     let result = serde_json::json!({
         "name": applied.metadata.name,
         "namespace": applied.metadata.namespace,
-        "kind": kind,
+        "kind": target.kind,
         "resource_version": applied.metadata.resource_version,
     });
     serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
@@ -313,12 +299,18 @@ mod tests {
             .unwrap();
         assert!(!desc.contains("YAML or JSON"), "{desc}");
         assert!(desc.contains("YAML is not accepted"), "{desc}");
-        // Agents must be steered to the typed tools, which carry the guardrails.
-        assert!(desc.starts_with("Last resort"), "{desc}");
+        // It bypasses the workload policy: the description must say so, and
+        // put the user, not the agent, in charge of using it.
+        assert!(desc.contains("UNRESTRICTED"), "{desc}");
+        assert!(desc.contains("explicitly asked"), "{desc}");
+        assert!(desc.contains("get their confirmation first"), "{desc}");
         assert!(
-            desc.contains("Prefer the typed create_*/update_* tools"),
+            desc.contains("never use it to get around a rejection"),
             "{desc}"
         );
+        // MCP clients use the annotation to ask the user before each call.
+        assert_eq!(def["annotations"]["destructiveHint"], true);
+        assert_eq!(def["annotations"]["readOnlyHint"], false);
         assert!(
             param.contains("JSON") && param.contains("not accepted"),
             "{param}"

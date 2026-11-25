@@ -243,7 +243,9 @@ pub fn is_known_tool(tool: &str) -> bool {
 fn tool_schemas() -> &'static HashMap<String, HashSet<String>> {
     static SCHEMAS: OnceLock<HashMap<String, HashSet<String>>> = OnceLock::new();
     SCHEMAS.get_or_init(|| {
-        crate::mcp::tool_definitions(&ActionPermissions::default())
+        // Every tool, including apply_manifest, which is off by default but
+        // still a known tool when an operator enables it.
+        crate::mcp::tool_definitions(&ActionPermissions::default().with_apply_manifest(true))
             .iter()
             .filter_map(|tool| {
                 let name = tool["name"].as_str()?.to_string();

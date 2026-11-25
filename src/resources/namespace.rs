@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use k8s_openapi::api::core::v1::Namespace;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
-use kube::api::{DeleteParams, Patch, PatchParams, PostParams};
+use kube::api::{DeleteParams, PostParams};
 use serde::Serialize;
 
 use crate::client::K8sClient;
@@ -156,6 +156,7 @@ async fn create_namespace(client: &K8sClient, args: &serde_json::Value) -> Resul
         },
         ..Default::default()
     };
+    crate::policy::check_typed(client, &ns)?;
 
     let ns_api = api(client);
     let created = ns_api
@@ -184,11 +185,18 @@ async fn update_namespace(client: &K8sClient, args: &serde_json::Value) -> Resul
         }
     });
 
+    // Checked on the dry-run result: pod-security labels must not drop to
+    // "privileged".
     let ns_api = api(client);
-    let patched = ns_api
-        .patch(name, &PatchParams::default(), &Patch::Strategic(patch))
-        .await
-        .map_err(|e| e.to_string())?;
+    let patched = crate::policy::patch_checked(
+        client,
+        &ns_api,
+        name,
+        patch,
+        crate::policy::PatchKind::Strategic,
+        crate::policy::Source::Typed,
+    )
+    .await?;
 
     let detail = extract_detail(&patched);
     serde_json::to_string_pretty(&detail).map_err(|e| e.to_string())

@@ -1,12 +1,16 @@
 use std::collections::BTreeMap;
 
-use k8s_openapi::api::apps::v1::{DaemonSet, DaemonSetSpec};
-use k8s_openapi::api::core::v1::{Container, PodSpec, PodTemplateSpec};
+use k8s_openapi::api::apps::v1::{
+    DaemonSet, DaemonSetSpec, DaemonSetUpdateStrategy, RollingUpdateDaemonSet,
+};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::{LabelSelector, ObjectMeta};
-use kube::api::{DeleteParams, ListParams, Patch, PatchParams, PostParams};
-use serde::Serialize;
+use kube::api::{DeleteParams, ListParams, PostParams};
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Map, Value};
 
 use crate::client::K8sClient;
+use crate::policy::{PatchKind, Source};
+use crate::resources::podspec::{self, WorkloadKind};
 
 fn api(client: &K8sClient, ns: &str) -> Result<kube::Api<DaemonSet>, String> {
     if !client.is_namespace_allowed(ns) {
@@ -154,6 +158,92 @@ fn extract_detail(ds: &DaemonSet) -> DaemonSetDetail {
     }
 }
 
+fn daemonset_properties() -> Value {
+    json!({
+        "update_strategy": {
+            "type": "object",
+            "description": "Update strategy",
+            "properties": {
+                "type": { "type": "string", "enum": ["RollingUpdate", "OnDelete"] },
+                "max_unavailable": { "type": ["integer", "string"], "description": "Nodes whose pod may be unavailable during an update (default: 1)" },
+                "max_surge": { "type": ["integer", "string"], "description": "Nodes that may run an extra (new) pod during an update" }
+            },
+            "additionalProperties": false
+        },
+        "min_ready_seconds": { "type": "integer" },
+        "revision_history_limit": { "type": "integer" }
+    })
+}
+
+fn create_daemonset_schema() -> Value {
+    podspec::workload_schema(
+        WorkloadKind::DaemonSet,
+        daemonset_properties(),
+        &["namespace", "name"],
+    )
+}
+
+fn update_daemonset_schema() -> Value {
+    podspec::workload_update_schema(WorkloadKind::DaemonSet, daemonset_properties())
+}
+
+fn opt_i32(args: &Value, key: &str) -> Result<Option<i32>, String> {
+    match args.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(v) => v
+            .as_i64()
+            .and_then(|n| i32::try_from(n).ok())
+            .map(Some)
+            .ok_or_else(|| format!("{key} must be a 32-bit integer")),
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct UpdateStrategyArgs {
+    #[serde(rename = "type")]
+    type_: Option<String>,
+    #[serde(alias = "maxUnavailable")]
+    max_unavailable: Option<Value>,
+    #[serde(alias = "maxSurge")]
+    max_surge: Option<Value>,
+}
+
+fn update_strategy(args: &Value) -> Result<Option<DaemonSetUpdateStrategy>, String> {
+    let Some(s) = podspec::opt::<UpdateStrategyArgs>(args, "update_strategy")? else {
+        return Ok(None);
+    };
+    let type_ = s.type_.unwrap_or_else(|| "RollingUpdate".to_string());
+    podspec::check_enum(
+        &type_,
+        &["RollingUpdate", "OnDelete"],
+        "update_strategy.type",
+    )?;
+    let max_unavailable = s
+        .max_unavailable
+        .map(|v| podspec::int_or_string(&v, "update_strategy.max_unavailable"))
+        .transpose()?;
+    let max_surge = s
+        .max_surge
+        .map(|v| podspec::int_or_string(&v, "update_strategy.max_surge"))
+        .transpose()?;
+    if type_ == "OnDelete" && (max_unavailable.is_some() || max_surge.is_some()) {
+        return Err(
+            "update_strategy: max_unavailable and max_surge only apply to RollingUpdate"
+                .to_string(),
+        );
+    }
+    Ok(Some(DaemonSetUpdateStrategy {
+        type_: Some(type_),
+        rolling_update: (max_unavailable.is_some() || max_surge.is_some()).then_some(
+            RollingUpdateDaemonSet {
+                max_unavailable,
+                max_surge,
+            },
+        ),
+    }))
+}
+
 pub fn tool_definitions() -> Vec<serde_json::Value> {
     vec![
         serde_json::json!({
@@ -184,32 +274,19 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
         }),
         serde_json::json!({
             "name": "create_daemonset",
-            "description": "Create a daemonset that runs a pod on all (or selected) nodes.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "namespace": { "type": "string", "description": "Kubernetes namespace" },
-                    "name": { "type": "string", "description": "DaemonSet name" },
-                    "image": { "type": "string", "description": "Container image" },
-                    "port": { "type": "integer", "description": "Container port (optional)" }
-                },
-                "required": ["namespace", "name", "image"],
-                "additionalProperties": false
-            }
+            "description": format!(
+                "Create a DaemonSet that runs a pod on every (or every selected) node; pods selected by app=<name>. DaemonSet settings: update_strategy (RollingUpdate with max_unavailable/max_surge, or OnDelete), min_ready_seconds, revision_history_limit, pod_annotations; use node_selector, affinity and tolerations to pick nodes. {}",
+                podspec::CREATE_DESCRIPTION
+            ),
+            "inputSchema": create_daemonset_schema()
         }),
         serde_json::json!({
             "name": "update_daemonset",
-            "description": "Patch a daemonset. Supports updating the container image.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "namespace": { "type": "string", "description": "Kubernetes namespace" },
-                    "name": { "type": "string", "description": "DaemonSet name" },
-                    "image": { "type": "string", "description": "New container image (optional)" }
-                },
-                "required": ["namespace", "name"],
-                "additionalProperties": false
-            }
+            "description": format!(
+                "Update (patch) an existing DaemonSet: update_strategy and any container or pod field. {}",
+                podspec::UPDATE_DESCRIPTION
+            ),
+            "inputSchema": update_daemonset_schema()
         }),
         serde_json::json!({
             "name": "delete_daemonset",
@@ -273,63 +350,35 @@ async fn get_daemonset(client: &K8sClient, args: &serde_json::Value) -> Result<S
 }
 
 async fn create_daemonset(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
+    let args = podspec::normalize_args(args, &create_daemonset_schema())?;
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
-    let image = args["image"].as_str().ok_or("image is required")?;
-    let port = args["port"].as_i64();
+    let ds_api = api(client, ns)?;
 
-    let mut labels = BTreeMap::new();
-    labels.insert("app".to_string(), name.to_string());
-    labels.insert(
-        "app.kubernetes.io/managed-by".to_string(),
-        "mcp-k8s".to_string(),
-    );
-
-    let mut match_labels = BTreeMap::new();
-    match_labels.insert("app".to_string(), name.to_string());
-
-    let mut container = Container {
-        name: name.to_string(),
-        image: Some(image.to_string()),
-        ..Default::default()
-    };
-
-    if let Some(p) = port {
-        use k8s_openapi::api::core::v1::ContainerPort;
-        container.ports = Some(vec![ContainerPort {
-            container_port: p as i32,
-            ..Default::default()
-        }]);
-    }
-
+    let (meta, template) =
+        podspec::build_template(&args, name, WorkloadKind::DaemonSet, client.policy())?;
     let ds = DaemonSet {
         metadata: ObjectMeta {
             name: Some(name.to_string()),
             namespace: Some(ns.to_string()),
-            labels: Some(labels.clone()),
+            labels: Some(meta.labels),
+            annotations: meta.annotations,
             ..Default::default()
         },
         spec: Some(DaemonSetSpec {
             selector: LabelSelector {
-                match_labels: Some(match_labels),
+                match_labels: Some(meta.selector),
                 ..Default::default()
             },
-            template: PodTemplateSpec {
-                metadata: Some(ObjectMeta {
-                    labels: Some(labels),
-                    ..Default::default()
-                }),
-                spec: Some(PodSpec {
-                    containers: vec![container],
-                    ..Default::default()
-                }),
-            },
-            ..Default::default()
+            template,
+            update_strategy: update_strategy(&args)?,
+            min_ready_seconds: opt_i32(&args, "min_ready_seconds")?,
+            revision_history_limit: opt_i32(&args, "revision_history_limit")?,
         }),
         ..Default::default()
     };
+    crate::policy::check_typed(client, &ds)?;
 
-    let ds_api = api(client, ns)?;
     let created = ds_api
         .create(&PostParams::default(), &ds)
         .await
@@ -341,32 +390,55 @@ async fn create_daemonset(client: &K8sClient, args: &serde_json::Value) -> Resul
 }
 
 async fn update_daemonset(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
+    let args = podspec::normalize_args(args, &update_daemonset_schema())?;
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
-    let image = args["image"].as_str();
+    let ds_api = api(client, ns)?;
 
-    let mut patch = serde_json::json!({});
+    let target = if podspec::touches_container(&args) {
+        let current = ds_api.get(name).await.map_err(|e| e.to_string())?;
+        let pod_spec = current.spec.as_ref().and_then(|s| s.template.spec.as_ref());
+        Some(podspec::resolve_container(
+            pod_spec,
+            args["container"].as_str(),
+            name,
+        )?)
+    } else {
+        None
+    };
 
-    if let Some(img) = image {
-        patch = serde_json::json!({
-            "spec": {
-                "template": {
-                    "spec": {
-                        "containers": [{
-                            "name": name,
-                            "image": img
-                        }]
-                    }
-                }
-            }
-        });
+    let mut spec = Map::new();
+    if let Some(strategy) = update_strategy(&args)? {
+        let mut value = serde_json::to_value(&strategy).map_err(|e| e.to_string())?;
+        if strategy.type_.as_deref() == Some("OnDelete") {
+            value["rollingUpdate"] = Value::Null;
+        }
+        spec.insert("updateStrategy".into(), value);
+    }
+    for (arg, field) in [
+        ("min_ready_seconds", "minReadySeconds"),
+        ("revision_history_limit", "revisionHistoryLimit"),
+    ] {
+        if let Some(v) = opt_i32(&args, arg)? {
+            spec.insert(field.into(), json!(v));
+        }
+    }
+    if let Some(template) = podspec::build_template_patch(&args, target.as_deref())? {
+        spec.insert("template".into(), template);
+    }
+    if spec.is_empty() {
+        return Err("Nothing to update: give at least one field, e.g. image".to_string());
     }
 
-    let ds_api = api(client, ns)?;
-    let patched = ds_api
-        .patch(name, &PatchParams::default(), &Patch::Strategic(patch))
-        .await
-        .map_err(|e| e.to_string())?;
+    let patched = crate::policy::patch_checked(
+        client,
+        &ds_api,
+        name,
+        json!({ "spec": spec }),
+        PatchKind::Strategic,
+        Source::Typed,
+    )
+    .await?;
 
     let detail = extract_detail(&patched);
     serde_json::to_string_pretty(&serde_json::to_value(detail).unwrap_or_default())

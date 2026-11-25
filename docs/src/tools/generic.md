@@ -4,13 +4,20 @@ mcp-k8s provides generic tools that work with any Kubernetes resource type, incl
 
 ## apply_manifest
 
-**Last resort.** Apply an arbitrary Kubernetes manifest, given as **JSON**, using server-side apply. Accepts any resource type.
+**Off by default; unrestricted when enabled.** Apply an arbitrary Kubernetes manifest, given as **JSON**, using server-side apply. Accepts any resource type.
 
-> Prefer the typed tools (`create_deployment`, `create_job`, `create_pod`, `update_*`, …). They validate their input and enforce mcp-k8s's guardrails, whereas `apply_manifest` sends the raw object to the API server. Use it only for resource types that have no typed tool, and consider disabling it with `--disable-apply-manifest` (see [Permissions](../permissions.md)).
+> This tool is for people who know exactly what they're applying. It's only listed once the operator starts mcp-k8s with `--enable-apply-manifest`, and when it is, it **skips the [workload guardrails](../permissions.md#workload-guardrails)**: it can create privileged pods, `hostPath` mounts, RBAC bindings, webhooks, CRDs or anything else. Agents should use the typed tools (`create_deployment`, `create_job`, `create_pod`, `create_service`, `create_ingress`, `update_*`, …) and call `apply_manifest` only when the user explicitly asks for a manifest to be applied, after showing them the full manifest.
+
+What still applies when it's enabled:
+
+- the namespace allowlist, on the manifest's namespace;
+- the per-resource create/update switches. It looks the object up first: creating needs `<resource>-create`, updating needs `<resource>-update`.
+
+Its tool definition carries the MCP annotation `destructiveHint: true`, so MCP clients (Claude Code, for example) ask the user before each call. A manifest without a managed-by label gets `app.kubernetes.io/managed-by: mcp-k8s`. See [Permissions: apply_manifest](../permissions.md#apply_manifest) for the reasoning.
 
 It returns the applied object's metadata (name, namespace, kind, resource_version).
 
-YAML is **not** accepted: convert it to JSON first (for example `yq -o=json manifest.yaml`). The output of [`get_resource_json`](#get_resource_json) can be edited and passed straight back.
+YAML is **not** accepted: convert it to JSON first (for example `yq -o=json manifest.yaml`).
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -36,6 +43,8 @@ The manifest string is parsed, the resource type is resolved via API discovery, 
 
 ### Example: Apply a CRD Instance
 
+Needs `--allow-custom-resource-groups monitoring.coreos.com`.
+
 ```json
 {
   "manifest": "{\"apiVersion\":\"monitoring.coreos.com/v1\",\"kind\":\"ServiceMonitor\",\"metadata\":{\"name\":\"my-app\",\"namespace\":\"monitoring\"},\"spec\":{\"selector\":{\"matchLabels\":{\"app\":\"my-app\"}},\"endpoints\":[{\"port\":\"metrics\",\"interval\":\"30s\"}]}}"
@@ -44,7 +53,7 @@ The manifest string is parsed, the resource type is resolved via API discovery, 
 
 ### Notes
 
-- `apply_manifest` is classified as a **create** action. It is disabled when `--disable-create` is set.
+- `apply_manifest` is off unless `--enable-apply-manifest` is set. It's classified as a **create** action, so `--disable-create` also removes it. Updating an existing object additionally needs update permission for its kind.
 - The manifest must be a single JSON object. YAML (including multi-document `---` files) is rejected with a parse error; convert it to JSON and apply one resource per call.
 - If the resource already exists, it is updated (server-side apply merges fields).
 - For CRDs, the API group must be installed in the cluster for discovery to succeed.
@@ -54,7 +63,7 @@ The manifest string is parsed, the resource type is resolved via API discovery, 
 
 ## get_resource_json
 
-Get any Kubernetes resource as JSON, the object as the API server returns it. Accepts apiVersion, kind, name, and optional namespace. Uses API discovery to resolve the resource type. The output can be edited and passed back to `apply_manifest`; if a person needs YAML, convert it client-side (for example `yq -P`).
+Get any Kubernetes resource as JSON, the object as the API server returns it. Accepts apiVersion, kind, name, and optional namespace. Uses API discovery to resolve the resource type. Use it to inspect an object before changing it with a typed `update_*` tool; if a person needs YAML, convert it client-side (for example `yq -P`).
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|

@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use crate::policy::WorkloadPolicy;
+
 /// The kind of CRUD action a tool performs.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Action {
@@ -34,9 +36,16 @@ pub struct ActionPermissions {
     /// When `false`, the `decode: true` parameter in `get_secret` is ignored
     /// and secret values are never returned.
     pub secret_decode_enabled: bool,
-    /// When `false`, the `apply_manifest` tool is blocked regardless of other
-    /// permission settings.
+    /// When `false` (the default), the `apply_manifest` tool is hidden from
+    /// `tools/list` and refused. When `true`, it's a raw server-side apply
+    /// that skips the [`WorkloadPolicy`] (it still honours the namespace
+    /// allowlist and the create/update switches), so enable it only for users
+    /// who know exactly what they're applying.
     pub apply_manifest_enabled: bool,
+    /// Guardrails the typed tools and the custom resource tools enforce.
+    /// Restrictive by default; see [`WorkloadPolicy`]. `apply_manifest`
+    /// doesn't apply it.
+    workload_policy: WorkloadPolicy,
 }
 
 impl ActionPermissions {
@@ -68,7 +77,27 @@ impl ActionPermissions {
             resource_overrides,
             secret_decode_enabled,
             apply_manifest_enabled,
+            workload_policy: WorkloadPolicy::default(),
         }
+    }
+
+    /// Replace the workload guardrail policy (the default is
+    /// [`WorkloadPolicy::default()`], which is restrictive).
+    /// Enable or disable `apply_manifest` (off by default). Enabled, it
+    /// bypasses the workload policy; see [`Self::apply_manifest_enabled`].
+    pub fn with_apply_manifest(mut self, enabled: bool) -> Self {
+        self.apply_manifest_enabled = enabled;
+        self
+    }
+
+    pub fn with_workload_policy(mut self, policy: WorkloadPolicy) -> Self {
+        self.workload_policy = policy;
+        self
+    }
+
+    /// The workload guardrail policy every write path enforces.
+    pub fn workload_policy(&self) -> &WorkloadPolicy {
+        &self.workload_policy
     }
 
     /// Check whether `action` is allowed for `resource`.
@@ -126,7 +155,10 @@ impl ActionPermissions {
         if tool_name.starts_with("create_") {
             return Action::Create;
         }
+        // exec_pod runs arbitrary commands inside a workload: it is a write,
+        // so read-only mode (and --disable-update) must turn it off.
         if tool_name.starts_with("update_")
+            || tool_name.starts_with("exec_")
             || tool_name.starts_with("scale_")
             || tool_name.starts_with("restart_")
             || tool_name.starts_with("rollback_")
@@ -155,14 +187,25 @@ impl ActionPermissions {
         let action = Self::action_for_tool(tool_name);
         // Extract resource from tool name by stripping the action prefix.
         let resource = Self::resource_from_tool(tool_name);
-        self.is_action_allowed(&resource, &action)
+        if !self.is_action_allowed(&resource, &action) {
+            return false;
+        }
+        // Sub-tools obey their base resource's switch too:
+        // update_deployment_labels needs deployment-update,
+        // create_job_from_cronjob needs job-create. Overrides only ever
+        // disable, so this can only add denials an operator asked for.
+        match resource.split_once('_') {
+            Some((base, _)) => self.is_action_allowed(base, &action),
+            None => true,
+        }
     }
 
     /// The setting that denies `tool_name`, or `None` if
     /// [`Self::is_tool_allowed`] allows it. Used as `mcp_k8s.denied_rule` in
     /// telemetry:
     ///
-    /// * `apply_manifest:disabled` — `--disable-apply-manifest`
+    /// * `apply_manifest:disabled` — apply_manifest not enabled
+    ///   (`--enable-apply-manifest`)
     /// * `override:<resource>-<action>` — a `--disable` entry
     /// * `global:<action>` — `--disable-create`/`-update`/`-delete`
     pub fn denied_by(&self, tool_name: &str) -> Option<String> {
@@ -209,6 +252,7 @@ impl ActionPermissions {
             "uncordon_",
             "drain_",
             "evict_",
+            "exec_",
         ];
         for prefix in &prefixes {
             if let Some(rest) = tool_name.strip_prefix(prefix) {
@@ -220,7 +264,9 @@ impl ActionPermissions {
 }
 
 impl Default for ActionPermissions {
-    /// All actions enabled, no overrides, secret decode enabled, apply_manifest enabled.
+    /// All actions enabled, no overrides, secret decode enabled, the
+    /// restrictive default [`WorkloadPolicy`], and **apply_manifest disabled**:
+    /// it bypasses the workload policy, so only an operator should turn it on.
     fn default() -> Self {
         Self {
             global_create_enabled: true,
@@ -228,7 +274,8 @@ impl Default for ActionPermissions {
             global_delete_enabled: true,
             resource_overrides: HashMap::new(),
             secret_decode_enabled: true,
-            apply_manifest_enabled: true,
+            apply_manifest_enabled: false,
+            workload_policy: WorkloadPolicy::default(),
         }
     }
 }
@@ -475,6 +522,69 @@ mod tests {
     }
 
     #[test]
+    fn exec_pod_is_a_write() {
+        // exec_pod runs arbitrary commands; it must not count as a read.
+        assert_eq!(
+            ActionPermissions::action_for_tool("exec_pod"),
+            Action::Update
+        );
+        assert_eq!(ActionPermissions::resource_from_tool("exec_pod"), "pod");
+        let read_only = ActionPermissions::new(true, true, true, vec![], true, true);
+        assert!(!read_only.is_tool_allowed("exec_pod"));
+        let no_update = ActionPermissions::new(false, true, false, vec![], true, true);
+        assert!(!no_update.is_tool_allowed("exec_pod"));
+        let per_resource =
+            ActionPermissions::new(false, false, false, vec!["pod-update".into()], true, true);
+        assert!(!per_resource.is_tool_allowed("exec_pod"));
+        assert!(ActionPermissions::default().is_tool_allowed("exec_pod"));
+        // port_forward_check only probes reachability and stays a read.
+        assert_eq!(
+            ActionPermissions::action_for_tool("port_forward_check"),
+            Action::Read
+        );
+    }
+
+    #[test]
+    fn sub_tools_obey_the_base_resource_switch() {
+        let perms = ActionPermissions::new(
+            false,
+            false,
+            false,
+            vec!["deployment-update".into(), "job-create".into()],
+            true,
+            true,
+        );
+        assert!(!perms.is_tool_allowed("update_deployment_labels"));
+        assert!(!perms.is_tool_allowed("update_deployment_affinity"));
+        assert!(!perms.is_tool_allowed("create_job_from_cronjob"));
+        assert!(perms.is_tool_allowed("create_cronjob"));
+        assert!(perms.is_tool_allowed("delete_deployment"));
+        // The specific key still works on its own.
+        let perms = ActionPermissions::new(
+            false,
+            false,
+            false,
+            vec!["deployment_labels-update".into()],
+            true,
+            true,
+        );
+        assert!(!perms.is_tool_allowed("update_deployment_labels"));
+        assert!(perms.is_tool_allowed("update_deployment"));
+    }
+
+    #[test]
+    fn workload_policy_defaults_to_restrictive_and_can_be_replaced() {
+        let perms = ActionPermissions::default();
+        assert_eq!(perms.workload_policy(), &WorkloadPolicy::default());
+        assert!(!perms.workload_policy().allow_privileged);
+        let perms = ActionPermissions::new(false, false, false, vec![], true, true)
+            .with_workload_policy(WorkloadPolicy::permissive());
+        assert!(perms.workload_policy().allow_privileged);
+        // Replacing the policy leaves the action switches alone.
+        assert!(perms.is_tool_allowed("create_pod"));
+    }
+
+    #[test]
     fn action_for_delete_tools() {
         assert_eq!(
             ActionPermissions::action_for_tool("delete_deployment"),
@@ -637,8 +747,15 @@ mod tests {
     }
 
     #[test]
-    fn default_allows_apply_manifest() {
+    fn default_disables_apply_manifest() {
         let perms = ActionPermissions::default();
-        assert!(perms.is_tool_allowed("apply_manifest"));
+        assert!(!perms.is_tool_allowed("apply_manifest"));
+        assert_eq!(
+            perms.denied_by("apply_manifest").as_deref(),
+            Some("apply_manifest:disabled")
+        );
+        assert!(ActionPermissions::default()
+            .with_apply_manifest(true)
+            .is_tool_allowed("apply_manifest"));
     }
 }

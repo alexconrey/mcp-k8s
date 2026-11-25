@@ -12,6 +12,168 @@ release workflow refuses a tag that doesn't match `Cargo.toml`,
 
 ## [Unreleased]
 
+Typed workload tools that cover the pod template, workload guardrails on every
+typed write tool, and `apply_manifest` turned into an opt-in, unrestricted
+escape hatch for users who know what they're applying.
+
+### Breaking changes
+- **Workload guardrails, restrictive by default.** The typed create tools, the
+  update tools, `create_custom_resource` and `update_custom_resource` now run
+  a workload policy (`mcp_k8s::policy::WorkloadPolicy`, on
+  `ActionPermissions`). `apply_manifest` doesn't (see below). By default the
+  policy rejects:
+  - privileged containers, `allowPrivilegeEscalation: true`, capabilities
+    beyond the runtime's default set, `hostNetwork`/`hostPID`/`hostIPC`,
+    `hostPath`, `hostPort`, volume types outside the safe set (nfs, inline csi,
+    gitRepo, …), and Unconfined seccomp/AppArmor;
+  - NodePort, LoadBalancer and ExternalName Services, and `externalIPs`;
+  - ingress `*-snippet` annotations and nginx config injection in ingress-nginx
+    annotation values (IngressNightmare);
+  - RBAC escalation: escalate/bind/impersonate, wildcards, aggregation, binding
+    cluster-admin or a role with such rules, anonymous subjects, and
+    service-account token Secrets;
+  - pod-security namespace labels set to `privileged`.
+
+  Each rule has an opt-in flag (`--allow-*`, `MCP_K8S_ALLOW_*`, or a
+  `WorkloadPolicy` field), and every rejection names it. Library users who
+  pass `ActionPermissions::default()` (deckwatch does) get the restrictive
+  policy; `ActionPermissions::default().with_workload_policy(WorkloadPolicy::permissive())`
+  restores the old behaviour.
+- **`apply_manifest` is off by default.** It's hidden from `tools/list` and
+  refused until the operator passes `--enable-apply-manifest`
+  (`ENABLE_APPLY_MANIFEST`; Helm `permissions.enableApplyManifest`; library
+  `ActionPermissions::with_apply_manifest(true)`). `ActionPermissions::default()`
+  now has `apply_manifest_enabled: false`. Enabled, it's still a raw
+  server-side apply **without the workload policy**: for users who know exactly
+  what they're applying. It's marked `destructiveHint: true`, so MCP clients
+  ask the user before each call, and its description and the server
+  instructions tell agents to use it only on the user's explicit request,
+  after showing them the manifest, and never to get around a rejection.
+  `--disable-apply-manifest` is deprecated but still honoured, and wins.
+- **`apply_manifest` honours the per-resource switches.** It looks the object
+  up and needs `<resource>-create` or, for an existing object,
+  `<resource>-update`. `--disable-update` used to be bypassable through it.
+  The namespace allowlist still applies too.
+- **Custom resource writes need an allowlisted API group**
+  (`--allow-custom-resource-groups`), because operators can turn custom
+  resources into pods or RBAC objects. This covers `create_custom_resource`,
+  `update_custom_resource`. Reads are unaffected. The custom resource tools
+  also refuse built-in kinds; use the typed tools.
+- **Secure defaults in the typed create tools.** When the caller doesn't set
+  them, pods get `runAsNonRoot: true`, seccomp `RuntimeDefault`,
+  `allowPrivilegeEscalation: false`, `capabilities.drop: [ALL]` (non-root
+  containers) and `automountServiceAccountToken: false` (unless
+  `service_account_name` is set). Images that must run as root need
+  `security_context: {"run_as_non_root": false}`; `--no-secure-defaults` turns
+  the defaults off.
+- **`exec_pod` is an update action** (`pod-update`). It used to fall through to
+  "read", so read-only mode couldn't turn it off.
+- **Typed workload, Service and Ingress tools reject unknown arguments**,
+  listing the valid ones; they used to ignore them. camelCase spellings of the
+  documented arguments are accepted.
+- **Update tools check their result.** `update_deployment` (and its labels,
+  annotations and affinity variants, `rollback_deployment`),
+  `update_statefulset`, `update_daemonset`, `update_cronjob`, `update_service`,
+  `update_ingress`, `update_namespace` and `update_custom_resource` send the
+  patch as a server-side dry run first and refuse a result that breaks the
+  policy. This includes modifying a workload that already breaks it. Each
+  update makes up to three API calls.
+
+### Added
+- **Shared pod template arguments** for `create_pod`, `create_job`,
+  `create_cronjob`, `create_deployment`, `create_statefulset`,
+  `create_daemonset` and their update tools:
+  - **containers:** multiple containers; init containers and native sidecars;
+    env from values, secrets, configmaps, fields and resources; `env_from`
+    with prefix; args; ports; resources including ephemeral-storage; volume
+    mounts; liveness/readiness/startup probes (httpGet, tcpSocket, exec, grpc);
+    lifecycle hooks; working dir; image pull policy; container securityContext;
+  - **pod:** volumes (configMap, secret, emptyDir with medium/sizeLimit, PVC,
+    projected incl. service account tokens, downwardAPI; hostPath/nfs/csi
+    gated); service account and token automounting; image pull secrets;
+    node selector; tolerations; affinity; topology spread; priority class;
+    termination grace period; DNS policy/config; host aliases; runtime class;
+    hostname/subdomain; process namespace sharing; service links; pod
+    securityContext; labels; annotations; pod annotations; custom selectors.
+
+  See `docs/src/tools/pod-template.md`.
+- Job settings: `ttl_seconds_after_finished`, `active_deadline_seconds`,
+  `completions`, `parallelism`, `completion_mode`, `backoff_limit_per_index`,
+  `max_failed_indexes`, `pod_failure_policy`, `success_policy`,
+  `pod_replacement_policy`, `suspend`.
+- CronJob settings: `time_zone`, `concurrency_policy`, `suspend`,
+  `starting_deadline_seconds`, history limits, and all Job settings.
+  `update_cronjob` takes all of them plus the pod template.
+- Deployment `strategy`, `min_ready_seconds`, `revision_history_limit`,
+  `progress_deadline_seconds`.
+- StatefulSet `volume_claim_templates`, `pod_management_policy`,
+  `update_strategy`, `persistent_volume_claim_retention_policy`.
+- DaemonSet `update_strategy`.
+- **`create_job_from_cronjob`** (tool #211): run a CronJob now, like
+  `kubectl create job --from=cronjob/NAME`.
+- **`create_service`**: several named ports (targetPort by number or name),
+  headless services, session affinity, traffic policies, traffic
+  distribution, IP families, `publish_not_ready_addresses`, labels and
+  annotations; NodePort/LoadBalancer/ExternalName behind flags.
+  **`update_service`** takes the mutable ones.
+- **`create_ingress`** and **`update_ingress`**: several rules, path types,
+  backends by port name, TLS, default backend, labels; the single-rule
+  arguments still work.
+- RBAC rules accept `resource_names`; ClusterRole rules accept
+  `non_resource_urls`.
+- `create_configmap`: `binary_data`, `immutable`, `labels`, `annotations`
+  (`data` is no longer required when `binary_data` is given).
+- `create_secret`: base64 `data`, `immutable`, `labels`, `annotations`
+  (`string_data` is no longer required when `data` is given).
+- `create_pvc`: `volume_mode`, `data_source` (restore a VolumeSnapshot or
+  clone a PVC), `selector`, `volume_name`, `labels`, `annotations`.
+- `create_hpa`/`update_hpa`: `target_memory_utilization`, any autoscaling/v2
+  `metrics`, and `behavior`; `update_hpa` also takes
+  `target_cpu_utilization`. `create_hpa` takes `labels` and `annotations`.
+- `create_pdb`/`update_pdb`: `unhealthy_pod_eviction_policy`; `create_pdb`
+  takes `labels` and `annotations`.
+- `create_serviceaccount`: `image_pull_secrets`, `labels`.
+- `create_role`, `create_clusterrole`, `create_rolebinding`,
+  `create_clusterrolebinding`, `create_networkpolicy`: `labels`, `annotations`.
+- MCP `instructions` in the `initialize` response, steering agents to the typed
+  tools (`mcp_k8s::mcp::SERVER_INSTRUCTIONS` for library users).
+- Helm chart: `permissions.enableApplyManifest` and `extraEnv` (to set the
+  `MCP_K8S_ALLOW_*` guardrail variables). `permissions.disableApplyManifest`
+  is deprecated.
+- `ActionPermissions::with_apply_manifest(bool)`.
+- Docs: `docs/src/tools/coverage.md` (typed tool coverage matrix),
+  `docs/src/tools/pod-template.md`, and a guardrails section in
+  `docs/src/permissions.md`.
+
+### Changed
+- Every `create_*`/`update_*` tool description says it is preferred over
+  `apply_manifest`. `get_resource_json` no longer suggests passing its output
+  back to `apply_manifest`.
+- `apply_manifest` adds `app.kubernetes.io/managed-by: mcp-k8s` when the
+  manifest has no managed-by label. The typed tools now also label pod
+  templates with it.
+- `create_service`, `create_ingress` and `update_ingress` moved from
+  `mcp/handlers.rs` into the `service` and `ingress` resource modules. Their
+  names and original arguments are unchanged.
+
+### Fixed
+- `update_deployment_affinity` sent `required_node_affinity` terms with
+  snake_case keys (`match_expressions`), which the API server dropped, so
+  required node affinity was silently not applied.
+- `update_deployment`, `update_statefulset`, `update_daemonset` and
+  `update_cronjob` patched a container named after the workload even when it
+  didn't exist, which added a broken container. They now target the only
+  container, or the one named in `container`.
+- Numeric and boolean values in the `env` object became empty strings.
+- Unknown probe types produced a probe without a handler, which the API
+  server rejects. `grpc` probes are now supported.
+- Per-resource switches now reach sub-tools: `--disable deployment-update`
+  also disables `update_deployment_labels`, `update_deployment_annotations` and
+  `update_deployment_affinity`, and `job-create` covers
+  `create_job_from_cronjob`.
+- `create_ingress` created backing Services even with `service-create`
+  disabled.
+
 ## [0.5.2] - 2026-11-24
 
 ### Added

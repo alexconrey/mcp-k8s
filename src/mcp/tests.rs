@@ -273,3 +273,75 @@ fn all_tool_schemas_are_valid() {
         );
     }
 }
+
+#[test]
+fn tool_count_matches_the_documentation() {
+    // Keep in sync with README.md, CLAUDE.md and docs/src/tools/overview.md.
+    // The documented count includes apply_manifest, which is off by default.
+    let all = ActionPermissions::default().with_apply_manifest(true);
+    let tools = super::definitions::tool_definitions(&all);
+    assert_eq!(tools.len(), 211, "update the documented tool count");
+    let default_tools = super::definitions::tool_definitions(&ActionPermissions::default());
+    assert_eq!(default_tools.len(), 210);
+    assert!(default_tools.iter().all(|t| t["name"] != "apply_manifest"));
+}
+
+#[test]
+fn every_typed_write_tool_is_preferred_over_apply_manifest() {
+    let tools = super::definitions::tool_definitions(&ActionPermissions::default());
+    for tool in &tools {
+        let name = tool["name"].as_str().unwrap();
+        if name.starts_with("create_") || name.starts_with("update_") {
+            let desc = tool["description"].as_str().unwrap();
+            assert!(desc.contains("apply_manifest"), "{name}: {desc}");
+        }
+    }
+}
+
+#[test]
+fn read_only_mode_excludes_exec_pod() {
+    let perms = ActionPermissions::new(true, true, true, vec![], true, true);
+    let tools = super::definitions::tool_definitions(&perms);
+    assert!(tools.iter().all(|t| t["name"] != "exec_pod"));
+    let tools = super::definitions::tool_definitions(&ActionPermissions::default());
+    assert!(tools.iter().any(|t| t["name"] == "exec_pod"));
+}
+
+#[test]
+fn typed_workload_tools_are_listed() {
+    let tools = super::definitions::tool_definitions(&ActionPermissions::default());
+    let names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
+    for name in [
+        "create_pod",
+        "create_job",
+        "create_job_from_cronjob",
+        "create_cronjob",
+        "update_cronjob",
+        "create_deployment",
+        "update_deployment",
+        "create_statefulset",
+        "update_statefulset",
+        "create_daemonset",
+        "update_daemonset",
+        "create_service",
+        "update_service",
+        "create_ingress",
+        "update_ingress",
+    ] {
+        assert_eq!(names.iter().filter(|n| **n == name).count(), 1, "{name}");
+    }
+}
+
+#[test]
+fn server_instructions_steer_to_typed_tools() {
+    let text = super::SERVER_INSTRUCTIONS;
+    assert!(text.contains("create_deployment") && text.contains("apply_manifest"));
+    // apply_manifest bypasses the policy: agents must be told to use it only
+    // on the user's explicit request, never as a workaround.
+    assert!(text.contains("skips the workload policy"), "{text}");
+    assert!(text.contains("get their confirmation first"), "{text}");
+    assert!(
+        text.contains("never use it to get around a rejection"),
+        "{text}"
+    );
+}

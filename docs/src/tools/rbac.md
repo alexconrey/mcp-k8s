@@ -51,6 +51,16 @@ List what the current user can do in a namespace. Creates a SelfSubjectRulesRevi
 
 ---
 
+## Escalation guardrails
+
+The RBAC write tools reject privilege escalation primitives unless the operator sets `--allow-rbac-escalation`:
+
+- **Rules:** verbs `escalate`, `bind`, `impersonate`, and wildcard (`*`) verbs, resources (also `pods/*`), apiGroups or nonResourceURLs.
+- **ClusterRoles:** `aggregationRule`, and the `rbac.authorization.k8s.io/aggregate-to-*` labels, which push a role's rules into the built-in admin/edit/view roles.
+- **Bindings:** binding `cluster-admin`; binding `system:anonymous` or `system:unauthenticated`; and binding a role whose rules contain any of the above. The bound role is fetched and checked, so the built-in `edit` and `admin` roles, which can impersonate service accounts, count.
+
+Rules accept `resource_names`; ClusterRole rules also accept `non_resource_urls`. `apply_manifest`, if the operator enables it, applies RBAC objects without these rules.
+
 ## Roles
 
 ### list_roles
@@ -79,7 +89,9 @@ Create a Role.
 |-----------|------|----------|-------------|
 | `namespace` | string | Yes | Kubernetes namespace |
 | `name` | string | Yes | Role name |
-| `rules` | array | Yes | Policy rules (array of `{apiGroups, resources, verbs}`) |
+| `rules` | array | Yes | Policy rules: `{api_groups, resources, verbs, resource_names}`; escalation primitives are rejected (see above) |
+| `labels` | object | No | Labels (`app.kubernetes.io/managed-by: mcp-k8s` is added) |
+| `annotations` | object | No | Annotations |
 
 ### update_role
 
@@ -132,6 +144,8 @@ Create a RoleBinding.
 | `name` | string | Yes | RoleBinding name |
 | `role_name` | string | Yes | Name of the Role to bind |
 | `subjects` | array | Yes | Subjects (users, groups, or service accounts) |
+| `labels` | object | No | Labels (`app.kubernetes.io/managed-by: mcp-k8s` is added) |
+| `annotations` | object | No | Annotations |
 
 ### delete_rolebinding
 
@@ -169,7 +183,9 @@ Create a ClusterRole.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | Yes | ClusterRole name |
-| `rules` | array | Yes | Policy rules (array of `{apiGroups, resources, verbs}`) |
+| `rules` | array | Yes | Policy rules: `{api_groups, resources, verbs, resource_names}`; escalation primitives are rejected (see above) |
+| `labels` | object | No | Labels (`app.kubernetes.io/managed-by: mcp-k8s` is added) |
+| `annotations` | object | No | Annotations |
 
 ### update_clusterrole
 
@@ -217,6 +233,8 @@ Create a ClusterRoleBinding.
 | `name` | string | Yes | ClusterRoleBinding name |
 | `role_name` | string | Yes | Name of the ClusterRole to bind |
 | `subjects` | array | Yes | Subjects (users, groups, or service accounts) |
+| `labels` | object | No | Labels (`app.kubernetes.io/managed-by: mcp-k8s` is added) |
+| `annotations` | object | No | Annotations |
 
 ### delete_clusterrolebinding
 

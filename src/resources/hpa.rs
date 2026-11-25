@@ -188,6 +188,11 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
             "inputSchema": {
                 "type": "object",
                 "properties": {
+                    "labels": { "type": "object", "description": "Labels (app.kubernetes.io/managed-by: mcp-k8s is added)", "additionalProperties": { "type": "string" } },
+                    "annotations": { "type": "object", "description": "Annotations", "additionalProperties": { "type": "string" } },
+                    "target_memory_utilization": { "type": "integer", "description": "Target average memory utilization (%)" },
+                    "metrics": { "type": "array", "description": "Kubernetes autoscaling/v2 MetricSpec objects (Resource, Pods, Object, External, ContainerResource), added to the cpu/memory shorthands; snake_case keys are accepted", "items": { "type": "object" } },
+                    "behavior": { "type": "object", "description": "Kubernetes HorizontalPodAutoscalerBehavior: scaleUp/scaleDown policies and stabilization windows" },
                     "namespace": { "type": "string", "description": "Kubernetes namespace" },
                     "name": { "type": "string", "description": "HPA name" },
                     "scale_target_kind": { "type": "string", "description": "Kind of the scale target (e.g. Deployment)" },
@@ -207,6 +212,10 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
             "inputSchema": {
                 "type": "object",
                 "properties": {
+                    "target_cpu_utilization": { "type": "integer", "description": "Target average CPU utilization (%); replaces the metrics" },
+                    "target_memory_utilization": { "type": "integer", "description": "Target average memory utilization (%)" },
+                    "metrics": { "type": "array", "description": "Kubernetes autoscaling/v2 MetricSpec objects (Resource, Pods, Object, External, ContainerResource), added to the cpu/memory shorthands; snake_case keys are accepted", "items": { "type": "object" } },
+                    "behavior": { "type": "object", "description": "Kubernetes HorizontalPodAutoscalerBehavior: scaleUp/scaleDown policies and stabilization windows" },
                     "namespace": { "type": "string", "description": "Kubernetes namespace" },
                     "name": { "type": "string", "description": "HPA name" },
                     "min_replicas": { "type": "integer", "description": "New minimum number of replicas (optional)" },
@@ -289,6 +298,37 @@ async fn get_hpa(client: &K8sClient, args: &serde_json::Value) -> Result<String,
         .map_err(|e| e.to_string())
 }
 
+fn resource_metric(name: &str, pct: i32) -> MetricSpec {
+    MetricSpec {
+        type_: "Resource".to_string(),
+        resource: Some(ResourceMetricSource {
+            name: name.to_string(),
+            target: MetricTarget {
+                type_: "Utilization".to_string(),
+                average_utilization: Some(pct),
+                ..Default::default()
+            },
+        }),
+        ..Default::default()
+    }
+}
+
+/// The CPU/memory utilization shorthands plus any explicit `metrics`.
+fn metrics_from_args(
+    args: &serde_json::Value,
+    cpu: Option<i32>,
+) -> Result<Option<Vec<MetricSpec>>, String> {
+    let mut metrics: Vec<MetricSpec> =
+        crate::resources::podspec::passthrough(args, "metrics")?.unwrap_or_default();
+    if let Some(pct) = cpu {
+        metrics.push(resource_metric("cpu", pct));
+    }
+    if let Some(pct) = args["target_memory_utilization"].as_i64() {
+        metrics.push(resource_metric("memory", pct as i32));
+    }
+    Ok((!metrics.is_empty()).then_some(metrics))
+}
+
 async fn create_hpa(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
@@ -309,32 +349,16 @@ async fn create_hpa(client: &K8sClient, args: &serde_json::Value) -> Result<Stri
         .ok_or("max_replicas is required")? as i32;
     let target_cpu_utilization = args["target_cpu_utilization"].as_i64().map(|v| v as i32);
 
-    let mut labels = BTreeMap::new();
-    labels.insert(
-        "app.kubernetes.io/managed-by".to_string(),
-        "mcp-k8s".to_string(),
-    );
+    let labels = crate::resources::podspec::object_labels(args)?;
 
-    let metrics = target_cpu_utilization.map(|pct| {
-        vec![MetricSpec {
-            type_: "Resource".to_string(),
-            resource: Some(ResourceMetricSource {
-                name: "cpu".to_string(),
-                target: MetricTarget {
-                    type_: "Utilization".to_string(),
-                    average_utilization: Some(pct),
-                    ..Default::default()
-                },
-            }),
-            ..Default::default()
-        }]
-    });
+    let metrics = metrics_from_args(args, target_cpu_utilization)?;
 
     let hpa = Hpa {
         metadata: ObjectMeta {
             name: Some(name.to_string()),
             namespace: Some(ns.to_string()),
             labels: Some(labels),
+            annotations: crate::resources::podspec::string_map(args, "annotations")?,
             ..Default::default()
         },
         spec: Some(HorizontalPodAutoscalerSpec {
@@ -346,7 +370,7 @@ async fn create_hpa(client: &K8sClient, args: &serde_json::Value) -> Result<Stri
             min_replicas: Some(min_replicas),
             max_replicas,
             metrics,
-            ..Default::default()
+            behavior: crate::resources::podspec::passthrough(args, "behavior")?,
         }),
         ..Default::default()
     };
@@ -376,6 +400,23 @@ async fn update_hpa(client: &K8sClient, args: &serde_json::Value) -> Result<Stri
         spec_patch.insert("maxReplicas".to_string(), serde_json::json!(max));
     }
 
+    let cpu = args["target_cpu_utilization"].as_i64().map(|v| v as i32);
+    if let Some(metrics) = metrics_from_args(args, cpu)? {
+        // HPA metrics have no merge key: the list is replaced.
+        spec_patch.insert(
+            "metrics".to_string(),
+            serde_json::to_value(metrics).map_err(|e| e.to_string())?,
+        );
+    }
+    if let Some(behavior) = crate::resources::podspec::passthrough::<
+        k8s_openapi::api::autoscaling::v2::HorizontalPodAutoscalerBehavior,
+    >(args, "behavior")?
+    {
+        spec_patch.insert(
+            "behavior".to_string(),
+            serde_json::to_value(behavior).map_err(|e| e.to_string())?,
+        );
+    }
     let patch = serde_json::json!({ "spec": spec_patch });
 
     let hpa_api = api(client, ns)?;

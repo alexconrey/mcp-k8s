@@ -135,6 +135,9 @@ jobs:
           save-if: ${{ github.event_name == 'push' }}
       - name: k3s integration tests
         run: cargo test --locked --test k3s_integration -- --ignored --test-threads=2
+      # Typed workload tools and the workload guardrails end to end.
+      - name: k3s workload and guardrail tests
+        run: cargo test --locked --test k3s_workloads -- --ignored --test-threads=1
 
   # Library API compatibility against the last release tag, in the library-only
   # configuration deckwatch builds. K8S_OPENAPI_ENABLED_VERSION picks the

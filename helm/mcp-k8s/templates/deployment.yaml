@@ -43,6 +43,14 @@ spec:
             - name: MCP_K8S_DISABLE
               value: {{ join "," .Values.permissions.disableActions | quote }}
             {{- end }}
+            {{- if .Values.permissions.enableApplyManifest }}
+            - name: ENABLE_APPLY_MANIFEST
+              value: "true"
+            {{- end }}
+            {{- if .Values.permissions.disableApplyManifest }}
+            - name: DISABLE_APPLY_MANIFEST
+              value: "true"
+            {{- end }}
             {{- with .Values.otel }}
             {{- if .endpoint }}
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
@@ -99,6 +107,9 @@ spec:
             {{- with .extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
+            {{- end }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
             {{- end }}
           ports:
             - name: http

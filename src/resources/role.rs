@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use k8s_openapi::api::rbac::v1::{PolicyRule, Role};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use kube::api::{DeleteParams, ListParams, Patch, PatchParams, PostParams};
@@ -83,6 +81,8 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
             "inputSchema": {
                 "type": "object",
                 "properties": {
+                    "labels": { "type": "object", "description": "Labels (app.kubernetes.io/managed-by: mcp-k8s is added)", "additionalProperties": { "type": "string" } },
+                    "annotations": { "type": "object", "description": "Annotations", "additionalProperties": { "type": "string" } },
                     "namespace": { "type": "string", "description": "Kubernetes namespace" },
                     "name": { "type": "string", "description": "Role name" },
                     "rules": {
@@ -104,7 +104,12 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
                                 "verbs": {
                                     "type": "array",
                                     "items": { "type": "string" },
-                                    "description": "Verbs (e.g. [\"get\", \"list\", \"watch\"])"
+                                    "description": "Verbs (e.g. [\"get\", \"list\", \"watch\"]). escalate, bind, impersonate and \"*\" are rejected unless the server allows RBAC escalation (--allow-rbac-escalation)"
+                                },
+                                "resource_names": {
+                                    "type": "array",
+                                    "items": { "type": "string" },
+                                    "description": "Restrict the rule to these object names (optional)"
                                 }
                             },
                             "required": ["api_groups", "resources", "verbs"],
@@ -143,7 +148,12 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
                                 "verbs": {
                                     "type": "array",
                                     "items": { "type": "string" },
-                                    "description": "Verbs (e.g. [\"get\", \"list\", \"watch\"])"
+                                    "description": "Verbs (e.g. [\"get\", \"list\", \"watch\"]). escalate, bind, impersonate and \"*\" are rejected unless the server allows RBAC escalation (--allow-rbac-escalation)"
+                                },
+                                "resource_names": {
+                                    "type": "array",
+                                    "items": { "type": "string" },
+                                    "description": "Restrict the rule to these object names (optional)"
                                 }
                             },
                             "required": ["api_groups", "resources", "verbs"],
@@ -215,10 +225,17 @@ fn parse_rules(args: &serde_json::Value) -> Result<Vec<PolicyRule>, String> {
             )
             .map_err(|e| format!("invalid verbs: {e}"))?;
 
+            let resource_names: Option<Vec<String>> = r
+                .get("resource_names")
+                .map(|v| serde_json::from_value(v.clone()))
+                .transpose()
+                .map_err(|e| format!("invalid resource_names: {e}"))?;
+
             Ok(PolicyRule {
                 api_groups: Some(api_groups),
                 resources: Some(resources),
                 verbs,
+                resource_names,
                 ..Default::default()
             })
         })
@@ -280,21 +297,19 @@ async fn create_role(client: &K8sClient, args: &serde_json::Value) -> Result<Str
     let name = args["name"].as_str().ok_or("name is required")?;
     let rules = parse_rules(args)?;
 
-    let mut labels = BTreeMap::new();
-    labels.insert(
-        "app.kubernetes.io/managed-by".to_string(),
-        "mcp-k8s".to_string(),
-    );
+    let labels = crate::resources::podspec::object_labels(args)?;
 
     let role = Role {
         metadata: ObjectMeta {
             name: Some(name.to_string()),
             namespace: Some(ns.to_string()),
             labels: Some(labels),
+            annotations: crate::resources::podspec::string_map(args, "annotations")?,
             ..Default::default()
         },
         rules: Some(rules),
     };
+    crate::policy::check_typed(client, &role)?;
 
     let role_api = api(client, ns)?;
     let created = role_api
@@ -310,20 +325,17 @@ async fn update_role(client: &K8sClient, args: &serde_json::Value) -> Result<Str
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
     let rules = parse_rules(args)?;
-
-    let rules_json: Vec<serde_json::Value> = rules
-        .iter()
-        .map(|r| {
-            serde_json::json!({
-                "apiGroups": r.api_groups,
-                "resources": r.resources,
-                "verbs": r.verbs,
-            })
-        })
-        .collect();
+    // Rules are replaced wholesale, so checking the new rules is enough.
+    crate::policy::check_typed(
+        client,
+        &Role {
+            rules: Some(rules.clone()),
+            ..Default::default()
+        },
+    )?;
 
     let patch = serde_json::json!({
-        "rules": rules_json,
+        "rules": serde_json::to_value(&rules).map_err(|e| e.to_string())?,
     });
 
     let role_api = api(client, ns)?;
@@ -356,6 +368,7 @@ async fn delete_role(client: &K8sClient, args: &serde_json::Value) -> Result<Str
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeMap;
 
     #[test]
     fn tool_definitions_returns_five_unique_tools() {

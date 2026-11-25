@@ -5,6 +5,7 @@ pub mod error;
 pub mod extract;
 pub mod mcp;
 pub mod permissions;
+pub mod policy;
 pub mod resources;
 pub mod telemetry;
 pub mod types;

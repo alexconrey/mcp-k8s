@@ -29,6 +29,7 @@ pub mod networkpolicy;
 pub mod node;
 pub mod pdb;
 pub mod pod;
+pub mod podspec;
 pub mod priorityclass;
 pub mod pv;
 pub mod pvc;
@@ -101,7 +102,26 @@ pub fn all_tool_definitions() -> Vec<serde_json::Value> {
     tools.extend(storageclass::tool_definitions());
     tools.extend(volume_attributes::tool_definitions());
     tools.extend(watch::tool_definitions());
+    steer_writes_to_typed_tools(&mut tools);
     tools
+}
+
+/// Every typed write tool says it is preferred over `apply_manifest`, so
+/// agents don't reach for the raw-manifest tool first.
+fn steer_writes_to_typed_tools(tools: &mut [serde_json::Value]) {
+    for tool in tools {
+        let name = tool["name"].as_str().unwrap_or("");
+        if !(name.starts_with("create_") || name.starts_with("update_")) {
+            continue;
+        }
+        if let Some(desc) = tool["description"].as_str() {
+            if !desc.contains("apply_manifest") {
+                tool["description"] = serde_json::Value::String(format!(
+                    "{desc} Preferred over apply_manifest: arguments are validated and the server's guardrails are enforced."
+                ));
+            }
+        }
+    }
 }
 
 pub async fn handle_tool(

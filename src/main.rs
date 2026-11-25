@@ -28,6 +28,7 @@ use mcp_k8s::mcp::{
     JsonRpcResponse,
 };
 use mcp_k8s::permissions::ActionPermissions;
+use mcp_k8s::policy::WorkloadPolicy;
 use mcp_k8s::telemetry::{self, semconv, ClientInfo, ToolCall, W3cTraceContext};
 use mcp_k8s::{ClusterManager, K8sClient, ResponseCache};
 
@@ -114,9 +115,17 @@ struct Cli {
     #[arg(long, env = "DISABLE_SECRET_DECODE")]
     disable_secret_decode: bool,
 
-    /// Disable the apply_manifest tool. When set, apply_manifest calls are
-    /// rejected regardless of other permission settings.
-    #[arg(long, env = "DISABLE_APPLY_MANIFEST")]
+    /// Enable the apply_manifest tool (off by default). It's a raw server-side
+    /// apply that skips the workload guardrails below (the namespace allowlist
+    /// and the --disable switches still apply), for users who know exactly
+    /// what they're applying. MCP clients are told it's destructive.
+    #[arg(long, env = "ENABLE_APPLY_MANIFEST")]
+    enable_apply_manifest: bool,
+
+    /// Keep apply_manifest disabled even if --enable-apply-manifest is set.
+    /// It's off by default since v0.6.0; this flag still works so existing
+    /// deployments that pass it keep starting.
+    #[arg(long, env = "DISABLE_APPLY_MANIFEST", hide = true)]
     disable_apply_manifest: bool,
 
     /// Log output format: "text" (default) or "json" for structured JSON logging.
@@ -127,6 +136,114 @@ struct Cli {
     /// Set to 0 (default) to disable caching.
     #[arg(long, env = "CACHE_TTL", default_value = "0")]
     cache_ttl: u64,
+
+    // --- Workload guardrails (see docs/src/permissions.md). The typed tools and
+    // the custom resource tools enforce them (apply_manifest, when enabled,
+    // doesn't); each flag relaxes one rule.
+    /// Allow privileged containers (and Windows hostProcess, and namespaces
+    /// labelled pod-security.kubernetes.io/*=privileged).
+    #[arg(long, env = "MCP_K8S_ALLOW_PRIVILEGED")]
+    allow_privileged: bool,
+
+    /// Allow allowPrivilegeEscalation: true.
+    #[arg(long, env = "MCP_K8S_ALLOW_PRIVILEGE_ESCALATION")]
+    allow_privilege_escalation: bool,
+
+    /// Allow hostNetwork, hostPID and hostIPC.
+    #[arg(long, env = "MCP_K8S_ALLOW_HOST_NAMESPACES")]
+    allow_host_namespaces: bool,
+
+    /// Allow hostPath volumes.
+    #[arg(long, env = "MCP_K8S_ALLOW_HOST_PATH")]
+    allow_host_path: bool,
+
+    /// Allow hostPort on container ports.
+    #[arg(long, env = "MCP_K8S_ALLOW_HOST_PORTS")]
+    allow_host_ports: bool,
+
+    /// Allow unconfined seccomp/AppArmor profiles, custom SELinux options,
+    /// procMount Unmasked, unsafe sysctls, and probe/hook hosts other than
+    /// localhost.
+    #[arg(long, env = "MCP_K8S_ALLOW_UNCONFINED")]
+    allow_unconfined: bool,
+
+    /// Comma-separated capabilities containers may add beyond the runtime's
+    /// default set (e.g. "NET_ADMIN,SYS_TIME"; "ALL" allows any).
+    #[arg(long, env = "MCP_K8S_ALLOW_CAPABILITIES", value_delimiter = ',')]
+    allow_capabilities: Vec<String>,
+
+    /// Comma-separated volume types allowed beyond configMap, secret,
+    /// emptyDir, persistentVolumeClaim, projected, downwardAPI and ephemeral
+    /// (e.g. "nfs,csi"; "*" allows any except hostPath).
+    #[arg(long, env = "MCP_K8S_ALLOW_VOLUME_TYPES", value_delimiter = ',')]
+    allow_volume_types: Vec<String>,
+
+    /// Comma-separated image registry allowlist (e.g.
+    /// "ghcr.io/myorg,docker.io/library"). Empty allows any registry.
+    #[arg(long, env = "MCP_K8S_ALLOWED_REGISTRIES", value_delimiter = ',')]
+    allowed_registries: Vec<String>,
+
+    /// Allow NodePort Services.
+    #[arg(long, env = "MCP_K8S_ALLOW_NODEPORT")]
+    allow_nodeport: bool,
+
+    /// Allow LoadBalancer Services, loadBalancer* fields and cloud
+    /// load-balancer annotations.
+    #[arg(long, env = "MCP_K8S_ALLOW_LOADBALANCER")]
+    allow_loadbalancer: bool,
+
+    /// Allow ExternalName Services and spec.externalIPs.
+    #[arg(long, env = "MCP_K8S_ALLOW_EXTERNAL_SERVICES")]
+    allow_external_services: bool,
+
+    /// Allow *-snippet ingress annotations and nginx configuration syntax in
+    /// ingress-nginx annotation values.
+    #[arg(long, env = "MCP_K8S_ALLOW_INGRESS_SNIPPETS")]
+    allow_ingress_snippets: bool,
+
+    /// Comma-separated Ingress annotation keys to accept (trailing * matches a
+    /// prefix). When set, every other annotation is rejected.
+    #[arg(
+        long,
+        env = "MCP_K8S_INGRESS_ANNOTATION_ALLOWLIST",
+        value_delimiter = ','
+    )]
+    ingress_annotation_allowlist: Vec<String>,
+
+    /// Comma-separated Ingress annotation keys to reject (trailing * matches a
+    /// prefix).
+    #[arg(
+        long,
+        env = "MCP_K8S_INGRESS_ANNOTATION_DENYLIST",
+        value_delimiter = ','
+    )]
+    ingress_annotation_denylist: Vec<String>,
+
+    /// Comma-separated kinds the custom resource tools may write although they
+    /// are rejected by default (cluster-scoped kinds). "Kind" or "group/Kind";
+    /// "*" allows all.
+    #[arg(long, env = "MCP_K8S_ALLOW_MANIFEST_KINDS", value_delimiter = ',')]
+    allow_manifest_kinds: Vec<String>,
+
+    /// Comma-separated custom resource API groups that may be written
+    /// (e.g. "cert-manager.io"; "*" allows any). Default: none.
+    #[arg(
+        long,
+        env = "MCP_K8S_ALLOW_CUSTOM_RESOURCE_GROUPS",
+        value_delimiter = ','
+    )]
+    allow_custom_resource_groups: Vec<String>,
+
+    /// Allow RBAC escalation primitives (escalate/bind/impersonate verbs,
+    /// wildcards, aggregation, binding cluster-admin or anonymous subjects,
+    /// service-account token Secrets).
+    #[arg(long, env = "MCP_K8S_ALLOW_RBAC_ESCALATION")]
+    allow_rbac_escalation: bool,
+
+    /// Don't fill in the restricted securityContext and
+    /// automountServiceAccountToken: false defaults in the typed create tools.
+    #[arg(long, env = "MCP_K8S_NO_SECURE_DEFAULTS")]
+    no_secure_defaults: bool,
 
     /// Comma-separated list of kubeconfig context names to load.
     /// Each context becomes a named cluster that can be switched via MCP tools.
@@ -164,6 +281,7 @@ async fn main() {
         .install_recorder()
         .expect("Failed to install Prometheus recorder");
 
+    let policy = workload_policy(&cli);
     let namespaces: Vec<String> = cli
         .namespaces
         .into_iter()
@@ -176,8 +294,9 @@ async fn main() {
         cli.disable_delete,
         cli.disable_actions,
         !cli.disable_secret_decode,
-        !cli.disable_apply_manifest,
-    );
+        cli.enable_apply_manifest && !cli.disable_apply_manifest,
+    )
+    .with_workload_policy(policy);
 
     let contexts: Vec<String> = cli.contexts.into_iter().filter(|s| !s.is_empty()).collect();
 
@@ -350,6 +469,38 @@ async fn shutdown_signal() {
 // ---------------------------------------------------------------------------
 // Stdio mode
 // ---------------------------------------------------------------------------
+
+/// Build the workload guardrail policy from the CLI flags.
+fn workload_policy(cli: &Cli) -> WorkloadPolicy {
+    fn list(values: &[String]) -> Vec<String> {
+        values
+            .iter()
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+            .collect()
+    }
+    let mut policy = WorkloadPolicy::default();
+    policy.allow_privileged = cli.allow_privileged;
+    policy.allow_privilege_escalation = cli.allow_privilege_escalation;
+    policy.allow_host_namespaces = cli.allow_host_namespaces;
+    policy.allow_host_path = cli.allow_host_path;
+    policy.allow_host_ports = cli.allow_host_ports;
+    policy.allow_unconfined = cli.allow_unconfined;
+    policy.allowed_capabilities = list(&cli.allow_capabilities);
+    policy.allowed_volume_types = list(&cli.allow_volume_types);
+    policy.allowed_registries = list(&cli.allowed_registries);
+    policy.allow_node_port = cli.allow_nodeport;
+    policy.allow_load_balancer = cli.allow_loadbalancer;
+    policy.allow_external_services = cli.allow_external_services;
+    policy.allow_ingress_snippets = cli.allow_ingress_snippets;
+    policy.ingress_annotation_allowlist = list(&cli.ingress_annotation_allowlist);
+    policy.ingress_annotation_denylist = list(&cli.ingress_annotation_denylist);
+    policy.allowed_manifest_kinds = list(&cli.allow_manifest_kinds);
+    policy.allowed_custom_resource_groups = list(&cli.allow_custom_resource_groups);
+    policy.allow_rbac_escalation = cli.allow_rbac_escalation;
+    policy.secure_defaults = !cli.no_secure_defaults;
+    policy
+}
 
 async fn run_stdio(manager: ClusterManager) {
     let stdin = std::io::stdin();
@@ -798,7 +949,8 @@ fn handle_initialize(request: &JsonRpcRequest, span: &Span) -> JsonRpcResponse {
         serde_json::json!({
             "protocolVersion": PROTOCOL_VERSION,
             "capabilities": { "tools": {}, "resources": {}, "prompts": {} },
-            "serverInfo": { "name": "mcp-k8s", "version": env!("CARGO_PKG_VERSION") }
+            "serverInfo": { "name": "mcp-k8s", "version": env!("CARGO_PKG_VERSION") },
+            "instructions": mcp_k8s::mcp::SERVER_INSTRUCTIONS
         }),
     )
 }

@@ -1,14 +1,7 @@
 use std::time::Instant;
 
 use k8s_openapi::api::apps::v1::ReplicaSet;
-use k8s_openapi::api::core::v1::{Service, ServicePort, ServiceSpec};
-use k8s_openapi::api::networking::v1::{
-    HTTPIngressPath, HTTPIngressRuleValue, Ingress, IngressBackend, IngressRule,
-    IngressServiceBackend, IngressSpec, ServiceBackendPort,
-};
-use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
-use k8s_openapi::apimachinery::pkg::util::intstr::IntOrString;
-use kube::api::{ListParams, Patch, PatchParams, PostParams};
+use kube::api::ListParams;
 use kube::Api;
 use metrics::{counter, histogram};
 use serde::Deserialize;
@@ -61,6 +54,14 @@ async fn handle_tool_metered(
         if let Some(rule) = client.permissions().denied_by(name) {
             telemetry::record_denial(&rule);
         }
+        if name == "apply_manifest" && !client.permissions().apply_manifest_enabled {
+            return Some(Err(
+                "apply_manifest is disabled on this server. Use the typed \
+                 create_*/update_* tools. The operator can enable it with \
+                 --enable-apply-manifest, but don't ask for that to get around a rejection."
+                    .to_string(),
+            ));
+        }
         return Some(Err(format!(
             "action '{action}' is not allowed on this tool: {name}"
         )));
@@ -100,9 +101,6 @@ async fn handle_tool_inner(
         "get_build_logs" => get_build_logs(client, args).await,
         "list_ingresses" => list_ingresses(client, args).await,
         "get_metrics" => get_metrics(client, args).await,
-        "create_service" => create_service(client, args).await,
-        "create_ingress" => create_ingress(client, args).await,
-        "update_ingress" => update_ingress(client, args).await,
         _ => return None,
     };
     Some(result)
@@ -501,222 +499,4 @@ async fn get_metrics(client: &K8sClient, args: &serde_json::Value) -> Result<Str
         }
         Err(e) => Err(e.to_string()),
     }
-}
-
-async fn create_service(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
-    let ns = args["namespace"].as_str().ok_or("namespace is required")?;
-    let name = args["name"].as_str().ok_or("name is required")?;
-    let port = args["port"].as_i64().unwrap_or(80) as i32;
-    let target_port = args["target_port"].as_i64().unwrap_or(port as i64) as i32;
-
-    let mut labels = std::collections::BTreeMap::new();
-    labels.insert("app".to_string(), name.to_string());
-    labels.insert(
-        "app.kubernetes.io/managed-by".to_string(),
-        "mcp-k8s".to_string(),
-    );
-
-    let mut selector = std::collections::BTreeMap::new();
-    selector.insert("app".to_string(), name.to_string());
-
-    let svc = Service {
-        metadata: ObjectMeta {
-            name: Some(name.to_string()),
-            namespace: Some(ns.to_string()),
-            labels: Some(labels),
-            ..Default::default()
-        },
-        spec: Some(ServiceSpec {
-            selector: Some(selector),
-            ports: Some(vec![ServicePort {
-                port,
-                target_port: Some(IntOrString::Int(target_port)),
-                protocol: Some("TCP".to_string()),
-                ..Default::default()
-            }]),
-            ..Default::default()
-        }),
-        ..Default::default()
-    };
-
-    let svc_api = client.services_api(ns).map_err(|e| e.to_string())?;
-    let created = svc_api
-        .create(&PostParams::default(), &svc)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    let result = serde_json::json!({
-        "name": created.metadata.name,
-        "namespace": ns,
-        "cluster_ip": created.spec.as_ref().and_then(|s| s.cluster_ip.clone()),
-        "port": port,
-        "target_port": target_port,
-    });
-    serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
-}
-
-async fn ensure_service(
-    client: &K8sClient,
-    ns: &str,
-    service_name: &str,
-    service_port: i32,
-) -> Result<(), String> {
-    let svc_api = client.services_api(ns).map_err(|e| e.to_string())?;
-    if svc_api.get(service_name).await.is_ok() {
-        return Ok(());
-    }
-
-    let mut labels = std::collections::BTreeMap::new();
-    labels.insert("app".to_string(), service_name.to_string());
-    labels.insert(
-        "app.kubernetes.io/managed-by".to_string(),
-        "mcp-k8s".to_string(),
-    );
-
-    let mut selector = std::collections::BTreeMap::new();
-    selector.insert("app".to_string(), service_name.to_string());
-
-    let svc = Service {
-        metadata: ObjectMeta {
-            name: Some(service_name.to_string()),
-            namespace: Some(ns.to_string()),
-            labels: Some(labels),
-            ..Default::default()
-        },
-        spec: Some(ServiceSpec {
-            selector: Some(selector),
-            ports: Some(vec![ServicePort {
-                port: service_port,
-                target_port: Some(IntOrString::Int(service_port)),
-                protocol: Some("TCP".to_string()),
-                ..Default::default()
-            }]),
-            ..Default::default()
-        }),
-        ..Default::default()
-    };
-
-    svc_api
-        .create(&PostParams::default(), &svc)
-        .await
-        .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-async fn create_ingress(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
-    let ns = args["namespace"].as_str().ok_or("namespace is required")?;
-    let name = args["name"].as_str().ok_or("name is required")?;
-    let service_name = args["service_name"]
-        .as_str()
-        .ok_or("service_name is required")?;
-    let service_port = args["service_port"].as_i64().unwrap_or(80) as i32;
-    let path = args["path"].as_str().unwrap_or("/").to_string();
-    let path_type = args["path_type"].as_str().unwrap_or("Prefix").to_string();
-    let host = args["host"].as_str().map(|s| s.to_string());
-    let ingress_class = args["ingress_class"].as_str().map(|s| s.to_string());
-    let annotations: Option<std::collections::BTreeMap<String, String>> = args
-        .get("annotations")
-        .and_then(|v| serde_json::from_value(v.clone()).ok());
-
-    ensure_service(client, ns, service_name, service_port).await?;
-
-    let mut labels = std::collections::BTreeMap::new();
-    labels.insert(
-        "app.kubernetes.io/managed-by".to_string(),
-        "mcp-k8s".to_string(),
-    );
-
-    let ingress = Ingress {
-        metadata: ObjectMeta {
-            name: Some(name.to_string()),
-            namespace: Some(ns.to_string()),
-            labels: Some(labels),
-            annotations,
-            ..Default::default()
-        },
-        spec: Some(IngressSpec {
-            ingress_class_name: ingress_class,
-            rules: Some(vec![IngressRule {
-                host,
-                http: Some(HTTPIngressRuleValue {
-                    paths: vec![HTTPIngressPath {
-                        path: Some(path),
-                        path_type,
-                        backend: IngressBackend {
-                            service: Some(IngressServiceBackend {
-                                name: service_name.to_string(),
-                                port: Some(ServiceBackendPort {
-                                    number: Some(service_port),
-                                    ..Default::default()
-                                }),
-                            }),
-                            ..Default::default()
-                        },
-                    }],
-                }),
-            }]),
-            ..Default::default()
-        }),
-        ..Default::default()
-    };
-
-    let ing_api = client.ingresses_api(ns).map_err(|e| e.to_string())?;
-    let created = ing_api
-        .create(&PostParams::default(), &ingress)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    let detail = extract::ingress_detail(&created);
-    serde_json::to_string_pretty(&serde_json::to_value(detail).unwrap_or_default())
-        .map_err(|e| e.to_string())
-}
-
-async fn update_ingress(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
-    let ns = args["namespace"].as_str().ok_or("namespace is required")?;
-    let name = args["name"].as_str().ok_or("name is required")?;
-    let service_name = args["service_name"]
-        .as_str()
-        .ok_or("service_name is required")?;
-    let service_port = args["service_port"].as_i64().unwrap_or(80) as i32;
-    let path = args["path"].as_str().unwrap_or("/").to_string();
-    let path_type = args["path_type"].as_str().unwrap_or("Prefix").to_string();
-    let host = args["host"].as_str().map(|s| s.to_string());
-    let ingress_class = args["ingress_class"].as_str().map(|s| s.to_string());
-    let annotations: Option<std::collections::BTreeMap<String, String>> = args
-        .get("annotations")
-        .and_then(|v| serde_json::from_value(v.clone()).ok());
-
-    let patch = serde_json::json!({
-        "metadata": {
-            "annotations": annotations,
-        },
-        "spec": {
-            "ingressClassName": ingress_class,
-            "rules": [{
-                "host": host,
-                "http": {
-                    "paths": [{
-                        "path": path,
-                        "pathType": path_type,
-                        "backend": {
-                            "service": {
-                                "name": service_name,
-                                "port": { "number": service_port }
-                            }
-                        }
-                    }]
-                }
-            }]
-        }
-    });
-
-    let ing_api = client.ingresses_api(ns).map_err(|e| e.to_string())?;
-    let patched = ing_api
-        .patch(name, &PatchParams::default(), &Patch::Strategic(patch))
-        .await
-        .map_err(|e| e.to_string())?;
-
-    let detail = extract::ingress_detail(&patched);
-    serde_json::to_string_pretty(&serde_json::to_value(detail).unwrap_or_default())
-        .map_err(|e| e.to_string())
 }
