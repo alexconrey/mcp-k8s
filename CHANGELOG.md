@@ -13,6 +13,19 @@ release workflow refuses a tag that doesn't match `Cargo.toml`,
 ## [Unreleased]
 
 ### Security
+- **`approve_csr` checks the identity a CSR requests** (breaking default for
+  server operators and library users). It parses the PEM/PKCS#10
+  `spec.request` and refuses to approve: group `system:masters` (a
+  cluster-admin client certificate) for any signer; any other `system:` user
+  (CN) or group (O), such as nodes, control-plane components, service
+  accounts, `system:anonymous` and `system:unauthenticated`, including kubelet
+  client certificates; and requests it can't parse. A node's request for its
+  own serving certificate (`kubernetes.io/kubelet-serving`,
+  `CN=system:node:<name>`, `O=system:nodes`, requested by that node) is still
+  allowed. The rejection names the opt-in below, and the tool call is recorded
+  as denied (`policy:allow_privileged_csr`). The approval patch carries the
+  checked CSR's `resourceVersion`, so a CSR recreated under the same name in
+  between isn't approved unchecked.
 - **No CORS by default, and cross-site browser requests are refused.** The
   HTTP server used `CorsLayer::permissive()`, so any web page could call it
   from a visitor's browser. It now sends no CORS headers unless
@@ -33,6 +46,17 @@ release workflow refuses a tag that doesn't match `Cargo.toml`,
   trusted the system certificate store in addition to the kubeconfig CA).
   mcp-k8s uses the rustls connector, so it wasn't affected, but the advisory
   was flagged on every build.
+
+### Added
+- `--allow-privileged-csr` / `MCP_K8S_ALLOW_PRIVILEGED_CSR` and
+  `WorkloadPolicy.allow_privileged_csr` (on in `WorkloadPolicy::permissive()`)
+  to approve such CSRs anyway. Library: `policy::check_csr`,
+  `policy::parse_csr_identity` and `policy::CsrIdentity`.
+- `get_csr` returns the parsed subject (`subject.common_names`,
+  `subject.organizations`) and the requester's groups (`requestor_groups`).
+- Dependencies: `x509-cert` 0.3 (RustCrypto, without its `pem` feature) and
+  `pem` 4 (already used by kube-client) in the library.
+
 
 ## [0.6.0] - 2026-11-24
 

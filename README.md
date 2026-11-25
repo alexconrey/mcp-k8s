@@ -114,6 +114,7 @@ The typed `create_*`/`update_*` tools and the custom resource tools run the same
 | NodePort / LoadBalancer / ExternalName Services | `--allow-nodeport` / `--allow-loadbalancer` / `--allow-external-services` |
 | Ingress `*-snippet` annotations and nginx config injection | `--allow-ingress-snippets` |
 | RBAC escalation (escalate/bind/impersonate, wildcards, binding cluster-admin) | `--allow-rbac-escalation` |
+| Approving CSRs for `system:masters` or other `system:` identities, or unparseable CSRs | `--allow-privileged-csr` |
 | Cluster-scoped custom resource kinds | `--allow-manifest-kinds Kind,...` |
 | Custom resource writes | `--allow-custom-resource-groups group,...` |
 
@@ -349,7 +350,7 @@ page have the full recipe; the binary's `src/otel.rs` is a working example.
 ## Testing
 
 ```bash
-cargo test                                      # 553 unit + 11 binary + 8 integration + 27 guardrail + 9 typed-tool tests
+cargo test                                      # 561 unit + 11 binary + 8 integration + 29 guardrail + 9 typed-tool tests
 cargo test --no-default-features                # the same, as library consumers build it
 cargo test --test k3s_integration -- --ignored  # 13 k3s tests (needs Docker)
 cargo test --test k3s_workloads -- --ignored --test-threads=1  # 3 k3s tests for the typed tools and guardrails

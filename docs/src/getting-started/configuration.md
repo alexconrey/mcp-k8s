@@ -117,6 +117,7 @@ Every typed write tool and the custom resource tools enforce a workload policy (
 | `--allow-manifest-kinds` | `MCP_K8S_ALLOW_MANIFEST_KINDS` | *(none)* | Cluster-scoped custom resource kinds the custom resource tools may write; `Kind` or `group/Kind`, `*` for all |
 | `--allow-custom-resource-groups` | `MCP_K8S_ALLOW_CUSTOM_RESOURCE_GROUPS` | *(none)* | Custom resource API groups that may be written (`*` for any) |
 | `--allow-rbac-escalation` | `MCP_K8S_ALLOW_RBAC_ESCALATION` | `false` | escalate/bind/impersonate verbs, wildcards, aggregation, binding cluster-admin or anonymous subjects, service-account token Secrets |
+| `--allow-privileged-csr` | `MCP_K8S_ALLOW_PRIVILEGED_CSR` | `false` | `approve_csr` for privileged identities (`system:masters`, other `system:` users and groups) and unparseable requests |
 | `--no-secure-defaults` | `MCP_K8S_NO_SECURE_DEFAULTS` | `false` | Don't fill in the restricted securityContext and `automountServiceAccountToken: false` defaults |
 
 ```bash
