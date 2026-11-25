@@ -280,9 +280,9 @@ fn tool_count_matches_the_documentation() {
     // The documented count includes apply_manifest, which is off by default.
     let all = ActionPermissions::default().with_apply_manifest(true);
     let tools = super::definitions::tool_definitions(&all);
-    assert_eq!(tools.len(), 211, "update the documented tool count");
+    assert_eq!(tools.len(), 210, "update the documented tool count");
     let default_tools = super::definitions::tool_definitions(&ActionPermissions::default());
-    assert_eq!(default_tools.len(), 210);
+    assert_eq!(default_tools.len(), 209);
     assert!(default_tools.iter().all(|t| t["name"] != "apply_manifest"));
 }
 

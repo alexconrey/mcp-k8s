@@ -168,6 +168,26 @@ jobs:
           echo "Baseline: $baseline"
           cargo semver-checks check-release --baseline-rev "$baseline" --only-explicit-features
 
+  # The Helm chart and the Kustomize manifests: lint the chart with the value
+  # combinations the docs recommend, and build every Kustomize overlay.
+  manifests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5.1.0
+      - name: helm lint
+        run: |
+          helm lint --strict helm/mcp-k8s
+          helm lint --strict helm/mcp-k8s --set rbac.readOnly=true --set networkPolicy.enabled=true
+          helm lint --strict helm/mcp-k8s --set rbac.clusterWide=false --set 'namespaces={team-a}' --set rbac.secrets=false
+          helm lint --strict helm/mcp-k8s --set http.auth.existingSecret=mcp-token --set 'http.allowedHosts={mcp.example.com}' --set otel.endpoint=http://otel:4318
+      - name: kustomize build
+        run: |
+          for dir in helm/charts/mcp-k8s helm/charts/mcp-k8s/read-only helm/charts/mcp-k8s/network-policy; do
+            echo "== $dir"
+            kubectl kustomize "$dir" > /dev/null
+          done
+
   # cargo deny with deny.toml. Bans, licenses and sources must pass. The
   # advisories leg only warns: a new RustSec advisory shows as a failed
   # `deny (advisories)` check without failing the run, so it doesn't block

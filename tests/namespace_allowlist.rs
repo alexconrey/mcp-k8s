@@ -291,7 +291,7 @@ fn args_for(tool: &Value, namespace: &str) -> Value {
             "group": "example.com", "version": "v1", "kind": "Widget", "patch": { "spec": {} }
         }),
         "watch_resource" => json!({ "api_version": "v1", "kind": "Pod" }),
-        "get_resource_json" | "get_resource_yaml" => {
+        "get_resource_json" => {
             json!({ "api_version": "v1", "kind": "ConfigMap" })
         }
         "can_i" => json!({ "verb": "get", "resource": "pods" }),

@@ -1,13 +1,13 @@
 # mcp-k8s
 
-A Kubernetes MCP (Model Context Protocol) server that exposes **211 tools**
+A Kubernetes MCP (Model Context Protocol) server that exposes **210 tools**
 covering all GA Kubernetes API resources, CRDs, multi-cluster management, and
 resource watching. Works as a stdio server for Claude Code or as an HTTP
 endpoint for in-cluster deployment.
 
 ## Features
 
-- **211 MCP tools** across 49 resource modules covering every GA Kubernetes API group
+- **210 MCP tools** across 50 resource modules covering every GA Kubernetes API group
 - **Typed workload tools that cover the pod template**: containers, init containers and native sidecars, env from secrets/configmaps/fields, probes, lifecycle hooks, resources, volumes, scheduling, security context, rollout strategies, Services and Ingresses (see [coverage](docs/src/tools/coverage.md)), so agents don't need `apply_manifest` for everyday work
 - **Workload guardrails on every typed write tool**: privileged containers, host namespaces, hostPath, host ports, extra capabilities, NodePort/LoadBalancer Services, ingress snippet annotations and RBAC escalation are rejected unless an operator opts in. The raw `apply_manifest` escape hatch is off by default; an operator can enable it for users who know what they're applying, and MCP clients ask the user before each call
 - **Two runtime modes**: stdio (for Claude Code) and HTTP (for in-cluster deployment)
@@ -92,7 +92,7 @@ otherwise the tool returns the API server's 404.
 | **Certificates** | CertificateSigningRequests (list, get, approve, deny) |
 | **Admission** | MutatingWebhookConfigs, ValidatingWebhookConfigs, ValidatingAdmissionPolicies |
 | **Auth** | `can_i`, `whoami`, `list_my_permissions` |
-| **Generic** | `apply_manifest` (raw server-side apply; off unless `--enable-apply-manifest`), `get_resource_json` (full object as JSON; `get_resource_yaml` is a deprecated alias) |
+| **Generic** | `apply_manifest` (raw server-side apply; off unless `--enable-apply-manifest`), `get_resource_json` (full object as JSON; Secret values redacted unless decoding is enabled) |
 | **Metrics** | Pod and node CPU/memory from metrics-server |
 | **CRDs** | `list_crds`, `get_crd`, `list_custom_resources`, `get_custom_resource`, `create_custom_resource`, `update_custom_resource`, `delete_custom_resource` |
 | **Watch** | `watch_resource` (observe ADDED/MODIFIED/DELETED events over a time window) |

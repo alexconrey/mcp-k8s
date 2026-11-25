@@ -369,6 +369,7 @@ async fn drain_node(client: &K8sClient, args: &serde_json::Value) -> Result<Stri
         let pods = pod_api.list(&lp).await.map_err(|e| e.to_string())?;
         let outside = pods_outside_allowlist(client, &pods.items);
         if outside > 0 {
+            crate::telemetry::record_denial(crate::client::NAMESPACE_ALLOWLIST_RULE);
             return Err(format!(
                 "Refusing to drain node '{name}': it runs {outside} non-DaemonSet pod(s) in namespaces \
                  outside the allowed list, and draining would evict them"

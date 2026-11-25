@@ -11,7 +11,7 @@ use crate::client::K8sClient;
 type Pdb = PodDisruptionBudget;
 
 fn api(client: &K8sClient, ns: &str) -> Result<kube::Api<Pdb>, String> {
-    if !client.is_namespace_allowed(ns) {
+    if !client.namespace_permitted(ns) {
         return Err(format!("Namespace '{ns}' is not in the allowed list"));
     }
     Ok(kube::Api::namespaced(client.inner().clone(), ns))

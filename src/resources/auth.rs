@@ -73,7 +73,7 @@ async fn can_i(client: &K8sClient, args: &serde_json::Value) -> Result<String, S
         .and_then(|v| v.as_str())
         .map(String::from);
     if let Some(ns) = namespace.as_deref() {
-        if !client.is_namespace_allowed(ns) {
+        if !client.namespace_permitted(ns) {
             return Err(format!("Namespace '{ns}' is not in the allowed list"));
         }
     }
@@ -143,7 +143,7 @@ async fn list_my_permissions(
         .as_str()
         .ok_or("namespace is required")?
         .to_string();
-    if !client.is_namespace_allowed(&namespace) {
+    if !client.namespace_permitted(&namespace) {
         return Err(format!(
             "Namespace '{namespace}' is not in the allowed list"
         ));

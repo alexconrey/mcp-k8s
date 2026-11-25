@@ -142,14 +142,14 @@ impl ActionPermissions {
     pub fn action_for_tool(tool_name: &str) -> Action {
         // Exact-match read tools
         match tool_name {
-            "can_i"
-            | "whoami"
-            | "list_my_permissions"
-            | "get_resource_json"
-            | "get_resource_yaml" => {
+            "can_i" | "whoami" | "list_my_permissions" | "get_resource_json" => {
                 return Action::Read;
             }
             "apply_manifest" => return Action::Create,
+            // Opens a port-forward tunnel into the pod: RBAC calls that
+            // `create pods/portforward`, like exec. A write, so read-only
+            // mode turns it off (and pod-update gates it).
+            "port_forward_check" => return Action::Update,
             _ => {}
         }
 
@@ -247,6 +247,9 @@ impl ActionPermissions {
     /// `"create_deployment"` → `"deployment"`, `"scale_deployment"` → `"deployment"`,
     /// `"apply_manifest"` → `"manifest"`, `"get_resource_json"` → `"resource_json"`.
     fn resource_from_tool(tool_name: &str) -> String {
+        if tool_name == "port_forward_check" {
+            return "pod".to_string();
+        }
         let prefixes = [
             "list_",
             "get_",
@@ -449,11 +452,6 @@ mod tests {
             ActionPermissions::action_for_tool("get_resource_json"),
             Action::Read
         );
-        // Deprecated alias keeps the same classification.
-        assert_eq!(
-            ActionPermissions::action_for_tool("get_resource_yaml"),
-            Action::Read
-        );
         assert_eq!(
             ActionPermissions::action_for_tool("list_ingresses"),
             Action::Read
@@ -548,11 +546,18 @@ mod tests {
             ActionPermissions::new(false, false, false, vec!["pod-update".into()], true, true);
         assert!(!per_resource.is_tool_allowed("exec_pod"));
         assert!(ActionPermissions::default().is_tool_allowed("exec_pod"));
-        // port_forward_check only probes reachability and stays a read.
+        // port_forward_check opens a tunnel (create pods/portforward): a write
+        // on the pod, like exec.
         assert_eq!(
             ActionPermissions::action_for_tool("port_forward_check"),
-            Action::Read
+            Action::Update
         );
+        assert_eq!(
+            ActionPermissions::resource_from_tool("port_forward_check"),
+            "pod"
+        );
+        assert!(!read_only.is_tool_allowed("port_forward_check"));
+        assert!(!per_resource.is_tool_allowed("port_forward_check"));
     }
 
     #[test]
@@ -682,7 +687,6 @@ mod tests {
         assert!(perms.is_tool_allowed("can_i"));
         assert!(perms.is_tool_allowed("whoami"));
         assert!(perms.is_tool_allowed("get_resource_json"));
-        assert!(perms.is_tool_allowed("get_resource_yaml"));
         assert!(perms.is_tool_allowed("get_metrics"));
         assert!(perms.is_tool_allowed("get_events"));
         assert!(perms.is_tool_allowed("get_build_logs"));

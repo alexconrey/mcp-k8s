@@ -1,7 +1,7 @@
 # mcp-k8s
 
 Kubernetes MCP (Model Context Protocol) server and library. Exposes
-211 Kubernetes cluster operations as MCP tools consumable by Claude Code
+210 Kubernetes cluster operations as MCP tools consumable by Claude Code
 and other MCP clients. Supports multi-cluster management, CRD discovery,
 watch/subscribe, and all GA + alpha/beta K8s API groups.
 
@@ -52,7 +52,7 @@ src/
 │   ├── definitions.rs  # Tool inputSchema definitions (filtered by permissions)
 │   ├── handlers.rs     # Tool dispatch with permission checks + metrics recording
 │   └── tests.rs        # MCP dispatch, permission filtering, tool count and steering tests
-└── resources/          # 49 resource modules + the shared pod template builder
+└── resources/          # 50 resource modules + the shared pod template builder
     ├── mod.rs           # Aggregates all modules; adds "Preferred over apply_manifest" to every write tool
     ├── podspec.rs       # Shared container/pod argument schema, parser and builder (+ podspec/tests.rs)
     ├── admission.rs     # MutatingWebhookConfig, ValidatingWebhookConfig, ValidatingAdmissionPolicy
@@ -72,7 +72,7 @@ src/
     ├── endpoints.rs     # Endpoints (read-only, legacy)
     ├── endpointslice.rs # EndpointSlice (read-only)
     ├── flowcontrol.rs   # FlowSchema + PriorityLevelConfiguration (read-only)
-    ├── generic.rs       # apply_manifest (raw server-side apply; off by default, no workload policy, destructiveHint), get_resource_json (+ deprecated get_resource_yaml alias)
+    ├── generic.rs       # apply_manifest (raw server-side apply; off by default, no workload policy, destructiveHint), get_resource_json (Secret values redacted unless decoding is enabled)
     ├── hpa.rs           # HorizontalPodAutoscaler CRUD
     ├── ingress.rs       # Ingress get/create/update/delete (rules, TLS, default backend)
     ├── ingressclass.rs  # IngressClass (read-only, cluster-scoped)
@@ -158,7 +158,7 @@ import path.
 TTL for read operations. Disabled by default (`--cache-ttl 0`). When enabled,
 caches list operation responses to reduce K8s API load on large clusters.
 
-**Resource modules** (`resources/*.rs`): 49 modules (plus `podspec.rs`), each with
+**Resource modules** (`resources/*.rs`): 50 modules (plus `podspec.rs`), each with
 `tool_definitions()` and `handle_tool()`. CRD module uses `DynamicObject`
 + `kube::discovery::pinned_kind` for runtime GVK resolution. Watch module
 uses `Api::watch()` with timeout for event streaming (30s hard cap).

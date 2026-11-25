@@ -48,7 +48,7 @@ async fn get_dynamic_api_with_scope(
     // Refuse a namespace outside the allowlist before any request (even
     // discovery) reaches the API server.
     if let Some(ns) = namespace {
-        if !client.is_namespace_allowed(ns) {
+        if !client.namespace_permitted(ns) {
             return Err(format!("Namespace '{ns}' is not in the allowed list"));
         }
     }

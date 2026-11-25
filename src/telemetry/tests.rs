@@ -797,6 +797,37 @@ async fn handle_tool_without_a_request_span_creates_one() {
 }
 
 #[tokio::test]
+async fn namespace_allowlist_refusals_are_recorded_as_denials() {
+    let cap = Capture::default();
+    let (svc, _handle) = tower_test::mock::pair::<Request<Body>, Response<Body>>();
+    let client = K8sClient::new(
+        kube::Client::new(svc, "default"),
+        vec!["team-a".to_string()],
+        ActionPermissions::default(),
+    );
+    let result = crate::mcp::handle_tool(
+        &client,
+        "get_pod",
+        &json!({"namespace": "kube-system", "name": "etcd"}),
+    )
+    .with_subscriber(cap.dispatch())
+    .await;
+    assert!(matches!(result, Some(Err(_))));
+    let spans = cap.new_spans();
+    assert_eq!(spans.len(), 1);
+    let f = cap.span_fields(spans[0].span_id.unwrap());
+    assert_eq!(field(&f, semconv::MCP_K8S_DECISION), Some("denied"));
+    assert_eq!(
+        field(&f, semconv::MCP_K8S_DENIED_RULE),
+        Some(crate::client::NAMESPACE_ALLOWLIST_RULE)
+    );
+    assert_eq!(field(&f, semconv::ERROR_TYPE), Some("permission_denied"));
+    // Reads that are refused are audited too.
+    let audit = cap.events(semconv::AUDIT_TARGET);
+    assert_eq!(audit.len(), 1, "{audit:?}");
+}
+
+#[tokio::test]
 async fn denied_call_records_decision_and_rule() {
     let cap = Capture::default();
     let client = mock_client(ActionPermissions::new(

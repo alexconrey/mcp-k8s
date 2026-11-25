@@ -104,7 +104,7 @@ pub(crate) async fn admit_manifest(
     }
     let namespace = namespace.map(str::to_string).or(manifest_ns);
     if let Some(ns) = &namespace {
-        if !client.is_namespace_allowed(ns) {
+        if !client.namespace_permitted(ns) {
             return Err(format!("Namespace '{ns}' is not in the allowed list"));
         }
     }
@@ -233,7 +233,7 @@ pub(crate) async fn bound_role_violations(
         }
         "Role" => {
             let ns = binding_namespace.ok_or("a binding to a Role needs a namespace")?;
-            if !client.is_namespace_allowed(ns) {
+            if !client.namespace_permitted(ns) {
                 return Err(format!("Namespace '{ns}' is not in the allowed list"));
             }
             let api: Api<k8s_openapi::api::rbac::v1::Role> =
