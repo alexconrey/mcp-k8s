@@ -37,7 +37,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b6dd1424.js";
+            window.path_to_searchindex_js = "searchindex-ca30b04b.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-5b34cd39.js"></script>
@@ -1697,11 +1697,31 @@ CACHE_TTL=60 mcp-k8s
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Pod name</td></tr>
 <tr><td><code>command</code></td><td>string[]</td><td>Yes</td><td>Command to execute (e.g. <code>["ls", "-la"]</code>)</td></tr>
 <tr><td><code>container</code></td><td>string</td><td>No</td><td>Container name (defaults to first)</td></tr>
+<tr><td><code>timeout_secs</code></td><td>integer</td><td>No</td><td>Seconds to wait for the command (default 60, max 300; larger values are capped)</td></tr>
 </tbody>
 </table>
 </div>
-<p>Returns <code>stdout</code>, <code>stderr</code>, and <code>exit_code</code>.</p>
+<p>Returns <code>stdout</code>, <code>stderr</code>, <code>exit_code</code> and <code>timed_out</code>.</p>
+<ul>
+<li><strong>Timeout.</strong> A command that hasn’t finished after <code>timeout_secs</code> (for example <code>tail -f</code> or <code>sleep infinity</code>) returns the output collected so far with <code>timed_out: true</code> and a <code>note</code> saying so, and mcp-k8s closes the exec session. Without a TTY, whether the container runtime then kills the command is up to the runtime, so avoid commands that never end.</li>
+<li><strong>Output cap.</strong> Each of <code>stdout</code> and <code>stderr</code> is capped at 1 MiB; anything beyond is discarded and the text ends with <code>[output truncated at 1 MiB]</code>.</li>
+<li><strong>Node-level access.</strong> <code>exec_pod</code> first reads the pod and refuses if the <a href="#workload-guardrails-1">workload policy</a> would reject it for a setting that gives node-level access: privileged containers (<code>--allow-privileged</code>), <code>hostNetwork</code>/<code>hostPID</code>/<code>hostIPC</code> (<code>--allow-host-namespaces</code>), <code>hostPath</code> volumes (<code>--allow-host-path</code>), added capabilities (<code>--allow-capabilities</code>), or Unconfined seccomp/AppArmor, custom SELinux options and <code>procMount: Unmasked</code> (<code>--allow-unconfined</code>). A command in such a pod runs with node-level access. The error names the flag(s); when the operator has set them, exec is allowed. Creation-only rules (registries, other volume types, host ports, <code>allowPrivilegeEscalation</code>) don’t block exec. See <a href="#exec_pod-and-node-level-access">Permissions: exec_pod</a>.</li>
+</ul>
 <p><code>exec_pod</code> runs arbitrary commands, so it counts as an <strong>update</strong> (<code>pod-update</code>): read-only mode and <code>--disable-update</code> turn it off.</p>
+<h3 id="port_forward_check"><a class="header" href="#port_forward_check">port_forward_check</a></h3>
+<p>Check whether a pod port can be reached by opening a port-forward tunnel and closing it straight away. Gives up after 10 seconds.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>namespace</code></td><td>string</td><td>Yes</td><td>Kubernetes namespace</td></tr>
+<tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Pod name</td></tr>
+<tr><td><code>port</code></td><td>integer</td><td>Yes</td><td>Container port</td></tr>
+</tbody>
+</table>
+</div>
 <hr>
 <h2 id="services"><a class="header" href="#services">Services</a></h2>
 <h3 id="list_services"><a class="header" href="#list_services">list_services</a></h3>
@@ -3093,7 +3113,7 @@ CACHE_TTL=60 mcp-k8s
 <tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>namespace</code></td><td>string</td><td>Yes</td><td>Kubernetes namespace</td></tr>
+<tr><td><code>namespace</code></td><td>string</td><td>No</td><td>Kubernetes namespace. Omit to list every namespace; with a namespace allowlist, omitting it is refused.</td></tr>
 </tbody>
 </table>
 </div>
@@ -3483,7 +3503,7 @@ CACHE_TTL=60 mcp-k8s
 </table>
 </div>
 <h3 id="drain_node"><a class="header" href="#drain_node">drain_node</a></h3>
-<p>Drain pods from a node. Evicts pods respecting PodDisruptionBudgets and cordons the node. DaemonSet pods are skipped by default.</p>
+<p>Cordon a node and delete its pods. DaemonSet pods are skipped.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -3492,10 +3512,10 @@ CACHE_TTL=60 mcp-k8s
 <tbody>
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Node name</td></tr>
 <tr><td><code>grace_period_seconds</code></td><td>integer</td><td>No</td><td>Grace period for pod termination</td></tr>
-<tr><td><code>ignore_daemonsets</code></td><td>boolean</td><td>No</td><td>Ignore DaemonSet pods (default: true)</td></tr>
 </tbody>
 </table>
 </div>
+<p>With a namespace allowlist (<code>--namespaces</code>), <code>drain_node</code> first lists the node’s pods and refuses, before cordoning, if any non-DaemonSet pod is in a namespace outside the allowlist (the error gives a count, not pod names). A pod that lands outside the allowlist between that check and the eviction is skipped and counted in <code>skipped_outside_allowlist</code>.</p>
 <hr>
 <h2 id="leases"><a class="header" href="#leases">Leases</a></h2>
 <h3 id="list_leases"><a class="header" href="#list_leases">list_leases</a></h3>
@@ -3852,9 +3872,9 @@ CACHE_TTL=60 mcp-k8s
 <tbody>
 <tr><td><code>api_version</code></td><td>string</td><td>Yes</td><td>API version (e.g. <code>v1</code>, <code>apps/v1</code>, <code>networking.k8s.io/v1</code>)</td></tr>
 <tr><td><code>kind</code></td><td>string</td><td>Yes</td><td>Resource kind (e.g. <code>Pod</code>, <code>Deployment</code>, <code>Service</code>)</td></tr>
-<tr><td><code>namespace</code></td><td>string</td><td>No</td><td>Kubernetes namespace. Omit for cluster-scoped resources or to watch across all namespaces.</td></tr>
+<tr><td><code>namespace</code></td><td>string</td><td>No</td><td>Kubernetes namespace. Omit for cluster-scoped resources or to watch across all namespaces. With a namespace allowlist, required for namespaced kinds (omitting it is refused).</td></tr>
 <tr><td><code>label_selector</code></td><td>string</td><td>No</td><td>Label selector to filter watched resources (e.g. <code>app=nginx</code>)</td></tr>
-<tr><td><code>duration_seconds</code></td><td>integer</td><td>No</td><td>How long to watch in seconds (default: 10, max: 60)</td></tr>
+<tr><td><code>duration_seconds</code></td><td>integer</td><td>No</td><td>How long to watch in seconds (default: 10, max: 30)</td></tr>
 </tbody>
 </table>
 </div>
@@ -3911,7 +3931,7 @@ CACHE_TTL=60 mcp-k8s
 <tr><td><code>group</code></td><td>string</td><td>Yes</td><td>API group of the custom resource (e.g. <code>stable.example.com</code>)</td></tr>
 <tr><td><code>version</code></td><td>string</td><td>Yes</td><td>API version (e.g. <code>v1</code>, <code>v1alpha1</code>)</td></tr>
 <tr><td><code>kind</code></td><td>string</td><td>Yes</td><td>Resource kind (e.g. <code>CronTab</code>)</td></tr>
-<tr><td><code>namespace</code></td><td>string</td><td>No</td><td>Kubernetes namespace. Omit for cluster-scoped custom resources.</td></tr>
+<tr><td><code>namespace</code></td><td>string</td><td>No</td><td>Kubernetes namespace. Omit for cluster-scoped custom resources, or to list a namespaced kind across all namespaces (refused when a namespace allowlist is set).</td></tr>
 </tbody>
 </table>
 </div>
@@ -3938,7 +3958,7 @@ CACHE_TTL=60 mcp-k8s
 <tr><td><code>version</code></td><td>string</td><td>Yes</td><td>API version</td></tr>
 <tr><td><code>kind</code></td><td>string</td><td>Yes</td><td>Resource kind</td></tr>
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Resource name</td></tr>
-<tr><td><code>namespace</code></td><td>string</td><td>No</td><td>Kubernetes namespace. Omit for cluster-scoped custom resources.</td></tr>
+<tr><td><code>namespace</code></td><td>string</td><td>No</td><td>Kubernetes namespace. Required for namespaced kinds; omit for cluster-scoped custom resources.</td></tr>
 </tbody>
 </table>
 </div>
@@ -3954,7 +3974,7 @@ CACHE_TTL=60 mcp-k8s
 <tr><td><code>version</code></td><td>string</td><td>Yes</td><td>API version</td></tr>
 <tr><td><code>kind</code></td><td>string</td><td>Yes</td><td>Resource kind</td></tr>
 <tr><td><code>manifest</code></td><td>object</td><td>Yes</td><td>Full resource manifest (must include apiVersion, kind, metadata, and spec)</td></tr>
-<tr><td><code>namespace</code></td><td>string</td><td>No</td><td>Kubernetes namespace. Omit for cluster-scoped custom resources.</td></tr>
+<tr><td><code>namespace</code></td><td>string</td><td>No</td><td>Kubernetes namespace. Required for namespaced kinds; omit for cluster-scoped custom resources.</td></tr>
 </tbody>
 </table>
 </div>
@@ -3971,7 +3991,7 @@ CACHE_TTL=60 mcp-k8s
 <tr><td><code>kind</code></td><td>string</td><td>Yes</td><td>Resource kind</td></tr>
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Resource name</td></tr>
 <tr><td><code>patch</code></td><td>object</td><td>Yes</td><td>JSON merge-patch object to apply to the resource</td></tr>
-<tr><td><code>namespace</code></td><td>string</td><td>No</td><td>Kubernetes namespace. Omit for cluster-scoped custom resources.</td></tr>
+<tr><td><code>namespace</code></td><td>string</td><td>No</td><td>Kubernetes namespace. Required for namespaced kinds; omit for cluster-scoped custom resources.</td></tr>
 </tbody>
 </table>
 </div>
@@ -4000,7 +4020,7 @@ CACHE_TTL=60 mcp-k8s
 <tr><td><code>version</code></td><td>string</td><td>Yes</td><td>API version</td></tr>
 <tr><td><code>kind</code></td><td>string</td><td>Yes</td><td>Resource kind</td></tr>
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Resource name</td></tr>
-<tr><td><code>namespace</code></td><td>string</td><td>No</td><td>Kubernetes namespace. Omit for cluster-scoped custom resources.</td></tr>
+<tr><td><code>namespace</code></td><td>string</td><td>No</td><td>Kubernetes namespace. Required for namespaced kinds; omit for cluster-scoped custom resources.</td></tr>
 </tbody>
 </table>
 </div>
@@ -4014,7 +4034,7 @@ CACHE_TTL=60 mcp-k8s
 </blockquote>
 <p>What still applies when it’s enabled:</p>
 <ul>
-<li>the namespace allowlist, on the manifest’s namespace;</li>
+<li>the namespace allowlist, on the manifest’s <code>metadata.namespace</code> and on the <code>namespace</code> argument;</li>
 <li>the per-resource create/update switches. It looks the object up first: creating needs <code>&lt;resource&gt;-create</code>, updating needs <code>&lt;resource&gt;-update</code>.</li>
 </ul>
 <p>Its tool definition carries the MCP annotation <code>destructiveHint: true</code>, so MCP clients (Claude Code, for example) ask the user before each call. A manifest without a managed-by label gets <code>app.kubernetes.io/managed-by: mcp-k8s</code>. See <a href="#apply_manifest-1">Permissions: apply_manifest</a> for the reasoning.</p>
@@ -4027,9 +4047,11 @@ CACHE_TTL=60 mcp-k8s
 </thead>
 <tbody>
 <tr><td><code>manifest</code></td><td>string</td><td>Yes</td><td>The Kubernetes manifest as a JSON string (YAML is not accepted)</td></tr>
+<tr><td><code>namespace</code></td><td>string</td><td>No</td><td>Target namespace for a namespaced kind. Fills <code>metadata.namespace</code> when the manifest has none; if both are set they must match, or the call is refused. Checked against the namespace allowlist.</td></tr>
 </tbody>
 </table>
 </div>
+<p>A namespaced kind needs a namespace from one of the two. Cluster-scoped kinds ignore it (but a namespace outside the allowlist is still refused).</p>
 <p>The manifest string is parsed, the resource type is resolved via API discovery, and the object is applied using server-side apply with the field manager <code>mcp-k8s</code>.</p>
 <h3 id="example-apply-a-configmap"><a class="header" href="#example-apply-a-configmap">Example: Apply a ConfigMap</a></h3>
 <pre><code class="language-json">{
@@ -4225,8 +4247,17 @@ These guardrails apply to every typed tool and the custom resource tools. Don't 
 </tbody>
 </table>
 </div>
-<p>The namespace allowlist (<code>--namespaces</code>) applies to every tool, including the object’s namespace in <code>apply_manifest</code> manifests (even when the workload policy doesn’t).</p>
+<p>The namespace allowlist (<code>--namespaces</code>) applies to every tool, including <code>apply_manifest</code> (its <code>namespace</code> argument and the manifest’s <code>metadata.namespace</code>), even though the workload policy doesn’t. See <a href="#namespace-allowlist">Namespace allowlist</a>.</p>
 <h3 id="csr-approval"><a class="header" href="#csr-approval">CSR approval</a></h3>
+<p>Approving a CertificateSigningRequest lets its signer issue a certificate for the identity the request names: the subject’s CN becomes the user and every O a group. A request for <code>O=system:masters</code> signed by <code>kubernetes.io/kube-apiserver-client</code> is a cluster-admin credential that RBAC can’t take away, and <code>system:</code> names impersonate nodes, control-plane components or service accounts. So <code>approve_csr</code> parses <code>spec.request</code> and, by default, refuses:</p>
+<ul>
+<li>group <code>system:masters</code>, whatever the signer;</li>
+<li>any other user or group starting with <code>system:</code>, whatever the signer. This includes kubelet client certificates (<code>kubernetes.io/kube-apiserver-client-kubelet</code>): kube-controller-manager approves the legitimate ones itself, so a pending one that needs a human is suspect;</li>
+<li>requests that aren’t exactly one parseable <code>CERTIFICATE REQUEST</code> PEM block.</li>
+</ul>
+<p>A node’s request for its own serving certificate is allowed: signer <code>kubernetes.io/kubelet-serving</code>, subject <code>CN=system:node:&lt;name&gt;, O=system:nodes</code>, and <code>spec.username</code> <code>system:node:&lt;name&gt;</code>. kube-controller-manager doesn’t approve these, so clusters with <code>serverTLSBootstrap</code> approve them by hand. mcp-k8s doesn’t check their SANs against the node’s addresses; use a dedicated approver (such as kubelet-csr-approver) if you need that.</p>
+<p><code>get_csr</code> shows the parsed subject (<code>subject.common_names</code>, <code>subject.organizations</code>). <code>--allow-privileged-csr</code> (<code>MCP_K8S_ALLOW_PRIVILEGED_CSR</code>, <code>WorkloadPolicy.allow_privileged_csr</code>) turns the check off. <code>deny_csr</code> is never restricted.</p>
+<h3 id="csr-approval-1"><a class="header" href="#csr-approval-1">CSR approval</a></h3>
 <p>Approving a CertificateSigningRequest lets its signer issue a certificate for the identity the request names: the subject’s CN becomes the user and every O a group. A request for <code>O=system:masters</code> signed by <code>kubernetes.io/kube-apiserver-client</code> is a cluster-admin credential that RBAC can’t take away, and <code>system:</code> names impersonate nodes, control-plane components or service accounts. So <code>approve_csr</code> parses <code>spec.request</code> and, by default, refuses:</p>
 <ul>
 <li>group <code>system:masters</code>, whatever the signer;</li>
@@ -4269,12 +4300,40 @@ let permissions = ActionPermissions::default().with_workload_policy(policy);
 <li>it can’t see the user an image runs as.</li>
 </ul>
 <p>Use Pod Security Admission, an admission policy engine and Kubernetes RBAC for cluster-wide enforcement; the guardrails keep the AI-facing tools inside those lines.</p>
+<h2 id="namespace-allowlist"><a class="header" href="#namespace-allowlist">Namespace allowlist</a></h2>
+<p><code>--namespaces team-a,team-b</code> (library: the <code>allowed_namespaces</code> argument of <code>K8sClient::new</code>) restricts every namespaced tool to those namespaces. An empty list means every namespace. A call naming another namespace is refused with <code>Namespace '…' is not in the allowed list</code> before anything is sent to the Kubernetes API. <code>tests/namespace_allowlist.rs</code> checks this for every tool that takes a namespace, and fails for a new tool that takes none unless it is listed as exempt with a reason.</p>
+<p>With an allowlist set:</p>
+<ul>
+<li><strong>An omitted namespace never means “all namespaces”.</strong> <code>watch_resource</code> (namespaced kinds), <code>list_custom_resources</code> (namespaced kinds) and <code>list_csistoragecapacities</code> refuse with <code>namespace is required</code> instead of acting across every namespace. Without an allowlist they still do.</li>
+<li><strong>Namespace objects are covered by name.</strong> <code>get_namespace</code>, <code>create_namespace</code>, <code>update_namespace</code> and <code>delete_namespace</code> refuse a namespace outside the list; <code>list_namespaces</code> hides them.</li>
+<li><strong><code>drain_node</code></strong> refuses, before cordoning, when the node runs non-DaemonSet pods in a namespace outside the list.</li>
+<li><strong><code>can_i</code> and <code>list_my_permissions</code></strong> refuse a namespace outside the list.</li>
+<li><strong><code>apply_manifest</code></strong> checks both its <code>namespace</code> argument and <code>metadata.namespace</code>, and refuses when they differ.</li>
+<li>Cluster-scoped resources (nodes, ClusterRoles, StorageClasses, …) aren’t namespaced, so the allowlist doesn’t apply to them; use the action switches to restrict them.</li>
+</ul>
+<h2 id="exec_pod-and-node-level-access"><a class="header" href="#exec_pod-and-node-level-access"><code>exec_pod</code> and node-level access</a></h2>
+<p>A command run with <code>exec_pod</code> in a privileged container, or in a pod that shares the node’s namespaces or mounts its filesystem, has node-level access. So <code>exec_pod</code> reads the pod first and runs the workload policy’s pod rules on it. It refuses if the pod breaks one of the rules that give node-level access, naming the flag that would allow it:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Pod setting</th><th>Flag that allows exec</th></tr>
+</thead>
+<tbody>
+<tr><td><code>privileged: true</code> (or Windows <code>hostProcess</code>)</td><td><code>--allow-privileged</code></td></tr>
+<tr><td><code>hostNetwork</code>, <code>hostPID</code>, <code>hostIPC</code></td><td><code>--allow-host-namespaces</code></td></tr>
+<tr><td><code>hostPath</code> volumes</td><td><code>--allow-host-path</code></td></tr>
+<tr><td>Capabilities beyond the runtime defaults</td><td><code>--allow-capabilities &lt;CAP&gt;</code></td></tr>
+<tr><td>Unconfined seccomp/AppArmor, custom SELinux options, <code>procMount: Unmasked</code>, unsafe sysctls</td><td><code>--allow-unconfined</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>Rules that only control what may be created (image registries, volume types other than <code>hostPath</code>, host ports, <code>allowPrivilegeEscalation</code>, probe or lifecycle-hook hosts) don’t block exec. If the operator has allowed a setting (so the typed tools could create such a pod), exec into such pods is allowed too. <code>exec_pod</code> also has a timeout (<code>timeout_secs</code>, default 60, max 300) and a 1 MiB cap on each of stdout and stderr; see <a href="#exec_pod">exec_pod</a>.</p>
 <h2 id="apply_manifest-1"><a class="header" href="#apply_manifest-1"><code>apply_manifest</code></a></h2>
 <p><code>apply_manifest</code> uses server-side apply to create <strong>or</strong> update an object from a raw JSON manifest. It’s for users who know exactly what they’re applying, and it’s built so that the decision stays with them rather than with the agent:</p>
 <ul>
 <li><strong>Off by default.</strong> It isn’t listed in <code>tools/list</code> and calls are refused until the operator starts mcp-k8s with <code>--enable-apply-manifest</code> (<code>ENABLE_APPLY_MANIFEST=true</code>; Helm <code>permissions.enableApplyManifest</code>; library <code>ActionPermissions::with_apply_manifest(true)</code>). An agent can’t turn it on. The old <code>--disable-apply-manifest</code> still works and wins over <code>--enable-apply-manifest</code>.</li>
 <li><strong>Unrestricted when enabled.</strong> It skips the workload policy entirely: no pod rules, no Service/Ingress/RBAC rules, no kind gates, no custom resource group allowlist. It can create privileged pods, <code>hostPath</code> mounts, RBAC bindings, webhooks and CRDs.</li>
-<li><strong>Still scoped by the operator.</strong> The namespace allowlist applies to the manifest’s namespace, and the per-resource switches apply: it looks the object up first, so creating it needs <code>&lt;resource&gt;-create</code> and updating an existing one needs <code>&lt;resource&gt;-update</code>, with the typed tools’ keys (e.g. <code>deployment-update</code>). <code>--disable-create</code> removes it.</li>
+<li><strong>Still scoped by the operator.</strong> The namespace allowlist applies to the manifest’s namespace and to the <code>namespace</code> argument (which fills in <code>metadata.namespace</code> when the manifest has none and must match it otherwise), and the per-resource switches apply: it looks the object up first, so creating it needs <code>&lt;resource&gt;-create</code> and updating an existing one needs <code>&lt;resource&gt;-update</code>, with the typed tools’ keys (e.g. <code>deployment-update</code>). <code>--disable-create</code> removes it.</li>
 <li><strong>The human confirms each call.</strong> Its tool definition carries the MCP annotation <code>destructiveHint: true</code>, so clients such as Claude Code ask the user before running it. Its description and the server instructions tell agents to use it only when the user explicitly asks for a manifest to be applied, to show the user the full manifest first, and never to use it to get around a rejection or a missing typed-tool field.</li>
 <li>A manifest without a managed-by label gets <code>app.kubernetes.io/managed-by: mcp-k8s</code>.</li>
 </ul>

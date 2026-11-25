@@ -36,7 +36,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-b6dd1424.js";
+            window.path_to_searchindex_js = "../searchindex-ca30b04b.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-5b34cd39.js"></script>
@@ -246,7 +246,7 @@
 </table>
 </div>
 <h3 id="drain_node"><a class="header" href="#drain_node">drain_node</a></h3>
-<p>Drain pods from a node. Evicts pods respecting PodDisruptionBudgets and cordons the node. DaemonSet pods are skipped by default.</p>
+<p>Cordon a node and delete its pods. DaemonSet pods are skipped.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -255,10 +255,10 @@
 <tbody>
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Node name</td></tr>
 <tr><td><code>grace_period_seconds</code></td><td>integer</td><td>No</td><td>Grace period for pod termination</td></tr>
-<tr><td><code>ignore_daemonsets</code></td><td>boolean</td><td>No</td><td>Ignore DaemonSet pods (default: true)</td></tr>
 </tbody>
 </table>
 </div>
+<p>With a namespace allowlist (<code>--namespaces</code>), <code>drain_node</code> first lists the node’s pods and refuses, before cordoning, if any non-DaemonSet pod is in a namespace outside the allowlist (the error gives a count, not pod names). A pod that lands outside the allowlist between that check and the eviction is skipped and counted in <code>skipped_outside_allowlist</code>.</p>
 <hr>
 <h2 id="leases"><a class="header" href="#leases">Leases</a></h2>
 <h3 id="list_leases"><a class="header" href="#list_leases">list_leases</a></h3>
@@ -615,9 +615,9 @@
 <tbody>
 <tr><td><code>api_version</code></td><td>string</td><td>Yes</td><td>API version (e.g. <code>v1</code>, <code>apps/v1</code>, <code>networking.k8s.io/v1</code>)</td></tr>
 <tr><td><code>kind</code></td><td>string</td><td>Yes</td><td>Resource kind (e.g. <code>Pod</code>, <code>Deployment</code>, <code>Service</code>)</td></tr>
-<tr><td><code>namespace</code></td><td>string</td><td>No</td><td>Kubernetes namespace. Omit for cluster-scoped resources or to watch across all namespaces.</td></tr>
+<tr><td><code>namespace</code></td><td>string</td><td>No</td><td>Kubernetes namespace. Omit for cluster-scoped resources or to watch across all namespaces. With a namespace allowlist, required for namespaced kinds (omitting it is refused).</td></tr>
 <tr><td><code>label_selector</code></td><td>string</td><td>No</td><td>Label selector to filter watched resources (e.g. <code>app=nginx</code>)</td></tr>
-<tr><td><code>duration_seconds</code></td><td>integer</td><td>No</td><td>How long to watch in seconds (default: 10, max: 60)</td></tr>
+<tr><td><code>duration_seconds</code></td><td>integer</td><td>No</td><td>How long to watch in seconds (default: 10, max: 30)</td></tr>
 </tbody>
 </table>
 </div>
@@ -674,7 +674,7 @@
 <tr><td><code>group</code></td><td>string</td><td>Yes</td><td>API group of the custom resource (e.g. <code>stable.example.com</code>)</td></tr>
 <tr><td><code>version</code></td><td>string</td><td>Yes</td><td>API version (e.g. <code>v1</code>, <code>v1alpha1</code>)</td></tr>
 <tr><td><code>kind</code></td><td>string</td><td>Yes</td><td>Resource kind (e.g. <code>CronTab</code>)</td></tr>
-<tr><td><code>namespace</code></td><td>string</td><td>No</td><td>Kubernetes namespace. Omit for cluster-scoped custom resources.</td></tr>
+<tr><td><code>namespace</code></td><td>string</td><td>No</td><td>Kubernetes namespace. Omit for cluster-scoped custom resources, or to list a namespaced kind across all namespaces (refused when a namespace allowlist is set).</td></tr>
 </tbody>
 </table>
 </div>
@@ -701,7 +701,7 @@
 <tr><td><code>version</code></td><td>string</td><td>Yes</td><td>API version</td></tr>
 <tr><td><code>kind</code></td><td>string</td><td>Yes</td><td>Resource kind</td></tr>
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Resource name</td></tr>
-<tr><td><code>namespace</code></td><td>string</td><td>No</td><td>Kubernetes namespace. Omit for cluster-scoped custom resources.</td></tr>
+<tr><td><code>namespace</code></td><td>string</td><td>No</td><td>Kubernetes namespace. Required for namespaced kinds; omit for cluster-scoped custom resources.</td></tr>
 </tbody>
 </table>
 </div>
@@ -717,7 +717,7 @@
 <tr><td><code>version</code></td><td>string</td><td>Yes</td><td>API version</td></tr>
 <tr><td><code>kind</code></td><td>string</td><td>Yes</td><td>Resource kind</td></tr>
 <tr><td><code>manifest</code></td><td>object</td><td>Yes</td><td>Full resource manifest (must include apiVersion, kind, metadata, and spec)</td></tr>
-<tr><td><code>namespace</code></td><td>string</td><td>No</td><td>Kubernetes namespace. Omit for cluster-scoped custom resources.</td></tr>
+<tr><td><code>namespace</code></td><td>string</td><td>No</td><td>Kubernetes namespace. Required for namespaced kinds; omit for cluster-scoped custom resources.</td></tr>
 </tbody>
 </table>
 </div>
@@ -734,7 +734,7 @@
 <tr><td><code>kind</code></td><td>string</td><td>Yes</td><td>Resource kind</td></tr>
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Resource name</td></tr>
 <tr><td><code>patch</code></td><td>object</td><td>Yes</td><td>JSON merge-patch object to apply to the resource</td></tr>
-<tr><td><code>namespace</code></td><td>string</td><td>No</td><td>Kubernetes namespace. Omit for cluster-scoped custom resources.</td></tr>
+<tr><td><code>namespace</code></td><td>string</td><td>No</td><td>Kubernetes namespace. Required for namespaced kinds; omit for cluster-scoped custom resources.</td></tr>
 </tbody>
 </table>
 </div>
@@ -763,7 +763,7 @@
 <tr><td><code>version</code></td><td>string</td><td>Yes</td><td>API version</td></tr>
 <tr><td><code>kind</code></td><td>string</td><td>Yes</td><td>Resource kind</td></tr>
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Resource name</td></tr>
-<tr><td><code>namespace</code></td><td>string</td><td>No</td><td>Kubernetes namespace. Omit for cluster-scoped custom resources.</td></tr>
+<tr><td><code>namespace</code></td><td>string</td><td>No</td><td>Kubernetes namespace. Required for namespaced kinds; omit for cluster-scoped custom resources.</td></tr>
 </tbody>
 </table>
 </div>

@@ -36,7 +36,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-b6dd1424.js";
+            window.path_to_searchindex_js = "../searchindex-ca30b04b.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-5b34cd39.js"></script>
@@ -190,7 +190,7 @@
 </blockquote>
 <p>What still applies when it’s enabled:</p>
 <ul>
-<li>the namespace allowlist, on the manifest’s namespace;</li>
+<li>the namespace allowlist, on the manifest’s <code>metadata.namespace</code> and on the <code>namespace</code> argument;</li>
 <li>the per-resource create/update switches. It looks the object up first: creating needs <code>&lt;resource&gt;-create</code>, updating needs <code>&lt;resource&gt;-update</code>.</li>
 </ul>
 <p>Its tool definition carries the MCP annotation <code>destructiveHint: true</code>, so MCP clients (Claude Code, for example) ask the user before each call. A manifest without a managed-by label gets <code>app.kubernetes.io/managed-by: mcp-k8s</code>. See <a href="../permissions.html#apply_manifest">Permissions: apply_manifest</a> for the reasoning.</p>
@@ -203,9 +203,11 @@
 </thead>
 <tbody>
 <tr><td><code>manifest</code></td><td>string</td><td>Yes</td><td>The Kubernetes manifest as a JSON string (YAML is not accepted)</td></tr>
+<tr><td><code>namespace</code></td><td>string</td><td>No</td><td>Target namespace for a namespaced kind. Fills <code>metadata.namespace</code> when the manifest has none; if both are set they must match, or the call is refused. Checked against the namespace allowlist.</td></tr>
 </tbody>
 </table>
 </div>
+<p>A namespaced kind needs a namespace from one of the two. Cluster-scoped kinds ignore it (but a namespace outside the allowlist is still refused).</p>
 <p>The manifest string is parsed, the resource type is resolved via API discovery, and the object is applied using server-side apply with the field manager <code>mcp-k8s</code>.</p>
 <h3 id="example-apply-a-configmap"><a class="header" href="#example-apply-a-configmap">Example: Apply a ConfigMap</a></h3>
 <pre><code class="language-json">{

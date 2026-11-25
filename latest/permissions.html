@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b6dd1424.js";
+            window.path_to_searchindex_js = "searchindex-ca30b04b.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-5b34cd39.js"></script>
@@ -304,8 +304,17 @@ These guardrails apply to every typed tool and the custom resource tools. Don't 
 </tbody>
 </table>
 </div>
-<p>The namespace allowlist (<code>--namespaces</code>) applies to every tool, including the object’s namespace in <code>apply_manifest</code> manifests (even when the workload policy doesn’t).</p>
+<p>The namespace allowlist (<code>--namespaces</code>) applies to every tool, including <code>apply_manifest</code> (its <code>namespace</code> argument and the manifest’s <code>metadata.namespace</code>), even though the workload policy doesn’t. See <a href="#namespace-allowlist">Namespace allowlist</a>.</p>
 <h3 id="csr-approval"><a class="header" href="#csr-approval">CSR approval</a></h3>
+<p>Approving a CertificateSigningRequest lets its signer issue a certificate for the identity the request names: the subject’s CN becomes the user and every O a group. A request for <code>O=system:masters</code> signed by <code>kubernetes.io/kube-apiserver-client</code> is a cluster-admin credential that RBAC can’t take away, and <code>system:</code> names impersonate nodes, control-plane components or service accounts. So <code>approve_csr</code> parses <code>spec.request</code> and, by default, refuses:</p>
+<ul>
+<li>group <code>system:masters</code>, whatever the signer;</li>
+<li>any other user or group starting with <code>system:</code>, whatever the signer. This includes kubelet client certificates (<code>kubernetes.io/kube-apiserver-client-kubelet</code>): kube-controller-manager approves the legitimate ones itself, so a pending one that needs a human is suspect;</li>
+<li>requests that aren’t exactly one parseable <code>CERTIFICATE REQUEST</code> PEM block.</li>
+</ul>
+<p>A node’s request for its own serving certificate is allowed: signer <code>kubernetes.io/kubelet-serving</code>, subject <code>CN=system:node:&lt;name&gt;, O=system:nodes</code>, and <code>spec.username</code> <code>system:node:&lt;name&gt;</code>. kube-controller-manager doesn’t approve these, so clusters with <code>serverTLSBootstrap</code> approve them by hand. mcp-k8s doesn’t check their SANs against the node’s addresses; use a dedicated approver (such as kubelet-csr-approver) if you need that.</p>
+<p><code>get_csr</code> shows the parsed subject (<code>subject.common_names</code>, <code>subject.organizations</code>). <code>--allow-privileged-csr</code> (<code>MCP_K8S_ALLOW_PRIVILEGED_CSR</code>, <code>WorkloadPolicy.allow_privileged_csr</code>) turns the check off. <code>deny_csr</code> is never restricted.</p>
+<h3 id="csr-approval-1"><a class="header" href="#csr-approval-1">CSR approval</a></h3>
 <p>Approving a CertificateSigningRequest lets its signer issue a certificate for the identity the request names: the subject’s CN becomes the user and every O a group. A request for <code>O=system:masters</code> signed by <code>kubernetes.io/kube-apiserver-client</code> is a cluster-admin credential that RBAC can’t take away, and <code>system:</code> names impersonate nodes, control-plane components or service accounts. So <code>approve_csr</code> parses <code>spec.request</code> and, by default, refuses:</p>
 <ul>
 <li>group <code>system:masters</code>, whatever the signer;</li>
@@ -348,12 +357,40 @@ let permissions = ActionPermissions::default().with_workload_policy(policy);
 <li>it can’t see the user an image runs as.</li>
 </ul>
 <p>Use Pod Security Admission, an admission policy engine and Kubernetes RBAC for cluster-wide enforcement; the guardrails keep the AI-facing tools inside those lines.</p>
+<h2 id="namespace-allowlist"><a class="header" href="#namespace-allowlist">Namespace allowlist</a></h2>
+<p><code>--namespaces team-a,team-b</code> (library: the <code>allowed_namespaces</code> argument of <code>K8sClient::new</code>) restricts every namespaced tool to those namespaces. An empty list means every namespace. A call naming another namespace is refused with <code>Namespace '…' is not in the allowed list</code> before anything is sent to the Kubernetes API. <code>tests/namespace_allowlist.rs</code> checks this for every tool that takes a namespace, and fails for a new tool that takes none unless it is listed as exempt with a reason.</p>
+<p>With an allowlist set:</p>
+<ul>
+<li><strong>An omitted namespace never means “all namespaces”.</strong> <code>watch_resource</code> (namespaced kinds), <code>list_custom_resources</code> (namespaced kinds) and <code>list_csistoragecapacities</code> refuse with <code>namespace is required</code> instead of acting across every namespace. Without an allowlist they still do.</li>
+<li><strong>Namespace objects are covered by name.</strong> <code>get_namespace</code>, <code>create_namespace</code>, <code>update_namespace</code> and <code>delete_namespace</code> refuse a namespace outside the list; <code>list_namespaces</code> hides them.</li>
+<li><strong><code>drain_node</code></strong> refuses, before cordoning, when the node runs non-DaemonSet pods in a namespace outside the list.</li>
+<li><strong><code>can_i</code> and <code>list_my_permissions</code></strong> refuse a namespace outside the list.</li>
+<li><strong><code>apply_manifest</code></strong> checks both its <code>namespace</code> argument and <code>metadata.namespace</code>, and refuses when they differ.</li>
+<li>Cluster-scoped resources (nodes, ClusterRoles, StorageClasses, …) aren’t namespaced, so the allowlist doesn’t apply to them; use the action switches to restrict them.</li>
+</ul>
+<h2 id="exec_pod-and-node-level-access"><a class="header" href="#exec_pod-and-node-level-access"><code>exec_pod</code> and node-level access</a></h2>
+<p>A command run with <code>exec_pod</code> in a privileged container, or in a pod that shares the node’s namespaces or mounts its filesystem, has node-level access. So <code>exec_pod</code> reads the pod first and runs the workload policy’s pod rules on it. It refuses if the pod breaks one of the rules that give node-level access, naming the flag that would allow it:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Pod setting</th><th>Flag that allows exec</th></tr>
+</thead>
+<tbody>
+<tr><td><code>privileged: true</code> (or Windows <code>hostProcess</code>)</td><td><code>--allow-privileged</code></td></tr>
+<tr><td><code>hostNetwork</code>, <code>hostPID</code>, <code>hostIPC</code></td><td><code>--allow-host-namespaces</code></td></tr>
+<tr><td><code>hostPath</code> volumes</td><td><code>--allow-host-path</code></td></tr>
+<tr><td>Capabilities beyond the runtime defaults</td><td><code>--allow-capabilities &lt;CAP&gt;</code></td></tr>
+<tr><td>Unconfined seccomp/AppArmor, custom SELinux options, <code>procMount: Unmasked</code>, unsafe sysctls</td><td><code>--allow-unconfined</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>Rules that only control what may be created (image registries, volume types other than <code>hostPath</code>, host ports, <code>allowPrivilegeEscalation</code>, probe or lifecycle-hook hosts) don’t block exec. If the operator has allowed a setting (so the typed tools could create such a pod), exec into such pods is allowed too. <code>exec_pod</code> also has a timeout (<code>timeout_secs</code>, default 60, max 300) and a 1 MiB cap on each of stdout and stderr; see <a href="./tools/core.html#exec_pod">exec_pod</a>.</p>
 <h2 id="apply_manifest"><a class="header" href="#apply_manifest"><code>apply_manifest</code></a></h2>
 <p><code>apply_manifest</code> uses server-side apply to create <strong>or</strong> update an object from a raw JSON manifest. It’s for users who know exactly what they’re applying, and it’s built so that the decision stays with them rather than with the agent:</p>
 <ul>
 <li><strong>Off by default.</strong> It isn’t listed in <code>tools/list</code> and calls are refused until the operator starts mcp-k8s with <code>--enable-apply-manifest</code> (<code>ENABLE_APPLY_MANIFEST=true</code>; Helm <code>permissions.enableApplyManifest</code>; library <code>ActionPermissions::with_apply_manifest(true)</code>). An agent can’t turn it on. The old <code>--disable-apply-manifest</code> still works and wins over <code>--enable-apply-manifest</code>.</li>
 <li><strong>Unrestricted when enabled.</strong> It skips the workload policy entirely: no pod rules, no Service/Ingress/RBAC rules, no kind gates, no custom resource group allowlist. It can create privileged pods, <code>hostPath</code> mounts, RBAC bindings, webhooks and CRDs.</li>
-<li><strong>Still scoped by the operator.</strong> The namespace allowlist applies to the manifest’s namespace, and the per-resource switches apply: it looks the object up first, so creating it needs <code>&lt;resource&gt;-create</code> and updating an existing one needs <code>&lt;resource&gt;-update</code>, with the typed tools’ keys (e.g. <code>deployment-update</code>). <code>--disable-create</code> removes it.</li>
+<li><strong>Still scoped by the operator.</strong> The namespace allowlist applies to the manifest’s namespace and to the <code>namespace</code> argument (which fills in <code>metadata.namespace</code> when the manifest has none and must match it otherwise), and the per-resource switches apply: it looks the object up first, so creating it needs <code>&lt;resource&gt;-create</code> and updating an existing one needs <code>&lt;resource&gt;-update</code>, with the typed tools’ keys (e.g. <code>deployment-update</code>). <code>--disable-create</code> removes it.</li>
 <li><strong>The human confirms each call.</strong> Its tool definition carries the MCP annotation <code>destructiveHint: true</code>, so clients such as Claude Code ask the user before running it. Its description and the server instructions tell agents to use it only when the user explicitly asks for a manifest to be applied, to show the user the full manifest first, and never to use it to get around a rejection or a missing typed-tool field.</li>
 <li>A manifest without a managed-by label gets <code>app.kubernetes.io/managed-by: mcp-k8s</code>.</li>
 </ul>
