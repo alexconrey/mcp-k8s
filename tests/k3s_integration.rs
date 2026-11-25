@@ -25,7 +25,11 @@ use testcontainers_modules::k3s::{K3s, KUBE_SECURE_PORT};
 
 /// k3s image tag used unless `MCP_K8S_K3S_TAG` is set. The library compiles
 /// against k8s-openapi `v1_33`, so tags older than v1.33 are unsupported.
-const DEFAULT_K3S_TAG: &str = "v1.35.10-k3s1";
+// Pinned by multi-arch index digest, so CI and local runs get the same image.
+// `MCP_K8S_K3S_TAG` overrides it (without a digest). To bump, take the digest
+// from `docker buildx imagetools inspect rancher/k3s:<tag>`.
+const DEFAULT_K3S_TAG: &str =
+    "v1.35.10-k3s1@sha256:8262ca99a558dca0c0437443421986480b2359f9118f2371359f88a41514522f";
 
 fn k3s_tag() -> String {
     std::env::var("MCP_K8S_K3S_TAG").unwrap_or_else(|_| DEFAULT_K3S_TAG.to_string())

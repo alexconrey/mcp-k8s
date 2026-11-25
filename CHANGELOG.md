@@ -182,6 +182,9 @@ release workflow refuses a tag that doesn't match `Cargo.toml`,
   `allowedCIDRs` and `allowedNamespaces` were set, dropping one of them.
 
 ### Internal
+- The k3s tests pin their images by multi-arch index digest: the k3s image
+  (`MCP_K8S_K3S_TAG` still overrides it) and the busybox and pause images k3s
+  pulls for the workloads.
 - The aws-lc-rs TLS provider (and its cmake build) is no longer compiled.
   ring was already the provider in use: `rustls` is built without default
   features and `axum-server` with `tls-rustls-no-provider`.
