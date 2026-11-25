@@ -562,6 +562,10 @@ current.
 
 Gaps to cover yourself:
 
+- **k3s test images are pinned by digest** (`DEFAULT_K3S_TAG`, `BUSYBOX`,
+  `PAUSE`, … in `tests/k3s_*.rs`). Dependabot can't see them: bump them by
+  hand with `docker buildx imagetools inspect <image>` (use the index digest
+  so amd64 CI and arm64 laptops get the same image).
 - **Only k3s tests are `#[ignore]`d**, and none of the tests read your
   kubeconfig. (The `cluster.rs` tests used to, behind `#[ignore]`; they now use
   a mock client and run in plain `cargo test`.) Keep it that way: tests that

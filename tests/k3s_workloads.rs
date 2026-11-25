@@ -25,9 +25,21 @@ use testcontainers::runners::AsyncRunner;
 use testcontainers::{ContainerAsync, ImageExt};
 use testcontainers_modules::k3s::{K3s, KUBE_SECURE_PORT};
 
-const DEFAULT_K3S_TAG: &str = "v1.35.10-k3s1";
-const BUSYBOX: &str = "busybox:1.36";
-const PAUSE: &str = "registry.k8s.io/pause:3.10";
+// Pinned by multi-arch index digest, so CI and local runs get the same image.
+// `MCP_K8S_K3S_TAG` overrides it (without a digest). To bump, take the digest
+// from `docker buildx imagetools inspect rancher/k3s:<tag>`.
+const DEFAULT_K3S_TAG: &str =
+    "v1.35.10-k3s1@sha256:8262ca99a558dca0c0437443421986480b2359f9118f2371359f88a41514522f";
+// Images k3s pulls for the workloads, pinned by multi-arch index digest
+// (`docker buildx imagetools inspect <image>` to bump).
+const BUSYBOX: &str =
+    "busybox:1.36@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662";
+const BUSYBOX_NEXT: &str =
+    "busybox:1.37@sha256:a7dbc319b1438115a207e11930dc4bb3e643dcb3ec0bdd694bb36cd8fad289ec";
+const PAUSE: &str =
+    "registry.k8s.io/pause:3.10@sha256:ee6521f290b2168b6e0935a181d4cff9be1ac3f505666ef0e3c98fae8199917a";
+const PAUSE_OLD: &str =
+    "registry.k8s.io/pause:3.9@sha256:7031c1b283388d2c2e09b57badb803c05ebed362dc88d84b480cc47f72a21097";
 
 fn k3s_tag() -> String {
     std::env::var("MCP_K8S_K3S_TAG").unwrap_or_else(|_| DEFAULT_K3S_TAG.to_string())
@@ -313,12 +325,12 @@ async fn k3s_typed_workload_tools() {
         raw["spec"]["jobTemplate"]["spec"].get("suspend").is_none(),
         "suspend belongs to the CronJob"
     );
-    ok(&client, "update_cronjob", json!({ "namespace": ns, "name": "nightly", "schedule": "0 4 * * *", "image": "busybox:1.37" })).await;
+    ok(&client, "update_cronjob", json!({ "namespace": ns, "name": "nightly", "schedule": "0 4 * * *", "image": BUSYBOX_NEXT })).await;
     let raw = get_json(&client, "batch/v1", "CronJob", ns, "nightly").await;
     assert_eq!(raw["spec"]["schedule"], "0 4 * * *");
     assert_eq!(
         raw["spec"]["jobTemplate"]["spec"]["template"]["spec"]["containers"][0]["image"],
-        "busybox:1.37"
+        BUSYBOX_NEXT
     );
     let manual = ok(
         &client,
@@ -577,7 +589,7 @@ async fn k3s_guardrails() {
     let err = call(
         &client,
         "update_daemonset",
-        json!({ "namespace": ns, "name": "node-agent", "image": "registry.k8s.io/pause:3.9" }),
+        json!({ "namespace": ns, "name": "node-agent", "image": PAUSE_OLD }),
     )
     .await
     .unwrap_err();
