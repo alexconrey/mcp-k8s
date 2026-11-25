@@ -111,7 +111,7 @@ src/
 **K8sClient** (`client.rs`): Wraps `kube::Client` with a namespace allowlist
 and `ActionPermissions`. Provides namespace-checked API factory methods.
 The `permissions()` getter exposes permission controls including
-`secret_decode_enabled` for gating secret value access.
+`secret_decode_enabled` (off by default) for gating secret value access.
 
 **ClusterManager** (`cluster.rs`): Holds multiple named `K8sClient` instances
 behind `Arc<RwLock<HashMap>>` with an active cluster tracker. Supports
@@ -314,7 +314,8 @@ mcp-k8s --http --tls-cert /path/cert.pem --tls-key /path/key.pem
 | `--allow-rbac-escalation` | `MCP_K8S_ALLOW_RBAC_ESCALATION` | `false` | RBAC escalation primitives, SA token Secrets |
 | `--allow-privileged-csr` | `MCP_K8S_ALLOW_PRIVILEGED_CSR` | `false` | `approve_csr` for `system:masters`/other `system:` identities and unparseable requests |
 | `--no-secure-defaults` | `MCP_K8S_NO_SECURE_DEFAULTS` | `false` | Skip the restricted securityContext defaults |
-| `--disable-secret-decode` | `DISABLE_SECRET_DECODE` | `false` | Prevent secret value decoding |
+| `--enable-secret-decode` | `ENABLE_SECRET_DECODE` | `false` | Let tools return Secret values (redacted everywhere otherwise) |
+| `--disable-secret-decode` | `DISABLE_SECRET_DECODE` | `false` | Deprecated (off by default); still wins |
 | `--cache-ttl` | `CACHE_TTL` | `0` | Response cache TTL in seconds (0 = disabled) |
 | `--log-format` | `LOG_FORMAT` | `text` | Log format: `text` or `json` (stderr in stdio mode) |
 | — | `KUBECONFIG` | in-cluster | K8s config path |
@@ -339,6 +340,12 @@ weaknesses as security issues. Current defaults:
 - Secret decoding is on by default (`ActionPermissions::default()`, which
   deckwatch also uses). The workload guardrails are restrictive by default
   (`WorkloadPolicy::default()`).
+- **Secret values are off by default** (`--enable-secret-decode`,
+  `with_secret_decode(true)`). Every path that can return a Secret must
+  redact it when decoding is off: `get_secret` refuses `decode`, and the
+  generic object tools call `resources::secret::redact_secret_json` (values
+  and the `last-applied-configuration` annotation). A new tool that returns
+  raw objects must do the same.
 - `apply_manifest` is **off by default**. Enabled (`--enable-apply-manifest`),
   it's an unrestricted raw server-side apply that skips the workload policy.
   That's deliberate, the maintainer's call: it's for users who know exactly
