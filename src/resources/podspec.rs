@@ -39,6 +39,14 @@ use serde_json::{json, Map, Value};
 
 use crate::policy::{WorkloadPolicy, MANAGED_BY_LABEL, MANAGED_BY_VALUE};
 
+/// Labels for the simpler typed create tools: the caller's `labels` plus
+/// `app.kubernetes.io/managed-by: mcp-k8s`.
+pub(crate) fn object_labels(args: &Value) -> Result<BTreeMap<String, String>, String> {
+    let mut labels = string_map(args, "labels")?.unwrap_or_default();
+    labels.insert(MANAGED_BY_LABEL.to_string(), MANAGED_BY_VALUE.to_string());
+    Ok(labels)
+}
+
 /// Description shared by the typed workload create tools.
 pub const CREATE_DESCRIPTION: &str = "Preferred over apply_manifest: arguments are validated and the server's guardrails are enforced. \
 Containers: image (+ command, args, env with secret/configMap/field references, env_from, ports, resources, volume_mounts, liveness/readiness/startup probes, lifecycle hooks, working_dir, image_pull_policy) for one container, or containers for several; init_containers (restart_policy: Always makes a native sidecar). \

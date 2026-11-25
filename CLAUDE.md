@@ -408,8 +408,9 @@ mcp-k8s/
 ├── tests/
 │   ├── integration.rs      # Tower-test mock integration tests (8 tests)
 │   ├── guardrails.rs       # Mock-API guardrail tests for the typed tools; apply_manifest off by default / raw when enabled (27 tests)
+│   ├── typed_tools.rs      # Mock-API request-body tests for ConfigMap/Secret/PVC/PDB/SA/HPA/RBAC tools (9 tests)
 │   ├── k3s_integration.rs  # Testcontainers k3s tests (13 tests, #[ignore]; k3s v1.35, MCP_K8S_K3S_TAG overrides)
-│   └── k3s_workloads.rs    # k3s tests for the typed workload tools and guardrails (2 tests, #[ignore])
+│   └── k3s_workloads.rs    # k3s tests for the typed tools and guardrails (3 tests, #[ignore])
 ├── docs/                   # mdBook documentation (GitHub Pages)
 │   ├── book.toml
 │   ├── src/                # 23 documentation pages
@@ -468,7 +469,7 @@ CI workflow (build, test, clippy, fmt) runs against them before merge.
 
 ```bash
 cargo build --release       # Build
-cargo test                  # 553 unit + 11 binary (router, telemetry) + 8 integration + 27 guardrail tests
+cargo test                  # 553 unit + 11 binary (router, telemetry) + 8 integration + 27 guardrail + 9 typed-tool tests
 cargo test --no-default-features  # Same tests without `server` (what deckwatch compiles)
 cargo test --test k3s_integration -- --ignored --test-threads=2  # 13 k3s tests (needs Docker), as CI runs them
 cargo test --test k3s_workloads -- --ignored --test-threads=1  # k3s typed-tool and guardrail tests, as CI runs them

@@ -75,6 +75,8 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
             "inputSchema": {
                 "type": "object",
                 "properties": {
+                    "labels": { "type": "object", "description": "Labels (app.kubernetes.io/managed-by: mcp-k8s is added)", "additionalProperties": { "type": "string" } },
+                    "image_pull_secrets": { "type": "array", "items": { "type": "string" }, "description": "Image pull Secrets for pods using this service account" },
                     "namespace": { "type": "string", "description": "Kubernetes namespace" },
                     "name": { "type": "string", "description": "ServiceAccount name" },
                     "annotations": {
@@ -196,11 +198,7 @@ async fn create_serviceaccount(
         .get("automount_service_account_token")
         .and_then(|v| v.as_bool());
 
-    let mut labels = BTreeMap::new();
-    labels.insert(
-        "app.kubernetes.io/managed-by".to_string(),
-        "mcp-k8s".to_string(),
-    );
+    let labels = crate::resources::podspec::object_labels(args)?;
 
     let sa = ServiceAccount {
         metadata: ObjectMeta {
@@ -211,6 +209,17 @@ async fn create_serviceaccount(
             ..Default::default()
         },
         automount_service_account_token: automount,
+        image_pull_secrets: args
+            .get("image_pull_secrets")
+            .map(|v| serde_json::from_value::<Vec<String>>(v.clone()))
+            .transpose()
+            .map_err(|e| format!("image_pull_secrets: {e}"))?
+            .map(|names| {
+                names
+                    .into_iter()
+                    .map(|name| k8s_openapi::api::core::v1::LocalObjectReference { name })
+                    .collect()
+            }),
         ..Default::default()
     };
 

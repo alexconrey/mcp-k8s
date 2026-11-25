@@ -121,6 +121,20 @@ escape hatch for users who know what they're applying.
   arguments still work.
 - RBAC rules accept `resource_names`; ClusterRole rules accept
   `non_resource_urls`.
+- `create_configmap`: `binary_data`, `immutable`, `labels`, `annotations`
+  (`data` is no longer required when `binary_data` is given).
+- `create_secret`: base64 `data`, `immutable`, `labels`, `annotations`
+  (`string_data` is no longer required when `data` is given).
+- `create_pvc`: `volume_mode`, `data_source` (restore a VolumeSnapshot or
+  clone a PVC), `selector`, `volume_name`, `labels`, `annotations`.
+- `create_hpa`/`update_hpa`: `target_memory_utilization`, any autoscaling/v2
+  `metrics`, and `behavior`; `update_hpa` also takes
+  `target_cpu_utilization`. `create_hpa` takes `labels` and `annotations`.
+- `create_pdb`/`update_pdb`: `unhealthy_pod_eviction_policy`; `create_pdb`
+  takes `labels` and `annotations`.
+- `create_serviceaccount`: `image_pull_secrets`, `labels`.
+- `create_role`, `create_clusterrole`, `create_rolebinding`,
+  `create_clusterrolebinding`, `create_networkpolicy`: `labels`, `annotations`.
 - MCP `instructions` in the `initialize` response, steering agents to the typed
   tools (`mcp_k8s::mcp::SERVER_INSTRUCTIONS` for library users).
 - Helm chart: `permissions.enableApplyManifest` and `extraEnv` (to set the

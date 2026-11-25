@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use k8s_openapi::api::rbac::v1::{PolicyRule, Role};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use kube::api::{DeleteParams, ListParams, Patch, PatchParams, PostParams};
@@ -83,6 +81,8 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
             "inputSchema": {
                 "type": "object",
                 "properties": {
+                    "labels": { "type": "object", "description": "Labels (app.kubernetes.io/managed-by: mcp-k8s is added)", "additionalProperties": { "type": "string" } },
+                    "annotations": { "type": "object", "description": "Annotations", "additionalProperties": { "type": "string" } },
                     "namespace": { "type": "string", "description": "Kubernetes namespace" },
                     "name": { "type": "string", "description": "Role name" },
                     "rules": {
@@ -297,17 +297,14 @@ async fn create_role(client: &K8sClient, args: &serde_json::Value) -> Result<Str
     let name = args["name"].as_str().ok_or("name is required")?;
     let rules = parse_rules(args)?;
 
-    let mut labels = BTreeMap::new();
-    labels.insert(
-        "app.kubernetes.io/managed-by".to_string(),
-        "mcp-k8s".to_string(),
-    );
+    let labels = crate::resources::podspec::object_labels(args)?;
 
     let role = Role {
         metadata: ObjectMeta {
             name: Some(name.to_string()),
             namespace: Some(ns.to_string()),
             labels: Some(labels),
+            annotations: crate::resources::podspec::string_map(args, "annotations")?,
             ..Default::default()
         },
         rules: Some(rules),
@@ -371,6 +368,7 @@ async fn delete_role(client: &K8sClient, args: &serde_json::Value) -> Result<Str
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeMap;
 
     #[test]
     fn tool_definitions_returns_five_unique_tools() {

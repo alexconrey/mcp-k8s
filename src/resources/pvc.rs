@@ -102,6 +102,12 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
             "inputSchema": {
                 "type": "object",
                 "properties": {
+                    "labels": { "type": "object", "description": "Labels (app.kubernetes.io/managed-by: mcp-k8s is added)", "additionalProperties": { "type": "string" } },
+                    "annotations": { "type": "object", "description": "Annotations", "additionalProperties": { "type": "string" } },
+                    "volume_mode": { "type": "string", "enum": ["Filesystem", "Block"], "description": "Default: Filesystem" },
+                    "data_source": { "type": "object", "description": "Populate the volume from a VolumeSnapshot or clone a PersistentVolumeClaim", "properties": { "kind": { "type": "string", "enum": ["VolumeSnapshot", "PersistentVolumeClaim"] }, "name": { "type": "string" }, "api_group": { "type": "string", "description": "snapshot.storage.k8s.io for VolumeSnapshot" } }, "required": ["kind", "name"], "additionalProperties": false },
+                    "selector": { "type": "object", "description": "Bind only to PersistentVolumes with these labels", "additionalProperties": { "type": "string" } },
+                    "volume_name": { "type": "string", "description": "Bind to this PersistentVolume" },
                     "namespace": { "type": "string", "description": "Kubernetes namespace" },
                     "name": { "type": "string", "description": "PVC name" },
                     "storage_class": { "type": "string", "description": "Storage class name (optional)" },
@@ -238,11 +244,7 @@ async fn create_pvc(client: &K8sClient, args: &serde_json::Value) -> Result<Stri
         .and_then(|v| serde_json::from_value(v.clone()).ok())
         .unwrap_or_else(|| vec!["ReadWriteOnce".to_string()]);
 
-    let mut labels = BTreeMap::new();
-    labels.insert(
-        "app.kubernetes.io/managed-by".to_string(),
-        "mcp-k8s".to_string(),
-    );
+    let labels = crate::resources::podspec::object_labels(args)?;
 
     let mut requests = BTreeMap::new();
     requests.insert("storage".to_string(), Quantity(storage.to_string()));
@@ -252,11 +254,50 @@ async fn create_pvc(client: &K8sClient, args: &serde_json::Value) -> Result<Stri
             name: Some(name.to_string()),
             namespace: Some(ns.to_string()),
             labels: Some(labels),
+            annotations: crate::resources::podspec::string_map(args, "annotations")?,
             ..Default::default()
         },
         spec: Some(PersistentVolumeClaimSpec {
             access_modes: Some(access_modes),
             storage_class_name: storage_class,
+            volume_mode: match args.get("volume_mode").and_then(|v| v.as_str()) {
+                Some(m) => {
+                    crate::resources::podspec::check_enum(
+                        m,
+                        &["Filesystem", "Block"],
+                        "volume_mode",
+                    )?;
+                    Some(m.to_string())
+                }
+                None => None,
+            },
+            data_source: match args.get("data_source") {
+                Some(ds) => Some(k8s_openapi::api::core::v1::TypedLocalObjectReference {
+                    kind: ds["kind"]
+                        .as_str()
+                        .ok_or("data_source.kind is required")?
+                        .to_string(),
+                    name: ds["name"]
+                        .as_str()
+                        .ok_or("data_source.name is required")?
+                        .to_string(),
+                    api_group: ds["api_group"].as_str().map(str::to_string).or_else(|| {
+                        (ds["kind"] == "VolumeSnapshot")
+                            .then(|| "snapshot.storage.k8s.io".to_string())
+                    }),
+                }),
+                None => None,
+            },
+            selector: crate::resources::podspec::string_map(args, "selector")?.map(|m| {
+                k8s_openapi::apimachinery::pkg::apis::meta::v1::LabelSelector {
+                    match_labels: Some(m),
+                    ..Default::default()
+                }
+            }),
+            volume_name: args
+                .get("volume_name")
+                .and_then(|v| v.as_str())
+                .map(str::to_string),
             resources: Some(VolumeResourceRequirements {
                 requests: Some(requests),
                 ..Default::default()

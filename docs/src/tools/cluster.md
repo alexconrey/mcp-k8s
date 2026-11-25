@@ -108,6 +108,9 @@ Create a PodDisruptionBudget.
 | `selector` | object | Yes | Label selector for target pods |
 | `min_available` | string | No | Minimum available pods (number or percentage) |
 | `max_unavailable` | string | No | Maximum unavailable pods (number or percentage) |
+| `labels` | object | No | Labels (`app.kubernetes.io/managed-by: mcp-k8s` is added) |
+| `annotations` | object | No | Annotations |
+| `unhealthy_pod_eviction_policy` | string | No | `IfHealthyBudget` or `AlwaysAllow` |
 
 ### update_pdb
 
@@ -119,6 +122,7 @@ Update a PodDisruptionBudget.
 | `name` | string | Yes | PDB name |
 | `min_available` | string | No | Updated minimum available |
 | `max_unavailable` | string | No | Updated maximum unavailable |
+| `unhealthy_pod_eviction_policy` | string | No | `IfHealthyBudget` or `AlwaysAllow` |
 
 ### delete_pdb
 

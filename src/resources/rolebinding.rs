@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use k8s_openapi::api::rbac::v1::RoleBinding;
 use k8s_openapi::api::rbac::v1::{RoleRef, Subject};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
@@ -96,6 +94,8 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
             "inputSchema": {
                 "type": "object",
                 "properties": {
+                    "labels": { "type": "object", "description": "Labels (app.kubernetes.io/managed-by: mcp-k8s is added)", "additionalProperties": { "type": "string" } },
+                    "annotations": { "type": "object", "description": "Annotations", "additionalProperties": { "type": "string" } },
                     "namespace": { "type": "string", "description": "Kubernetes namespace" },
                     "name": { "type": "string", "description": "RoleBinding name" },
                     "role_ref": {
@@ -259,17 +259,14 @@ async fn create_rolebinding(
         })
         .collect::<Result<Vec<Subject>, String>>()?;
 
-    let mut labels = BTreeMap::new();
-    labels.insert(
-        "app.kubernetes.io/managed-by".to_string(),
-        "mcp-k8s".to_string(),
-    );
+    let labels = crate::resources::podspec::object_labels(args)?;
 
     let rb = RoleBinding {
         metadata: ObjectMeta {
             name: Some(name.to_string()),
             namespace: Some(ns.to_string()),
             labels: Some(labels),
+            annotations: crate::resources::podspec::string_map(args, "annotations")?,
             ..Default::default()
         },
         role_ref: RoleRef {
@@ -321,6 +318,7 @@ async fn delete_rolebinding(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeMap;
 
     #[test]
     fn tool_definitions_returns_four_unique_tools() {

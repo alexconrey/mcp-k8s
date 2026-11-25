@@ -298,6 +298,11 @@ Create an HPA targeting a deployment.
 | `min_replicas` | integer | No | Minimum replicas (default: 1) |
 | `max_replicas` | integer | Yes | Maximum replicas |
 | `cpu_target_percent` | integer | No | Target CPU utilization percentage |
+| `labels` | object | No | Labels (`app.kubernetes.io/managed-by: mcp-k8s` is added) |
+| `annotations` | object | No | Annotations |
+| `target_memory_utilization` | integer | No | Target average memory utilization (%) |
+| `metrics` | array | No | Kubernetes autoscaling/v2 MetricSpec objects (Resource, Pods, Object, External, ContainerResource), added to the cpu/memory shorthands |
+| `behavior` | object | No | Scale-up/scale-down policies and stabilization windows |
 
 ### update_hpa
 
@@ -310,6 +315,8 @@ Patch an HPA. Supports updating min/max replicas and CPU target.
 | `min_replicas` | integer | No | New minimum replicas |
 | `max_replicas` | integer | No | New maximum replicas |
 | `cpu_target_percent` | integer | No | New CPU target percentage |
+| `target_cpu_utilization`, `target_memory_utilization`, `metrics` | | No | Replace the metrics |
+| `behavior` | object | No | Scaling behavior |
 
 ### delete_hpa
 

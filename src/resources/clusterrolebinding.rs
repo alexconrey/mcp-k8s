@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use k8s_openapi::api::rbac::v1::{ClusterRoleBinding, RoleRef, Subject};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use kube::api::{DeleteParams, ListParams, PostParams};
@@ -85,6 +83,8 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
             "inputSchema": {
                 "type": "object",
                 "properties": {
+                    "labels": { "type": "object", "description": "Labels (app.kubernetes.io/managed-by: mcp-k8s is added)", "additionalProperties": { "type": "string" } },
+                    "annotations": { "type": "object", "description": "Annotations", "additionalProperties": { "type": "string" } },
                     "name": { "type": "string", "description": "ClusterRoleBinding name" },
                     "role_ref": {
                         "type": "object",
@@ -241,16 +241,13 @@ async fn create_clusterrolebinding(
         })
         .collect();
 
-    let mut labels = BTreeMap::new();
-    labels.insert(
-        "app.kubernetes.io/managed-by".to_string(),
-        "mcp-k8s".to_string(),
-    );
+    let labels = crate::resources::podspec::object_labels(args)?;
 
     let crb = ClusterRoleBinding {
         metadata: ObjectMeta {
             name: Some(name.to_string()),
             labels: Some(labels),
+            annotations: crate::resources::podspec::string_map(args, "annotations")?,
             ..Default::default()
         },
         role_ref: RoleRef {
@@ -301,6 +298,7 @@ async fn delete_clusterrolebinding(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeMap;
 
     #[test]
     fn tool_definitions_returns_four_unique_tools() {

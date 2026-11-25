@@ -61,6 +61,12 @@ Create a PersistentVolumeClaim.
 | `storage_class` | string | No | StorageClass name |
 | `access_modes` | string[] | No | Access modes (default: `["ReadWriteOnce"]`) |
 | `storage` | string | Yes | Storage size (e.g. `10Gi`) |
+| `labels` | object | No | Labels (`app.kubernetes.io/managed-by: mcp-k8s` is added) |
+| `annotations` | object | No | Annotations |
+| `volume_mode` | string | No | `Filesystem` (default) or `Block` |
+| `data_source` | object | No | `{kind: VolumeSnapshot \| PersistentVolumeClaim, name, api_group}`: restore a snapshot or clone a PVC |
+| `selector` | object | No | Bind only to PVs with these labels |
+| `volume_name` | string | No | Bind to this PersistentVolume |
 
 Example:
 
