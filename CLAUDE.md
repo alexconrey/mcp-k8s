@@ -32,6 +32,8 @@ src/
 │   ├── pod.rs          # Pod spec rules (privileged, escalation, capabilities, host namespaces/paths/ports, volumes, profiles, registries)
 │   ├── network.rs      # Service rules (NodePort/LoadBalancer/ExternalName/externalIPs) and Ingress rules (snippets, nginx injection)
 │   ├── rbac.rs         # RBAC escalation rules, service-account token Secrets, pod-security namespace labels
+│   ├── csr.rs          # approve_csr: parse the PKCS#10 subject, refuse system:masters/system: identities
+│   ├── csr_fixtures.rs # (test only) openssl-generated CSR PEMs
 │   ├── manifest.rs     # check_object: kind dispatch, raw-manifest kind gates, custom resource group allowlist + deep scan
 │   ├── admission.rs    # admit_manifest (custom resources: full policy; apply_manifest: scoping only), patch_checked (dry-run updates), check_typed, bound role lookup
 │   └── tests.rs        # One test per rule: rejection and opt-in acceptance
@@ -62,7 +64,7 @@ src/
     ├── configmap.rs     # ConfigMap CRUD
     ├── crd.rs           # CRD discovery + custom resource CRUD (7 tools); writes go through admit_manifest/patch_checked
     ├── cronjob.rs       # CronJob CRUD (pod template + CronJob/Job settings)
-    ├── csr.rs           # CertificateSigningRequest (list, get, approve, deny)
+    ├── csr.rs           # CertificateSigningRequest (list, get, approve, deny); approve runs policy::check_csr
     ├── daemonset.rs     # DaemonSet CRUD (pod template + update strategy)
     ├── deployment.rs    # Deployment create/update/delete/restart/scale/rollback (+ labels/annotations/affinity)
     ├── device_resources.rs # ResourceClaim, ResourceSlice, DeviceClass (v1beta2)
@@ -304,6 +306,7 @@ mcp-k8s --http --tls-cert /path/cert.pem --tls-key /path/key.pem
 | `--allow-manifest-kinds` | `MCP_K8S_ALLOW_MANIFEST_KINDS` | (none) | Cluster-scoped custom resource kinds the custom resource tools may write |
 | `--allow-custom-resource-groups` | `MCP_K8S_ALLOW_CUSTOM_RESOURCE_GROUPS` | (none) | Custom resource groups that may be written |
 | `--allow-rbac-escalation` | `MCP_K8S_ALLOW_RBAC_ESCALATION` | `false` | RBAC escalation primitives, SA token Secrets |
+| `--allow-privileged-csr` | `MCP_K8S_ALLOW_PRIVILEGED_CSR` | `false` | `approve_csr` for `system:masters`/other `system:` identities and unparseable requests |
 | `--no-secure-defaults` | `MCP_K8S_NO_SECURE_DEFAULTS` | `false` | Skip the restricted securityContext defaults |
 | `--disable-secret-decode` | `DISABLE_SECRET_DECODE` | `false` | Prevent secret value decoding |
 | `--cache-ttl` | `CACHE_TTL` | `0` | Response cache TTL in seconds (0 = disabled) |
@@ -407,7 +410,7 @@ mcp-k8s/
 ├── src/                    # Rust source (lib + bin)
 ├── tests/
 │   ├── integration.rs      # Tower-test mock integration tests (8 tests)
-│   ├── guardrails.rs       # Mock-API guardrail tests for the typed tools; apply_manifest off by default / raw when enabled (27 tests)
+│   ├── guardrails.rs       # Mock-API guardrail tests for the typed tools; apply_manifest off by default / raw when enabled; approve_csr identity check (29 tests)
 │   ├── typed_tools.rs      # Mock-API request-body tests for ConfigMap/Secret/PVC/PDB/SA/HPA/RBAC tools (9 tests)
 │   ├── k3s_integration.rs  # Testcontainers k3s tests (13 tests, #[ignore]; k3s v1.35, MCP_K8S_K3S_TAG overrides)
 │   └── k3s_workloads.rs    # k3s tests for the typed tools and guardrails (3 tests, #[ignore])
@@ -469,7 +472,7 @@ CI workflow (build, test, clippy, fmt) runs against them before merge.
 
 ```bash
 cargo build --release       # Build
-cargo test                  # 553 unit + 11 binary (router, telemetry) + 8 integration + 27 guardrail + 9 typed-tool tests
+cargo test                  # 561 unit + 11 binary (router, telemetry) + 8 integration + 29 guardrail + 9 typed-tool tests
 cargo test --no-default-features  # Same tests without `server` (what deckwatch compiles)
 cargo test --test k3s_integration -- --ignored --test-threads=2  # 13 k3s tests (needs Docker), as CI runs them
 cargo test --test k3s_workloads -- --ignored --test-threads=1  # k3s typed-tool and guardrail tests, as CI runs them

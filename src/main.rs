@@ -240,6 +240,12 @@ struct Cli {
     #[arg(long, env = "MCP_K8S_ALLOW_RBAC_ESCALATION")]
     allow_rbac_escalation: bool,
 
+    /// Let approve_csr approve CertificateSigningRequests for privileged
+    /// identities (system:masters, other system: users and groups) and
+    /// requests whose subject can't be parsed.
+    #[arg(long, env = "MCP_K8S_ALLOW_PRIVILEGED_CSR")]
+    allow_privileged_csr: bool,
+
     /// Don't fill in the restricted securityContext and
     /// automountServiceAccountToken: false defaults in the typed create tools.
     #[arg(long, env = "MCP_K8S_NO_SECURE_DEFAULTS")]
@@ -498,6 +504,7 @@ fn workload_policy(cli: &Cli) -> WorkloadPolicy {
     policy.allowed_manifest_kinds = list(&cli.allow_manifest_kinds);
     policy.allowed_custom_resource_groups = list(&cli.allow_custom_resource_groups);
     policy.allow_rbac_escalation = cli.allow_rbac_escalation;
+    policy.allow_privileged_csr = cli.allow_privileged_csr;
     policy.secure_defaults = !cli.no_secure_defaults;
     policy
 }
