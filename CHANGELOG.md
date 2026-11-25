@@ -12,6 +12,33 @@ release workflow refuses a tag that doesn't match `Cargo.toml`,
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-25
+
+Security hardening: secret values opt-in and redacted everywhere, the
+namespace allowlist enforced by every tool, HTTP browser and DNS-rebinding
+protections, privileged CSR approvals refused, `exec_pod` limits, audit
+events, MCP-conformant tool errors, and a hardened Helm chart.
+
+**Upgrading** (see [Security](docs/src/security.md) for the full defaults):
+- **Server operators:**
+  - Secret values now need `--enable-secret-decode` (Helm
+    `permissions.enableSecretDecode`).
+  - Tool failures come back as `isError` results, not JSON-RPC errors.
+  - `port_forward_check` counts as an update, and `get_resource_yaml` is
+    gone.
+  - `--namespaces` is now enforced on namespace objects, cluster-wide
+    listings and `drain_node`.
+  - Approving `system:` CSRs needs `--allow-privileged-csr`.
+  - Set `--auth-token-file` and `--allowed-hosts` (Helm `http.*`); the
+    server warns without them.
+  - The Helm chart's ClusterRole is scoped to what the tools use. Add
+    `rbac.extraRules` for anything else.
+- **Library users** (deckwatch): `ActionPermissions::default()` now turns
+  secret decoding off as well (`with_secret_decode(true)`). `cargo
+  semver-checks` finds no library API break against 0.6.0; the breaking
+  changes are behavioural (defaults, error format), which is why this is a
+  minor release.
+
 ### Breaking changes
 - **`port_forward_check` is an update action** (`pod-update`), like
   `exec_pod`: it opens a port-forward tunnel, which RBAC treats as `create`
