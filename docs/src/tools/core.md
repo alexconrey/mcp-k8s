@@ -400,7 +400,7 @@ Delete a configmap by name from a namespace.
 
 ## Secrets
 
-> **Note:** Secret values are never returned by default. The `list_secrets` tool only returns metadata and key counts. The `get_secret` tool returns key names by default; pass `decode: true` to include decoded values.
+> **Note:** Secret values are never returned unless the server operator enables secret decoding (`--enable-secret-decode`). The `list_secrets` tool only returns metadata and key counts. The `get_secret` tool returns key names; with decoding enabled, pass `decode: true` to include decoded values (without it, `decode: true` is refused). The `kubectl.kubernetes.io/last-applied-configuration` annotation, which contains the applied manifest, is redacted unless values may be shown. `get_resource_json` redacts Secret values the same way.
 
 ### list_secrets
 
@@ -420,7 +420,7 @@ Get a secret by name. Returns metadata and data keys only by default.
 |-----------|------|----------|-------------|
 | `namespace` | string | Yes | Kubernetes namespace |
 | `name` | string | Yes | Secret name |
-| `decode` | boolean | No | If true, include decoded secret values. Defaults to false. |
+| `decode` | boolean | No | If true, include decoded secret values. Defaults to false. Refused unless the operator enabled `--enable-secret-decode`. |
 
 ### create_secret
 

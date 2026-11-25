@@ -81,7 +81,7 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
                 "properties": {
                     "namespace": { "type": "string", "description": "Kubernetes namespace" },
                     "name": { "type": "string", "description": "Secret name" },
-                    "decode": { "type": "boolean", "description": "If true, include decoded secret values in the response. Defaults to false." }
+                    "decode": { "type": "boolean", "description": "If true, include decoded secret values in the response. Defaults to false. Only works when the server operator has enabled secret decoding (--enable-secret-decode); otherwise the call is refused." }
                 },
                 "required": ["namespace", "name"],
                 "additionalProperties": false
@@ -183,14 +183,65 @@ async fn list_secrets(client: &K8sClient, args: &serde_json::Value) -> Result<St
     serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())
 }
 
+/// `kubectl apply` stores the whole applied manifest, values included, in
+/// this annotation.
+const LAST_APPLIED: &str = "kubectl.kubernetes.io/last-applied-configuration";
+
+/// A Secret's annotations with the last-applied manifest redacted unless
+/// values may be shown.
+fn safe_annotations(
+    mut annotations: BTreeMap<String, String>,
+    values_allowed: bool,
+) -> BTreeMap<String, String> {
+    if !values_allowed {
+        if let Some(v) = annotations.get_mut(LAST_APPLIED) {
+            *v = REDACTED.to_string();
+        }
+    }
+    annotations
+}
+
+const REDACTED: &str = "<redacted: secret decoding is disabled on this server>";
+
+/// Redact the values of a Secret in its raw JSON form, as returned by the
+/// generic tools (`get_resource_json`, `resources/read`): every `data` and
+/// `stringData` value and the last-applied annotation. Keys stay visible.
+/// Objects that aren't core `v1` Secrets are left alone.
+pub fn redact_secret_json(object: &mut serde_json::Value) {
+    let is_secret = object["apiVersion"] == "v1" && object["kind"] == "Secret";
+    if !is_secret {
+        return;
+    }
+    for field in ["data", "stringData"] {
+        if let Some(map) = object[field].as_object_mut() {
+            for value in map.values_mut() {
+                *value = serde_json::Value::String(REDACTED.to_string());
+            }
+        }
+    }
+    if let Some(v) = object["metadata"]["annotations"]
+        .as_object_mut()
+        .and_then(|a| a.get_mut(LAST_APPLIED))
+    {
+        *v = serde_json::Value::String(REDACTED.to_string());
+    }
+}
+
 async fn get_secret(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
-    let decode_requested = args["decode"].as_bool().unwrap_or(false);
+    let decode = args["decode"].as_bool().unwrap_or(false);
 
-    // Honour the --disable-secret-decode flag: if decode is disabled server-wide,
-    // ignore the caller's decode=true request.
-    let decode = decode_requested && client.permissions().secret_decode_enabled;
+    // Secret values are opt-in for the operator (--enable-secret-decode). Say
+    // so rather than silently returning a redacted Secret.
+    if decode && !client.permissions().secret_decode_enabled {
+        return Err(
+            "secret decoding is disabled on this server, so get_secret can't return \
+             values. Call it without decode to see the keys. The operator can enable \
+             values with --enable-secret-decode."
+                .to_string(),
+        );
+    }
 
     let secrets_api = api(client, ns)?;
     let secret = secrets_api.get(name).await.map_err(|e| e.to_string())?;
@@ -203,7 +254,7 @@ async fn get_secret(client: &K8sClient, args: &serde_json::Value) -> Result<Stri
         "namespace": meta.namespace.clone().unwrap_or_default(),
         "type": secret_type(&secret),
         "labels": meta.labels.clone().unwrap_or_default(),
-        "annotations": meta.annotations.clone().unwrap_or_default(),
+        "annotations": safe_annotations(meta.annotations.clone().unwrap_or_default(), decode),
         "data_keys": keys,
         "created_at": meta.creation_timestamp.as_ref().map(|t| t.0.to_string()),
     });
@@ -324,6 +375,44 @@ async fn delete_secret(client: &K8sClient, args: &serde_json::Value) -> Result<S
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn redact_secret_json_hides_values_and_the_last_applied_manifest() {
+        let mut secret = serde_json::json!({
+            "apiVersion": "v1", "kind": "Secret",
+            "metadata": { "name": "s", "annotations": {
+                "kubectl.kubernetes.io/last-applied-configuration": "{\"data\":{\"k\":\"dg==\"}}",
+                "team": "web" } },
+            "data": { "k": "dg==" },
+            "stringData": { "plain": "v" }
+        });
+        redact_secret_json(&mut secret);
+        let text = secret.to_string();
+        assert!(!text.contains("dg==") && !text.contains("\"v\""), "{text}");
+        assert!(secret["data"]["k"].as_str().unwrap().contains("redacted"));
+        assert!(secret["stringData"]["plain"]
+            .as_str()
+            .unwrap()
+            .contains("redacted"));
+        assert_eq!(secret["metadata"]["annotations"]["team"], "web");
+
+        // Not a Secret: untouched.
+        let mut cm =
+            serde_json::json!({ "apiVersion": "v1", "kind": "ConfigMap", "data": { "k": "v" } });
+        redact_secret_json(&mut cm);
+        assert_eq!(cm["data"]["k"], "v");
+    }
+
+    #[test]
+    fn safe_annotations_redacts_last_applied_unless_values_are_allowed() {
+        let mut a = BTreeMap::new();
+        a.insert(LAST_APPLIED.to_string(), "{\"data\":{}}".to_string());
+        a.insert("team".to_string(), "web".to_string());
+        let hidden = safe_annotations(a.clone(), false);
+        assert!(hidden[LAST_APPLIED].contains("redacted"));
+        assert_eq!(hidden["team"], "web");
+        assert_eq!(safe_annotations(a, true)[LAST_APPLIED], "{\"data\":{}}");
+    }
 
     #[test]
     fn tool_definitions_returns_five_unique_tools() {

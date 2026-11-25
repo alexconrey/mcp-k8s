@@ -12,6 +12,25 @@ release workflow refuses a tag that doesn't match `Cargo.toml`,
 
 ## [Unreleased]
 
+### Breaking changes
+- **Secret values are opt-in.** `ActionPermissions::default()` now has
+  `secret_decode_enabled: false` (`with_secret_decode(true)` enables it), and
+  the server needs `--enable-secret-decode` (`ENABLE_SECRET_DECODE`).
+  Without it `get_secret` refuses `decode: true` with an error naming the
+  flag (it used to ignore it silently). `--disable-secret-decode` is
+  deprecated but still honoured, and wins.
+
+### Security
+- **Secret values leaked through the generic tools.** `get_resource_json`,
+  its `get_resource_yaml` alias and `k8s://<ns>/secrets/<name>` resources
+  returned a Secret's base64 `data` even with secret decoding disabled. They
+  now redact `data`, `stringData` and the
+  `kubectl.kubernetes.io/last-applied-configuration` annotation unless
+  decoding is enabled.
+- `get_secret` redacts the `last-applied-configuration` annotation (the full
+  applied manifest, values included, for Secrets created with
+  `kubectl apply`) unless values are being returned.
+
 ## [0.6.0] - 2026-11-24
 
 Typed workload tools that cover the pod template, workload guardrails on every

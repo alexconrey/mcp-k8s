@@ -143,11 +143,11 @@ Note: This only affects the `get_metrics` tool. The mcp-k8s server's own `/metri
 
 **Causes**:
 
-- **`--disable-secret-decode` is set**: When the server is started with `--disable-secret-decode` (or `DISABLE_SECRET_DECODE=true`), the `decode: true` parameter is ignored and secret values are never returned. This is a safety feature for production deployments.
-- **`decode: true` not passed**: By default, `get_secret` returns metadata and keys but redacts the values. You must explicitly pass `"decode": true` in the tool arguments to see decoded values.
+- **Secret decoding isn't enabled** (the default since v0.7.0): the server needs `--enable-secret-decode` (`ENABLE_SECRET_DECODE=true`). Without it `get_secret` refuses `decode: true`, and `get_resource_json` shows Secret values as `<redacted: …>`. `--disable-secret-decode` also keeps it off.
+- **`decode: true` not passed**: `get_secret` returns metadata and keys unless you pass `"decode": true`.
 
 **Fix**: If you need to see secret values, ensure:
-1. The server was **not** started with `--disable-secret-decode`.
+1. The server was started with `--enable-secret-decode` (and not `--disable-secret-decode`).
 2. The tool call includes `"decode": true`:
    ```json
    {

@@ -143,7 +143,7 @@ Beyond standard CRUD, the server supports:
 | `--tls-key` | `TLS_KEY` | (none) | Path to TLS private key PEM file (enables HTTPS) |
 | `--enable-apply-manifest` | `ENABLE_APPLY_MANIFEST` | `false` | Enable `apply_manifest`: an unrestricted raw server-side apply that skips the workload guardrails, for users who know what they're applying (the namespace allowlist and disable switches still apply). `--disable-apply-manifest` is deprecated but still wins |
 | `--allow-*`, `--allowed-registries`, `--ingress-annotation-*`, `--no-secure-defaults` | `MCP_K8S_ALLOW_*` etc. | restrictive | Workload guardrails, see [Guardrails](#guardrails) |
-| `--disable-secret-decode` | `DISABLE_SECRET_DECODE` | `false` | Prevent secret value decoding |
+| `--enable-secret-decode` | `ENABLE_SECRET_DECODE` | `false` | Let tools return Secret values; redacted everywhere otherwise (`--disable-secret-decode` is deprecated) |
 | `--cache-ttl` | `CACHE_TTL` | `0` | Response cache TTL in seconds (0 = disabled) |
 | `--log-format` | `LOG_FORMAT` | `text` | Log format: `text` or `json` (stderr in stdio mode) |
 | — | `KUBECONFIG` | in-cluster | Kubernetes config path |

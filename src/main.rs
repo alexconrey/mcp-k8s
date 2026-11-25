@@ -110,9 +110,16 @@ struct Cli {
     #[arg(long, env = "TLS_KEY")]
     tls_key: Option<String>,
 
-    /// Disable secret value decoding. When set, `decode: true` in get_secret
-    /// is ignored and secret values are never returned.
-    #[arg(long, env = "DISABLE_SECRET_DECODE")]
+    /// Let tools return Secret values (off by default): get_secret with
+    /// decode=true, and Secret data in get_resource_json / resources/read.
+    /// Without it, values are redacted everywhere and only keys are shown.
+    #[arg(long, env = "ENABLE_SECRET_DECODE")]
+    enable_secret_decode: bool,
+
+    /// Keep secret decoding disabled even if --enable-secret-decode is set.
+    /// It's off by default since v0.7.0; this flag still works so existing
+    /// deployments that pass it keep starting.
+    #[arg(long, env = "DISABLE_SECRET_DECODE", hide = true)]
     disable_secret_decode: bool,
 
     /// Enable the apply_manifest tool (off by default). It's a raw server-side
@@ -293,7 +300,7 @@ async fn main() {
         cli.disable_update,
         cli.disable_delete,
         cli.disable_actions,
-        !cli.disable_secret_decode,
+        cli.enable_secret_decode && !cli.disable_secret_decode,
         cli.enable_apply_manifest && !cli.disable_apply_manifest,
     )
     .with_workload_policy(policy);

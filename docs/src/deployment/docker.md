@@ -159,7 +159,7 @@ docker run --rm \
 | `AUTH_TOKEN` | Bearer token for HTTP endpoint authentication | *(none)* |
 | `TLS_CERT` | Path to TLS certificate PEM file | *(none)* |
 | `TLS_KEY` | Path to TLS private key PEM file | *(none)* |
-| `DISABLE_SECRET_DECODE` | Prevent secret value decoding | `false` |
+| `ENABLE_SECRET_DECODE` | Let tools return Secret values (redacted otherwise) | `false` |
 | `LOG_FORMAT` | Log output format (`text` or `json`) | `text` |
 | `KUBECONFIG` | Path to kubeconfig file | *(auto-detected)* |
 | `RUST_LOG` | Console log level filter | `info` |

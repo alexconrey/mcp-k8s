@@ -179,7 +179,8 @@ mcp-k8s --http --tls-cert /etc/certs/tls.crt --tls-key /etc/certs/tls.key
 
 | Flag | Env Var | Default | Description |
 |------|---------|---------|-------------|
-| `--disable-secret-decode` | `DISABLE_SECRET_DECODE` | `false` | When set, the `get_secret` tool never returns decoded secret values, even if the caller passes `decode: true`. Use this in environments where secret values must not be exposed to MCP clients. |
+| `--enable-secret-decode` | `ENABLE_SECRET_DECODE` | `false` | Let tools return Secret values: `get_secret` with `decode: true`, and Secret `data` in `get_resource_json` and `k8s://…/secrets/…` resources. Without it, values are redacted on every path (only keys are shown, and the `kubectl.kubernetes.io/last-applied-configuration` annotation, which holds the applied manifest, is redacted too), and `get_secret` refuses `decode: true`. |
+| `--disable-secret-decode` | `DISABLE_SECRET_DECODE` | `false` | Deprecated: decoding is off by default. Still honoured, and wins over `--enable-secret-decode`. |
 
 ## Logging
 
@@ -262,10 +263,9 @@ mcp-k8s \
   --auth-token my-secret-token \
   --tls-cert /etc/certs/tls.crt \
   --tls-key /etc/certs/tls.key \
-  --disable-secret-decode \
   --log-format json \
   --cache-ttl 30 \
   --contexts staging,production
 ```
 
-This starts mcp-k8s as an HTTPS server on port 9090 with bearer token authentication, restricted to the `default` and `production` namespaces, with all delete operations disabled globally (`apply_manifest` stays off, its default), deployment/secret creation disabled individually, secret decoding disabled, structured JSON logging enabled, a 30-second response cache, and two cluster contexts loaded (`staging` active by default).
+This starts mcp-k8s as an HTTPS server on port 9090 with bearer token authentication, restricted to the `default` and `production` namespaces, with all delete operations disabled globally (`apply_manifest` stays off, its default), deployment/secret creation disabled individually, secret decoding off (the default), structured JSON logging enabled, a 30-second response cache, and two cluster contexts loaded (`staging` active by default).
