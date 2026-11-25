@@ -4,7 +4,8 @@ use k8s_openapi::api::core::v1::Pod;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use kube::api::{AttachParams, DeleteParams, EvictParams, ListParams, PostParams};
 use serde::Serialize;
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncRead, AsyncReadExt};
+use tokio::time::{Duration, Instant};
 
 use crate::client::K8sClient;
 use crate::extract::pod_summary;
@@ -154,14 +155,15 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
         }),
         serde_json::json!({
             "name": "exec_pod",
-            "description": "Execute a command in a pod container and return the output. Requires the 'ws' feature.",
+            "description": "Execute a command in a pod container and return its output. Not for long-running commands: it stops after timeout_secs (default 60, max 300) and returns the output collected so far with timed_out: true. Each of stdout and stderr is capped at 1 MiB (truncated with a marker). Refused for pods with node-level access (privileged containers, host namespaces, hostPath volumes, added capabilities, unconfined profiles) unless the operator allows those settings.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "namespace": { "type": "string", "description": "Kubernetes namespace" },
                     "name": { "type": "string", "description": "Pod name" },
                     "command": { "type": "array", "items": { "type": "string" }, "description": "Command to execute (e.g. [\"ls\", \"-la\"])" },
-                    "container": { "type": "string", "description": "Container name (optional, defaults to first)" }
+                    "container": { "type": "string", "description": "Container name (optional, defaults to first)" },
+                    "timeout_secs": { "type": "integer", "description": "Seconds to wait for the command to finish (default 60, max 300)" }
                 },
                 "required": ["namespace", "name", "command"],
                 "additionalProperties": false
@@ -169,7 +171,7 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
         }),
         serde_json::json!({
             "name": "port_forward_check",
-            "description": "Check if a port on a pod is reachable by establishing and immediately closing a port-forward tunnel.",
+            "description": "Check if a port on a pod is reachable by establishing and immediately closing a port-forward tunnel. Gives up after 10 seconds.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -315,14 +317,145 @@ async fn evict_pod(client: &K8sClient, args: &serde_json::Value) -> Result<Strin
     serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
 }
 
+/// Default and maximum `timeout_secs` for `exec_pod`.
+const EXEC_DEFAULT_TIMEOUT_SECS: u64 = 60;
+const EXEC_MAX_TIMEOUT_SECS: u64 = 300;
+/// Per-stream output cap for `exec_pod`.
+const EXEC_OUTPUT_CAP: usize = 1024 * 1024;
+/// How long `port_forward_check` waits for the tunnel.
+const PORT_FORWARD_TIMEOUT_SECS: u64 = 10;
+
+/// Workload policy settings whose violation means a pod has node-level
+/// access. `exec_pod` refuses such pods: a shell in a privileged or
+/// host-namespace container is a shell on the node. Other rules (registries,
+/// volume types other than hostPath, host ports, privilege escalation) are
+/// about what may be created, not about what an exec session can reach.
+const EXEC_NODE_ACCESS_SETTINGS: &[&str] = &[
+    crate::policy::flags::ALLOW_PRIVILEGED.field,
+    crate::policy::flags::ALLOW_HOST_NAMESPACES.field,
+    crate::policy::flags::ALLOW_HOST_PATH.field,
+    crate::policy::flags::ALLOW_CAPABILITIES.field,
+    crate::policy::flags::ALLOW_UNCONFINED.field,
+];
+
+/// The workload policy's pod rules that make `exec_pod` refuse `pod`. Empty
+/// when the pod has no node-level access, or the operator allows it.
+pub(crate) fn exec_violations(
+    policy: &crate::policy::WorkloadPolicy,
+    pod: &Pod,
+) -> Vec<crate::policy::Violation> {
+    let value = serde_json::to_value(pod).unwrap_or_default();
+    let mut out = Vec::new();
+    if let Some(spec) = value.get("spec") {
+        crate::policy::check_pod_spec(policy, spec, value.get("metadata"), "spec", &mut out);
+    }
+    // A probe or lifecycle hook aimed at another host falls under
+    // allow_unconfined too, but it's not access from inside the pod.
+    out.retain(|v| {
+        EXEC_NODE_ACCESS_SETTINGS.contains(&v.flag().field)
+            && !v.location.contains("Probe")
+            && !v.location.contains(".lifecycle.")
+    });
+    out
+}
+
+/// Output collected from one stream, capped at [`EXEC_OUTPUT_CAP`].
+#[derive(Default)]
+struct CappedOutput {
+    data: Vec<u8>,
+    truncated: bool,
+}
+
+impl CappedOutput {
+    fn push(&mut self, chunk: &[u8]) {
+        let room = EXEC_OUTPUT_CAP.saturating_sub(self.data.len());
+        if chunk.len() > room {
+            self.truncated = true;
+        }
+        self.data.extend_from_slice(&chunk[..chunk.len().min(room)]);
+    }
+
+    fn into_string(self) -> String {
+        let mut s = String::from_utf8_lossy(&self.data).into_owned();
+        if self.truncated {
+            s.push_str("\n[output truncated at 1 MiB]");
+        }
+        s
+    }
+}
+
+async fn read_some<R: AsyncRead + Unpin>(
+    reader: &mut Option<R>,
+    buf: &mut [u8],
+) -> std::io::Result<usize> {
+    match reader {
+        Some(r) => r.read(buf).await,
+        None => std::future::pending().await,
+    }
+}
+
+/// Read both streams concurrently until each ends or `deadline` passes.
+/// Reading them one after the other can deadlock: the exec streams have
+/// small buffers, so a command that fills stderr blocks before closing
+/// stdout. Output past the cap is read and discarded so the command isn't
+/// blocked. Returns `(stdout, stderr, timed_out)`.
+async fn collect_output<O, E>(
+    mut stdout: Option<O>,
+    mut stderr: Option<E>,
+    deadline: Instant,
+) -> (CappedOutput, CappedOutput, bool)
+where
+    O: AsyncRead + Unpin,
+    E: AsyncRead + Unpin,
+{
+    let mut out = CappedOutput::default();
+    let mut err = CappedOutput::default();
+    let mut out_buf = vec![0u8; 8192];
+    let mut err_buf = vec![0u8; 8192];
+    let sleep = tokio::time::sleep_until(deadline);
+    tokio::pin!(sleep);
+    while stdout.is_some() || stderr.is_some() {
+        tokio::select! {
+            _ = &mut sleep => return (out, err, true),
+            r = read_some(&mut stdout, &mut out_buf) => match r {
+                Ok(0) | Err(_) => stdout = None,
+                Ok(n) => out.push(&out_buf[..n]),
+            },
+            r = read_some(&mut stderr, &mut err_buf) => match r {
+                Ok(0) | Err(_) => stderr = None,
+                Ok(n) => err.push(&err_buf[..n]),
+            },
+        }
+    }
+    (out, err, false)
+}
+
 async fn exec_pod(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let name = args["name"].as_str().ok_or("name is required")?;
     let command: Vec<String> = serde_json::from_value(args["command"].clone())
         .map_err(|e| format!("invalid command: {e}"))?;
     let container = args["container"].as_str().map(|s| s.to_string());
+    let timeout_secs = match args.get("timeout_secs") {
+        None | Some(serde_json::Value::Null) => EXEC_DEFAULT_TIMEOUT_SECS,
+        Some(v) => v
+            .as_u64()
+            .filter(|n| *n > 0)
+            .ok_or("timeout_secs must be a positive integer")?
+            .min(EXEC_MAX_TIMEOUT_SECS),
+    };
 
     let pods_api = api(client, ns)?;
+
+    // Exec into a pod with node-level access is node-level access: hold the
+    // pod to the same workload policy rules create_pod would.
+    let pod = pods_api.get(name).await.map_err(|e| e.to_string())?;
+    let violations = exec_violations(client.policy(), &pod);
+    if let Err(e) = crate::policy::into_result(violations) {
+        return Err(format!(
+            "exec_pod refused: this pod has node-level access, so a command in it runs with node-level access.\n{e}"
+        ));
+    }
 
     let ap = AttachParams {
         stdout: true,
@@ -333,39 +466,48 @@ async fn exec_pod(client: &K8sClient, args: &serde_json::Value) -> Result<String
         ..AttachParams::default()
     };
 
-    let mut process = pods_api
-        .exec(name, command, &ap)
+    let deadline = Instant::now() + Duration::from_secs(timeout_secs);
+    let mut process = tokio::time::timeout_at(deadline, pods_api.exec(name, command, &ap))
         .await
+        .map_err(|_| format!("exec_pod timed out after {timeout_secs}s connecting to the pod"))?
         .map_err(|e| e.to_string())?;
 
-    let mut stdout_str = String::new();
-    if let Some(mut stdout) = process.stdout() {
-        stdout
-            .read_to_string(&mut stdout_str)
-            .await
-            .map_err(|e| e.to_string())?;
+    let status = process.take_status();
+    let (stdout, stderr, mut timed_out) =
+        collect_output(process.stdout(), process.stderr(), deadline).await;
+    let status = match status {
+        Some(status) if !timed_out => match tokio::time::timeout_at(deadline, status).await {
+            Ok(status) => status,
+            Err(_) => {
+                timed_out = true;
+                None
+            }
+        },
+        _ => None,
+    };
+    if timed_out {
+        // Close the exec session. Without a TTY, whether the container
+        // runtime then kills the command is up to the runtime.
+        process.abort();
     }
-
-    let mut stderr_str = String::new();
-    if let Some(mut stderr) = process.stderr() {
-        stderr
-            .read_to_string(&mut stderr_str)
-            .await
-            .map_err(|e| e.to_string())?;
-    }
-
-    let status = process.take_status().unwrap().await;
     let exit_code = status.as_ref().and_then(|s| {
         s.status
             .as_ref()
             .and_then(|st| if st == "Success" { Some(0i32) } else { None })
     });
 
-    let result = serde_json::json!({
-        "stdout": stdout_str,
-        "stderr": stderr_str,
+    let mut result = serde_json::json!({
+        "stdout": stdout.into_string(),
+        "stderr": stderr.into_string(),
         "exit_code": exit_code,
+        "timed_out": timed_out,
     });
+    if timed_out {
+        result["note"] = format!(
+            "TIMED OUT: the command did not finish within {timeout_secs}s; this is the output collected so far, and the exec session was closed"
+        )
+        .into();
+    }
     serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
 }
 
@@ -383,18 +525,22 @@ async fn port_forward_check(
 
     let pods_api = api(client, ns)?;
 
-    // Attempt to establish a port-forward tunnel
-    let mut pf = pods_api
-        .portforward(name, &[port])
-        .await
-        .map_err(|e| e.to_string())?;
+    // Attempt to establish a port-forward tunnel, without waiting forever.
+    let mut pf = tokio::time::timeout(
+        Duration::from_secs(PORT_FORWARD_TIMEOUT_SECS),
+        pods_api.portforward(name, &[port]),
+    )
+    .await
+    .map_err(|_| format!("port_forward_check timed out after {PORT_FORWARD_TIMEOUT_SECS}s"))?
+    .map_err(|e| e.to_string())?;
 
     // Take the stream to verify the connection was established
     let stream = pf.take_stream(port);
     let reachable = stream.is_some();
 
-    // Drop the stream and port-forwarder to close the tunnel immediately
+    // Close the tunnel immediately
     drop(stream);
+    pf.abort();
     drop(pf);
 
     let result = serde_json::json!({
@@ -656,5 +802,112 @@ mod tests {
         assert!(detail.node_selector.is_empty());
         assert!(detail.tolerations.is_empty());
         assert!(detail.annotations.is_empty());
+    }
+
+    // -- exec_pod: output collection and the node-access check ---------------
+
+    use tokio::io::AsyncWriteExt;
+
+    fn far_deadline() -> Instant {
+        Instant::now() + Duration::from_secs(30)
+    }
+
+    #[tokio::test]
+    async fn collect_output_reads_both_streams_concurrently() {
+        // stderr fills far beyond the stream buffer before stdout closes:
+        // reading stdout to EOF first would deadlock.
+        let (out_r, mut out_w) = tokio::io::simplex(1024);
+        let (err_r, mut err_w) = tokio::io::simplex(1024);
+        tokio::spawn(async move {
+            err_w.write_all(&vec![b'e'; 64 * 1024]).await.unwrap();
+            err_w.shutdown().await.unwrap();
+            out_w.write_all(b"done").await.unwrap();
+            out_w.shutdown().await.unwrap();
+        });
+        let (out, err, timed_out) = collect_output(Some(out_r), Some(err_r), far_deadline()).await;
+        assert!(!timed_out);
+        assert_eq!(out.into_string(), "done");
+        assert_eq!(err.data.len(), 64 * 1024);
+        assert!(!err.truncated);
+    }
+
+    #[tokio::test]
+    async fn collect_output_caps_each_stream() {
+        let (out_r, mut out_w) = tokio::io::simplex(64 * 1024);
+        tokio::spawn(async move {
+            let chunk = vec![b'x'; 256 * 1024];
+            for _ in 0..6 {
+                out_w.write_all(&chunk).await.unwrap();
+            }
+            out_w.shutdown().await.unwrap();
+        });
+        let none: Option<tokio::io::ReadHalf<tokio::io::SimplexStream>> = None;
+        let (out, _, timed_out) = collect_output(Some(out_r), none, far_deadline()).await;
+        assert!(!timed_out);
+        assert!(out.truncated);
+        assert_eq!(out.data.len(), EXEC_OUTPUT_CAP);
+        assert!(out.into_string().ends_with("[output truncated at 1 MiB]"));
+    }
+
+    #[tokio::test]
+    async fn collect_output_stops_at_the_deadline_and_keeps_partial_output() {
+        let (out_r, mut out_w) = tokio::io::simplex(1024);
+        out_w.write_all(b"partial").await.unwrap();
+        // out_w stays open: the "command" never finishes.
+        let none: Option<tokio::io::ReadHalf<tokio::io::SimplexStream>> = None;
+        let deadline = Instant::now() + Duration::from_millis(100);
+        let (out, _, timed_out) = collect_output(Some(out_r), none, deadline).await;
+        assert!(timed_out);
+        assert_eq!(out.into_string(), "partial");
+        drop(out_w);
+    }
+
+    fn pod_from(spec: serde_json::Value) -> Pod {
+        serde_json::from_value(serde_json::json!({
+            "metadata": { "name": "p", "namespace": "default" },
+            "spec": spec
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn exec_violations_flag_node_level_access_only() {
+        let policy = crate::policy::WorkloadPolicy::default();
+        let privileged = pod_from(serde_json::json!({
+            "hostIPC": true,
+            "containers": [{ "name": "c", "image": "busybox",
+                "securityContext": { "privileged": true, "capabilities": { "add": ["SYS_ADMIN"] } } }]
+        }));
+        let fields: Vec<&str> = exec_violations(&policy, &privileged)
+            .iter()
+            .map(|v| v.flag().field)
+            .collect();
+        assert!(fields.contains(&"allow_privileged"), "{fields:?}");
+        assert!(fields.contains(&"allow_host_namespaces"), "{fields:?}");
+        assert!(fields.contains(&"allowed_capabilities"), "{fields:?}");
+
+        // Creation-time rules that don't give an exec session node access.
+        let restricted = crate::policy::WorkloadPolicy {
+            allowed_registries: vec!["ghcr.io/me".to_string()],
+            ..Default::default()
+        };
+        let ordinary = pod_from(serde_json::json!({
+            "containers": [{ "name": "c", "image": "docker.io/nginx",
+                "ports": [{ "containerPort": 80, "hostPort": 80 }],
+                "livenessProbe": { "httpGet": { "host": "example.com", "port": 80 } },
+                "securityContext": { "allowPrivilegeEscalation": true } }],
+            "volumes": [{ "name": "v", "nfs": { "server": "s", "path": "/" } }]
+        }));
+        assert!(exec_violations(&restricted, &ordinary).is_empty());
+
+        // The operator's opt-in lifts the refusal.
+        let allow = crate::policy::WorkloadPolicy {
+            allow_privileged: true,
+            ..Default::default()
+        };
+        let only_privileged = pod_from(serde_json::json!({
+            "containers": [{ "name": "c", "image": "busybox", "securityContext": { "privileged": true } }]
+        }));
+        assert!(exec_violations(&allow, &only_privileged).is_empty());
     }
 }

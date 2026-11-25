@@ -33,8 +33,11 @@ pub struct ActionPermissions {
     /// Per-resource overrides. Key is `"<resource>-<action>"` (e.g. `"deployment-delete"`),
     /// value is `false` to disable.
     resource_overrides: HashMap<String, bool>,
-    /// When `false`, the `decode: true` parameter in `get_secret` is ignored
-    /// and secret values are never returned.
+    /// When `false` (the default), Secret values are never returned:
+    /// `get_secret` refuses `decode: true`, and `get_resource_json` /
+    /// `resources/read` redact a Secret's `data`, `stringData` and
+    /// `kubectl.kubernetes.io/last-applied-configuration` annotation. An
+    /// operator enables it with `--enable-secret-decode`.
     pub secret_decode_enabled: bool,
     /// When `false` (the default), the `apply_manifest` tool is hidden from
     /// `tools/list` and refused. When `true`, it's a raw server-side apply
@@ -81,8 +84,6 @@ impl ActionPermissions {
         }
     }
 
-    /// Replace the workload guardrail policy (the default is
-    /// [`WorkloadPolicy::default()`], which is restrictive).
     /// Enable or disable `apply_manifest` (off by default). Enabled, it
     /// bypasses the workload policy; see [`Self::apply_manifest_enabled`].
     pub fn with_apply_manifest(mut self, enabled: bool) -> Self {
@@ -90,6 +91,15 @@ impl ActionPermissions {
         self
     }
 
+    /// Enable or disable returning Secret values (off by default); see
+    /// [`Self::secret_decode_enabled`].
+    pub fn with_secret_decode(mut self, enabled: bool) -> Self {
+        self.secret_decode_enabled = enabled;
+        self
+    }
+
+    /// Replace the workload guardrail policy (the default is
+    /// [`WorkloadPolicy::default()`], which is restrictive).
     pub fn with_workload_policy(mut self, policy: WorkloadPolicy) -> Self {
         self.workload_policy = policy;
         self
@@ -264,16 +274,17 @@ impl ActionPermissions {
 }
 
 impl Default for ActionPermissions {
-    /// All actions enabled, no overrides, secret decode enabled, the
-    /// restrictive default [`WorkloadPolicy`], and **apply_manifest disabled**:
-    /// it bypasses the workload policy, so only an operator should turn it on.
+    /// All actions enabled, no overrides, the restrictive default
+    /// [`WorkloadPolicy`], and two things only an operator should turn on:
+    /// **secret decoding disabled** and **apply_manifest disabled** (it
+    /// bypasses the workload policy).
     fn default() -> Self {
         Self {
             global_create_enabled: true,
             global_update_enabled: true,
             global_delete_enabled: true,
             resource_overrides: HashMap::new(),
-            secret_decode_enabled: true,
+            secret_decode_enabled: false,
             apply_manifest_enabled: false,
             workload_policy: WorkloadPolicy::default(),
         }

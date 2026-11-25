@@ -88,23 +88,33 @@ pub(crate) async fn admit_manifest(
         .as_str()
         .ok_or("manifest must contain 'metadata.name'")?
         .to_string();
-    let namespace = namespace.map(str::to_string).or_else(|| {
-        manifest["metadata"]["namespace"]
-            .as_str()
-            .map(str::to_string)
-    });
+    // The namespace argument and metadata.namespace must agree; either may
+    // be omitted. Both are checked against the allowlist before anything
+    // else (policy or discovery), so a disallowed namespace never reaches
+    // the API server.
+    let manifest_ns = manifest["metadata"]["namespace"]
+        .as_str()
+        .map(str::to_string);
+    if let (Some(ns), Some(found)) = (namespace, manifest_ns.as_deref()) {
+        if ns != found {
+            return Err(format!(
+                "manifest metadata.namespace {found:?} does not match the namespace argument {ns:?}"
+            ));
+        }
+    }
+    let namespace = namespace.map(str::to_string).or(manifest_ns);
+    if let Some(ns) = &namespace {
+        if !client.is_namespace_allowed(ns) {
+            return Err(format!("Namespace '{ns}' is not in the allowed list"));
+        }
+    }
+
     let group = group_of(&api_version).to_string();
     let policy = client.policy();
     let guarded = origin != AdmissionOrigin::ApplyManifest;
 
     if guarded {
         policy_error(check_object(policy, manifest, Source::Manifest))?;
-    }
-
-    if let Some(ns) = &namespace {
-        if !client.is_namespace_allowed(ns) {
-            return Err(format!("Namespace '{ns}' is not in the allowed list"));
-        }
     }
 
     let (group_name, version) = match api_version.split_once('/') {
@@ -117,10 +127,17 @@ pub(crate) async fn admit_manifest(
         .map_err(|e| format!("Failed to discover resource {kind} ({api_version}): {e}"))?;
 
     let api: Api<DynamicObject> = match (caps.scope, namespace.as_deref()) {
-        (Scope::Namespaced, Some(ns)) => Api::namespaced_with(client.inner().clone(), ns, &ar),
+        (Scope::Namespaced, Some(ns)) => {
+            // Write the target namespace into the object when only the
+            // argument named it, so the body matches the request path.
+            if manifest["metadata"]["namespace"].is_null() && manifest["metadata"].is_object() {
+                manifest["metadata"]["namespace"] = Value::String(ns.to_string());
+            }
+            Api::namespaced_with(client.inner().clone(), ns, &ar)
+        }
         (Scope::Namespaced, None) => {
             return Err(format!(
-                "Resource {kind} is namespaced but no namespace was provided in the manifest"
+                "Resource {kind} is namespaced but no namespace was provided (set metadata.namespace or the namespace argument)"
             ));
         }
         (Scope::Cluster, _) => {
@@ -216,6 +233,9 @@ pub(crate) async fn bound_role_violations(
         }
         "Role" => {
             let ns = binding_namespace.ok_or("a binding to a Role needs a namespace")?;
+            if !client.is_namespace_allowed(ns) {
+                return Err(format!("Namespace '{ns}' is not in the allowed list"));
+            }
             let api: Api<k8s_openapi::api::rbac::v1::Role> =
                 Api::namespaced(client.inner().clone(), ns);
             api.get_opt(name)

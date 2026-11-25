@@ -94,7 +94,7 @@ docker run --rm \
   ghcr.io/alexconrey/mcp-k8s:latest
 ```
 
-When `AUTH_TOKEN` is set, all requests to `/mcp` and `/mcp/sse` must include an `Authorization: Bearer my-secret-token` header. The `/healthz`, `/metrics`, `/swagger-ui`, and `/openapi.json` endpoints remain unauthenticated.
+When `AUTH_TOKEN` is set, all requests to `/mcp` and `/mcp/sse` must include an `Authorization: Bearer my-secret-token` header. The `/healthz`, `/metrics`, `/swagger-ui`, and `/openapi.json` endpoints remain unauthenticated. To keep the token out of the container's environment, mount it as a file and pass `AUTH_TOKEN_FILE=/path/to/token`. Set `MCP_K8S_ALLOWED_HOSTS` to the host names clients use (see [Configuration](../getting-started/configuration.md#browser-and-dns-rebinding-protection)).
 
 ### TLS / HTTPS
 
@@ -157,9 +157,14 @@ docker run --rm \
 | `DISABLE_DELETE` | Disable all delete operations | `false` |
 | `MCP_K8S_DISABLE` | Comma-separated resource-action overrides | *(none)* |
 | `AUTH_TOKEN` | Bearer token for HTTP endpoint authentication | *(none)* |
+| `AUTH_TOKEN_FILE` | Read the bearer token from this file | *(none)* |
+| `MCP_K8S_ALLOWED_HOSTS` | Host names the server answers to (DNS-rebinding protection) | loopback names on a loopback listen address, otherwise any |
+| `MCP_K8S_CORS_ALLOWED_ORIGINS` | Origins browser-based clients may call from (CORS) | *(none)* |
+| `MCP_K8S_MAX_REQUEST_BYTES` | Maximum request body size | `4194304` |
+| `MCP_K8S_REQUEST_TIMEOUT_SECS` | Request timeout | `360` |
 | `TLS_CERT` | Path to TLS certificate PEM file | *(none)* |
 | `TLS_KEY` | Path to TLS private key PEM file | *(none)* |
-| `DISABLE_SECRET_DECODE` | Prevent secret value decoding | `false` |
+| `ENABLE_SECRET_DECODE` | Let tools return Secret values (redacted otherwise) | `false` |
 | `LOG_FORMAT` | Log output format (`text` or `json`) | `text` |
 | `KUBECONFIG` | Path to kubeconfig file | *(auto-detected)* |
 | `RUST_LOG` | Console log level filter | `info` |

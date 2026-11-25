@@ -27,12 +27,17 @@ kube = { version = "5", features = ["ws"] }
 k8s-openapi = "0.29"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-util", "net", "sync"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-util", "net", "sync", "time"] }
 thiserror = "2"
 http = "1"
+# approve_csr parses the PKCS#10 request to check the identity it asks for.
+# RustCrypto's x509-cert (pure Rust; der/spki/const-oid, no crypto) without its
+# `pem` feature: `pem` is already in the graph through kube-client.
+x509-cert = { version = "0.3", default-features = false }
+pem = "4"
 axum = { version = "0.8", optional = true }
 futures = "0.3"
-tower-http = { version = "0.7", features = ["cors"], optional = true }
+tower-http = { version = "0.7", features = ["cors", "timeout"], optional = true }
 clap = { version = "4", features = ["derive", "env"], optional = true }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"], optional = true }

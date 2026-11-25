@@ -3,6 +3,7 @@ use kube::api::{ListParams, Patch, PatchParams};
 use serde::Serialize;
 
 use crate::client::K8sClient;
+use crate::policy;
 
 fn api(client: &K8sClient) -> kube::Api<CertificateSigningRequest> {
     kube::Api::all(client.inner().clone())
@@ -72,7 +73,7 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
         }),
         serde_json::json!({
             "name": "get_csr",
-            "description": "Get a CertificateSigningRequest by name. Returns detailed info including conditions, usages, labels, and annotations.",
+            "description": "Get a CertificateSigningRequest by name. Returns detailed info including the requested subject (common names = user, organizations = groups), conditions, usages, labels, and annotations.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -84,7 +85,7 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
         }),
         serde_json::json!({
             "name": "approve_csr",
-            "description": "Approve a pending CertificateSigningRequest by adding an Approved condition.",
+            "description": "Approve a pending CertificateSigningRequest by adding an Approved condition. The requested identity is checked first: requests for group system:masters or any other system: user or group (nodes, control-plane components, service accounts, anonymous), and requests that can't be parsed, are refused unless the operator allows privileged CSRs. Check the subject with get_csr before approving.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -166,6 +167,10 @@ async fn get_csr(client: &K8sClient, args: &serde_json::Value) -> Result<String,
         .unwrap_or_default();
 
     let usages: Vec<String> = spec.usages.clone().unwrap_or_default();
+    let subject = match policy::parse_csr_identity(&spec.request.0) {
+        Ok(identity) => serde_json::to_value(identity).map_err(|e| e.to_string())?,
+        Err(e) => serde_json::json!({ "error": e }),
+    };
 
     let result = serde_json::json!({
         "name": summary.name,
@@ -173,6 +178,8 @@ async fn get_csr(client: &K8sClient, args: &serde_json::Value) -> Result<String,
         "requestor": summary.requestor,
         "status": summary.status,
         "created_at": summary.created_at,
+        "subject": subject,
+        "requestor_groups": spec.groups.clone().unwrap_or_default(),
         "conditions": conditions,
         "usages": usages,
         "labels": meta.labels.clone().unwrap_or_default(),
@@ -197,8 +204,12 @@ async fn approve_csr(client: &K8sClient, args: &serde_json::Value) -> Result<Str
     if current_status != "Pending" {
         return Err(format!("CSR '{name}' is already {current_status}"));
     }
+    check_approval(client.policy(), &csr)?;
 
+    // The resourceVersion precondition approves exactly the CSR that was
+    // checked, not one deleted and recreated under the same name since.
     let patch = serde_json::json!({
+        "metadata": { "resourceVersion": csr.metadata.resource_version },
         "status": {
             "conditions": [{
                 "type": "Approved",
@@ -217,6 +228,17 @@ async fn approve_csr(client: &K8sClient, args: &serde_json::Value) -> Result<Str
     let updated = csr_api.get(name).await.map_err(|e| e.to_string())?;
     let summary = extract_summary(&updated);
     serde_json::to_string_pretty(&summary).map_err(|e| e.to_string())
+}
+
+/// Refuse to approve a CSR for a privileged identity (see
+/// [`policy::check_csr`]). Records the denial in the tool call's telemetry.
+fn check_approval(
+    policy: &policy::WorkloadPolicy,
+    csr: &CertificateSigningRequest,
+) -> Result<(), String> {
+    let mut violations = Vec::new();
+    policy::check_csr(policy, csr, &mut violations);
+    policy::into_result(violations).map_err(|e| e.to_string())
 }
 
 async fn deny_csr(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {

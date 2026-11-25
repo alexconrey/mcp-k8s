@@ -1225,6 +1225,10 @@ async fn canary_no_argument_value_reaches_telemetry() {
         }
         if name == "apply_manifest" {
             for path in manifest_target {
+                // An explicit `namespace` argument wins over the manifest's.
+                if path == "manifest.metadata.namespace" && args.get("namespace").is_some() {
+                    continue;
+                }
                 let marker = &canaries
                     .by_marker
                     .iter()
