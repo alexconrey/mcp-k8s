@@ -33,6 +33,9 @@ release workflow refuses a tag that doesn't match `Cargo.toml`,
     refuse namespaces outside the allowlist.
   - The custom resource tools ran API discovery before refusing a disallowed
     namespace; they now refuse before any request.
+- Bumped `kube` to 5.2.0 (lockfile only) for RUSTSEC-2026-0600, which
+  `cargo deny` reports against kube-client 5.1.0. mcp-k8s uses `rustls-tls`,
+  not the affected `openssl-tls` connector.
 - New `tests/namespace_allowlist.rs` calls every tool that takes a namespace
   with one outside the allowlist and requires a refusal before any API
   request, and fails for a new tool without a namespace argument unless it
