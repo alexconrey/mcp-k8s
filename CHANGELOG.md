@@ -29,7 +29,10 @@ release workflow refuses a tag that doesn't match `Cargo.toml`,
 - `--auth-token-file` (`AUTH_TOKEN_FILE`) reads the token from a file, so it
   stays out of `ps`. An empty token is a startup error. The server warns at
   startup when it serves HTTP without a token on a non-loopback address.
-
+- kube 5.1.0 → 5.2.0 (RUSTSEC-2026-0600: kube-client's OpenSSL connector
+  trusted the system certificate store in addition to the kubeconfig CA).
+  mcp-k8s uses the rustls connector, so it wasn't affected, but the advisory
+  was flagged on every build.
 
 ## [0.6.0] - 2026-11-24
 
