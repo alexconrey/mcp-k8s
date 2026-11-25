@@ -1,6 +1,6 @@
 # Tools Overview
 
-mcp-k8s exposes 211 tools (including one deprecated alias) covering every GA Kubernetes resource type plus CRDs, multi-cluster management, and resource watching. Each tool corresponds to a specific Kubernetes API operation. The typed create/update tools are preferred over `apply_manifest`; see [Typed Tool Coverage](./coverage.md). Every write tool enforces the [workload guardrails](../permissions.md#workload-guardrails). Tools are categorized by action type:
+mcp-k8s exposes 210 tools covering every GA Kubernetes resource type plus CRDs, multi-cluster management, and resource watching. Each tool corresponds to a specific Kubernetes API operation. The typed create/update tools are preferred over `apply_manifest`; see [Typed Tool Coverage](./coverage.md). Every write tool enforces the [workload guardrails](../permissions.md#workload-guardrails). Tools are categorized by action type:
 
 - **Read** -- List, get, and inspect resources. Always available regardless of permission configuration.
 - **Create** -- Create new resources. Disabled by `--disable-create`.
@@ -279,6 +279,5 @@ See [Cluster Resources](./cluster.md) for full parameter details.
 |------|--------|-------------|
 | `apply_manifest` | Create | Raw server-side apply of a JSON manifest, without the workload guardrails. Off unless `--enable-apply-manifest`; clients confirm each call with the user |
 | `get_resource_json` | Read | Get any resource as JSON via API discovery |
-| `get_resource_yaml` | Read | Deprecated alias for `get_resource_json` (returns JSON) |
 
 See [Generic Tools](./generic.md) for full parameter details.

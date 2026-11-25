@@ -23,6 +23,8 @@
 
 # Operations
 
+- [Security](./security.md)
+- [Releases and Compatibility](./releases.md)
 - [Permissions](./permissions.md)
 - [Telemetry](./telemetry.md)
 - [Docker](./deployment/docker.md)

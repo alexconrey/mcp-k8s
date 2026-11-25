@@ -112,6 +112,3 @@ Get any Kubernetes resource as JSON, the object as the API server returns it. Ac
 - `get_resource_json` is classified as a **read** action and is always available regardless of permission configuration.
 - This tool returns the full Kubernetes object, unlike the typed tools which return focused summaries. Use it when you need complete object details or when working with resource types that do not have dedicated tools.
 
-### `get_resource_yaml` (deprecated)
-
-`get_resource_yaml` is a **deprecated alias** for `get_resource_json`. It takes the same arguments and returns the same **JSON**; despite its name it never returned YAML. It remains for compatibility in 0.4.x and will be removed in the next minor release. Switch to `get_resource_json`.

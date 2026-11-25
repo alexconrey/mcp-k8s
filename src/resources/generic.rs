@@ -76,11 +76,6 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
             "description": "Get any Kubernetes resource as JSON, the object as the API server returns it. Accepts apiVersion, kind, name, and optional namespace. Uses API discovery to resolve the resource type. Use it to inspect an object before changing it with a typed update_* tool; convert it to YAML yourself if a person needs YAML.",
             "inputSchema": resource_ref_schema()
         }),
-        serde_json::json!({
-            "name": "get_resource_yaml",
-            "description": "Deprecated alias for get_resource_json, kept for compatibility. It returns JSON, not YAML. Use get_resource_json instead; this alias will be removed in the next minor release.",
-            "inputSchema": resource_ref_schema()
-        }),
     ]
 }
 
@@ -91,8 +86,7 @@ pub async fn handle_tool(
 ) -> Option<Result<String, String>> {
     let result = match name {
         "apply_manifest" => apply_manifest(client, args).await,
-        // get_resource_yaml is a deprecated alias: the output has always been JSON.
-        "get_resource_json" | "get_resource_yaml" => get_resource_json(client, args).await,
+        "get_resource_json" => get_resource_json(client, args).await,
         _ => return None,
     };
     Some(result)
@@ -106,7 +100,7 @@ async fn apply_manifest(client: &K8sClient, args: &serde_json::Value) -> Result<
     };
     // Refuse a disallowed namespace argument before even parsing the manifest.
     if let Some(ns) = namespace {
-        if !client.is_namespace_allowed(ns) {
+        if !client.namespace_permitted(ns) {
             return Err(format!("Namespace '{ns}' is not in the allowed list"));
         }
     }
@@ -161,7 +155,7 @@ async fn get_resource_json(client: &K8sClient, args: &serde_json::Value) -> Resu
 
     // Check namespace access if present
     if let Some(ns) = namespace {
-        if !client.is_namespace_allowed(ns) {
+        if !client.namespace_permitted(ns) {
             return Err(format!("Namespace '{ns}' is not in the allowed list"));
         }
     }
@@ -204,9 +198,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn tool_definitions_returns_three_tools() {
+    fn tool_definitions_returns_two_tools() {
         let defs = tool_definitions();
-        assert_eq!(defs.len(), 3);
+        assert_eq!(defs.len(), 2);
 
         let names: Vec<&str> = defs.iter().map(|d| d["name"].as_str().unwrap()).collect();
 
@@ -217,7 +211,8 @@ mod tests {
 
         assert!(names.contains(&"apply_manifest"));
         assert!(names.contains(&"get_resource_json"));
-        assert!(names.contains(&"get_resource_yaml"));
+        // The deprecated get_resource_yaml alias was removed in 0.7.0.
+        assert!(!names.contains(&"get_resource_yaml"));
     }
 
     #[test]
@@ -271,42 +266,6 @@ mod tests {
 
         let props = schema["properties"].as_object().unwrap();
         assert!(props.contains_key("manifest"));
-    }
-
-    #[test]
-    fn get_resource_yaml_tool_schema() {
-        let defs = tool_definitions();
-        let get = defs
-            .iter()
-            .find(|d| d["name"] == "get_resource_yaml")
-            .expect("get_resource_yaml tool must exist");
-
-        let schema = &get["inputSchema"];
-        let required = schema["required"].as_array().unwrap();
-        assert_eq!(required.len(), 3);
-        assert!(required.contains(&serde_json::json!("api_version")));
-        assert!(required.contains(&serde_json::json!("kind")));
-        assert!(required.contains(&serde_json::json!("name")));
-
-        let props = schema["properties"].as_object().unwrap();
-        assert!(props.contains_key("api_version"));
-        assert!(props.contains_key("kind"));
-        assert!(props.contains_key("name"));
-        assert!(props.contains_key("namespace"));
-    }
-
-    #[test]
-    fn get_resource_yaml_is_a_documented_deprecated_alias() {
-        let defs = tool_definitions();
-        let def = |name: &str| defs.iter().find(|d| d["name"] == name).cloned().unwrap();
-        let json = def("get_resource_json");
-        let yaml = def("get_resource_yaml");
-        // Same arguments, so callers can switch names without other changes.
-        assert_eq!(json["inputSchema"], yaml["inputSchema"]);
-        let desc = yaml["description"].as_str().unwrap();
-        assert!(desc.starts_with("Deprecated"), "{desc}");
-        assert!(desc.contains("get_resource_json"), "{desc}");
-        assert!(desc.contains("returns JSON"), "{desc}");
     }
 
     #[test]

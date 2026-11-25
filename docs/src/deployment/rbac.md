@@ -288,8 +288,9 @@ The recommended starting point. Use it with
 does both). The self-review `create` rules keep `whoami`, `can_i` and
 `list_my_permissions` working; every authenticated user has those already.
 
-`port_forward_check` is a read tool but needs `pods/portforward`, which this
-role leaves out (it opens a connection into any pod), so it returns 403.
+`port_forward_check` needs `pods/portforward` (it opens a connection into
+the pod), which this role leaves out. Since v0.7.0 it counts as an update,
+so read-only mode removes it from the tool list rather than letting it fail.
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1

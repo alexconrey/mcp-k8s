@@ -126,7 +126,7 @@ pub async fn handle_tool(
 async fn get_namespace(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let name = args["name"].as_str().ok_or("name is required")?;
 
-    if !client.is_namespace_allowed(name) {
+    if !client.namespace_permitted(name) {
         return Err(format!("Namespace '{name}' is not in the allowed list"));
     }
 
@@ -139,7 +139,7 @@ async fn get_namespace(client: &K8sClient, args: &serde_json::Value) -> Result<S
 async fn create_namespace(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let name = args["name"].as_str().ok_or("name is required")?;
 
-    if !client.is_namespace_allowed(name) {
+    if !client.namespace_permitted(name) {
         return Err(format!("Namespace '{name}' is not in the allowed list"));
     }
 
@@ -175,7 +175,7 @@ async fn create_namespace(client: &K8sClient, args: &serde_json::Value) -> Resul
 async fn update_namespace(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let name = args["name"].as_str().ok_or("name is required")?;
 
-    if !client.is_namespace_allowed(name) {
+    if !client.namespace_permitted(name) {
         return Err(format!("Namespace '{name}' is not in the allowed list"));
     }
 
@@ -213,7 +213,7 @@ async fn update_namespace(client: &K8sClient, args: &serde_json::Value) -> Resul
 async fn delete_namespace(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let name = args["name"].as_str().ok_or("name is required")?;
 
-    if !client.is_namespace_allowed(name) {
+    if !client.namespace_permitted(name) {
         return Err(format!("Namespace '{name}' is not in the allowed list"));
     }
 

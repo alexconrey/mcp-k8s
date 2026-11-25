@@ -8,6 +8,9 @@ use crate::error::Error;
 use crate::permissions::ActionPermissions;
 use crate::policy::WorkloadPolicy;
 
+/// `mcp_k8s.denied_rule` for a call refused by the namespace allowlist.
+pub const NAMESPACE_ALLOWLIST_RULE: &str = "namespace_allowlist";
+
 #[derive(Clone)]
 pub struct K8sClient {
     client: kube::Client,
@@ -55,6 +58,18 @@ impl K8sClient {
         self.allowed_namespaces.is_empty() || self.allowed_namespaces.iter().any(|n| n == ns)
     }
 
+    /// [`Self::is_namespace_allowed`] for a tool that refuses the call when the
+    /// namespace is outside the allowlist: a refusal is also recorded as a
+    /// denial (`mcp_k8s.denied_rule=namespace_allowlist`) on the running tool
+    /// call's telemetry. Use `is_namespace_allowed` for filtering.
+    pub fn namespace_permitted(&self, ns: &str) -> bool {
+        let allowed = self.is_namespace_allowed(ns);
+        if !allowed {
+            crate::telemetry::record_denial(NAMESPACE_ALLOWLIST_RULE);
+        }
+        allowed
+    }
+
     /// Whether the server is restricted to a namespace allowlist. Tools that
     /// would otherwise act across all namespaces (an omitted `namespace` on a
     /// namespaced kind) must refuse when this is `true`.
@@ -71,7 +86,7 @@ impl K8sClient {
     }
 
     fn check_namespace(&self, ns: &str) -> Result<(), Error> {
-        if !self.is_namespace_allowed(ns) {
+        if !self.namespace_permitted(ns) {
             return Err(Error::NamespaceNotAllowed(ns.to_string()));
         }
         Ok(())

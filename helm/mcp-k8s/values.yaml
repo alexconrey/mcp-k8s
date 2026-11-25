@@ -29,9 +29,26 @@ permissions:
   # Deprecated: apply_manifest is off by default. Still honoured, and wins
   # over enableApplyManifest.
   disableApplyManifest: false
-  # Secret value decoding (get_secret with decode: true) is becoming opt-in
-  # (--enable-secret-decode); its chart value arrives with that change. See
-  # rbac.secrets for the matching RBAC.
+  # Let tools return Secret values (get_secret with decode: true, and Secret
+  # data in get_resource_json). Off by default: values are redacted everywhere
+  # and only keys are shown. See rbac.secrets for the matching RBAC.
+  enableSecretDecode: false
+
+# HTTP server protections (see docs/src/getting-started/configuration.md).
+http:
+  # Bearer token for the MCP endpoint, read from an existing Secret and mounted
+  # as a file (AUTH_TOKEN_FILE), so it never appears in the pod spec or `ps`.
+  # Without it the API is unauthenticated (the server logs a warning).
+  auth:
+    existingSecret: ""
+    key: token
+  # Host names clients use to reach the server (DNS-rebinding protection), e.g.
+  # ["mcp-k8s.mcp.svc", "mcp.example.com"]. Requests for other hosts get 403
+  # (/healthz is exempt for probes). Empty: any host, with a startup warning.
+  allowedHosts: []
+  # Origins browser-based MCP clients may call from (CORS). Empty: no CORS, and
+  # cross-site browser requests get 403. MCP clients and curl aren't affected.
+  corsAllowedOrigins: []
 
 # Extra environment variables for the mcp-k8s container, e.g. to relax a
 # workload guardrail (see docs/src/permissions.md):

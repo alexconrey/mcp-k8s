@@ -13,7 +13,7 @@ use crate::policy::{PatchKind, Source};
 use crate::resources::podspec::{self, WorkloadKind};
 
 fn api(client: &K8sClient, ns: &str) -> Result<kube::Api<DaemonSet>, String> {
-    if !client.is_namespace_allowed(ns) {
+    if !client.namespace_permitted(ns) {
         return Err(format!("Namespace '{ns}' is not in the allowed list"));
     }
     Ok(kube::Api::namespaced(client.inner().clone(), ns))

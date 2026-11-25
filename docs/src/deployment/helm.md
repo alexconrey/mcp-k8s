@@ -120,7 +120,7 @@ the tool behind each one, are on the [RBAC Setup](rbac.md) page.
 |-----|---------|-------------|
 | `rbac.create` | `true` | Create RBAC resources |
 | `rbac.clusterWide` | `true` | `true`: a ClusterRole and ClusterRoleBinding. `false`: a Role and RoleBinding in each namespace of `namespaces` (the release namespace when empty), without cluster-scoped resources |
-| `rbac.readOnly` | `false` | **Recommended starting point.** Grant only get/list/watch (plus the self-review creates `whoami`/`can_i` use) and set `DISABLE_CREATE`/`DISABLE_UPDATE`/`DISABLE_DELETE`, so `tools/list` matches. `port_forward_check` returns 403 |
+| `rbac.readOnly` | `false` | **Recommended starting point.** Grant only get/list/watch (plus the self-review creates `whoami`/`can_i` use) and set `DISABLE_CREATE`/`DISABLE_UPDATE`/`DISABLE_DELETE`, so `tools/list` matches. |
 | `rbac.secrets` | `true` | Grant access to Secrets. RBAC can't grant "keys only", so any read access lets the pod's token read secret values even while the server redacts them. `false` leaves Secrets out and hides the secret write tools |
 | `rbac.csrSigners` | `[]` | Signer names `approve_csr`/`deny_csr` may act for (`approve` on `certificates.k8s.io/signers`). Kubernetes refuses approvals without it |
 | `rbac.extraRules` | `[]` | More rules, e.g. for custom resources the custom resource tools or `watch_resource` should reach |

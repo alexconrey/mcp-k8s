@@ -81,7 +81,7 @@ async fn watch_resource(client: &K8sClient, args: &serde_json::Value) -> Result<
 
     // Check namespace access if present
     if let Some(ns) = namespace {
-        if !client.is_namespace_allowed(ns) {
+        if !client.namespace_permitted(ns) {
             return Err(format!("Namespace '{ns}' is not in the allowed list"));
         }
     }

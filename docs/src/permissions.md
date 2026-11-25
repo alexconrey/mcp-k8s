@@ -15,7 +15,7 @@ Every tool is classified into one of four CRUD actions:
 
 | Action | Tool Prefixes | Examples |
 |--------|--------------|----------|
-| **Read** | `list_`, `get_`, `*_logs`, `*_metrics`, `can_i`, `whoami`, `list_my_permissions`, `get_resource_json` (and its deprecated alias `get_resource_yaml`) | `list_deployments`, `get_pod_logs`, `get_metrics` |
+| **Read** | `list_`, `get_`, `*_logs`, `*_metrics`, `can_i`, `whoami`, `list_my_permissions`, `get_resource_json` | `list_deployments`, `get_pod_logs`, `get_metrics` |
 | **Create** | `create_`, `apply_manifest` | `create_deployment`, `create_pod`, `apply_manifest` |
 | **Update** | `update_`, `exec_`, `scale_`, `restart_`, `rollback_`, `approve_`, `deny_`, `cordon_`, `uncordon_`, `drain_` | `update_deployment`, `exec_pod`, `scale_deployment`, `cordon_node` |
 | **Delete** | `delete_`, `evict_` | `delete_pod`, `evict_pod` |

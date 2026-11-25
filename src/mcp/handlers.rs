@@ -418,7 +418,7 @@ async fn get_metrics(client: &K8sClient, args: &serde_json::Value) -> Result<Str
     let ns = args["namespace"].as_str().ok_or("namespace is required")?;
     let label_selector = args["label_selector"].as_str();
 
-    if !client.is_namespace_allowed(ns) {
+    if !client.namespace_permitted(ns) {
         return Err(format!("Namespace '{ns}' is not in the allowed list"));
     }
 
