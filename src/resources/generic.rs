@@ -61,6 +61,10 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
                     "manifest": {
                         "type": "string",
                         "description": "The Kubernetes manifest as a JSON string (YAML is not accepted)"
+                    },
+                    "namespace": {
+                        "type": "string",
+                        "description": "Target namespace for a namespaced kind. Fills metadata.namespace when the manifest has none; if both are set they must match. Subject to the namespace allowlist."
                     }
                 },
                 "required": ["manifest"],
@@ -96,6 +100,16 @@ pub async fn handle_tool(
 
 async fn apply_manifest(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let manifest_str = args["manifest"].as_str().ok_or("manifest is required")?;
+    let namespace = match args.get("namespace") {
+        None | Some(serde_json::Value::Null) => None,
+        Some(v) => Some(v.as_str().ok_or("namespace must be a string")?),
+    };
+    // Refuse a disallowed namespace argument before even parsing the manifest.
+    if let Some(ns) = namespace {
+        if !client.is_namespace_allowed(ns) {
+            return Err(format!("Namespace '{ns}' is not in the allowed list"));
+        }
+    }
 
     // Parse the manifest string as JSON. If the input is YAML (not JSON),
     // this will fail with a clear error message.
@@ -110,12 +124,13 @@ async fn apply_manifest(client: &K8sClient, args: &serde_json::Value) -> Result<
     }
 
     // No workload policy (on purpose; see admit_manifest): only the namespace
-    // allowlist and the create/update switches. Resolves the target API.
+    // allowlist (argument and metadata.namespace, which must agree) and the
+    // create/update switches. Resolves the target API.
     let target = crate::policy::admit_manifest(
         client,
         &mut manifest,
         crate::policy::AdmissionOrigin::ApplyManifest,
-        None,
+        namespace,
     )
     .await?;
 

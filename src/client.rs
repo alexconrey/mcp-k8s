@@ -55,6 +55,21 @@ impl K8sClient {
         self.allowed_namespaces.is_empty() || self.allowed_namespaces.iter().any(|n| n == ns)
     }
 
+    /// Whether the server is restricted to a namespace allowlist. Tools that
+    /// would otherwise act across all namespaces (an omitted `namespace` on a
+    /// namespaced kind) must refuse when this is `true`.
+    pub fn has_namespace_allowlist(&self) -> bool {
+        !self.allowed_namespaces.is_empty()
+    }
+
+    /// The error tools return when a namespace is required because of the
+    /// allowlist (an omitted namespace would mean "every namespace").
+    pub fn namespace_required_error(&self) -> String {
+        "namespace is required: this server is restricted to a namespace allowlist, so \
+         omitting the namespace (all namespaces) is not allowed"
+            .to_string()
+    }
+
     fn check_namespace(&self, ns: &str) -> Result<(), Error> {
         if !self.is_namespace_allowed(ns) {
             return Err(Error::NamespaceNotAllowed(ns.to_string()));

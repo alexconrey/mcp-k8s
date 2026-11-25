@@ -353,6 +353,16 @@ Rules:
   manager) doesn't handle.
 - Every namespaced tool must check the namespace allowlist and
   `ActionPermissions`. New tools need tests that prove both.
+  `tests/namespace_allowlist.rs` calls every tool with a `namespace`
+  argument with a disallowed namespace and requires a refusal before any
+  API request; a tool without one fails it until it's added to an exemption
+  list with a reason. Check the allowlist before discovery, policy or
+  lookups (e.g. a binding's role). Under an allowlist an omitted namespace
+  must never mean "all namespaces": refuse (`client.namespace_required_error()`).
+- `exec_pod` refuses pods with node-level access (the policy's privileged,
+  host namespace, hostPath, capability and unconfined rules, via
+  `resources::pod::exec_violations`) unless the operator allows them, and
+  has a timeout (default 60s, max 300s) and a 1 MiB per-stream output cap.
 - Every typed write tool and the custom resource tools must run the workload
   policy (see Key Components, "Workload policy"). The custom resource tools
   must never be a way around a rule a typed tool enforces; add a test
@@ -407,7 +417,8 @@ mcp-k8s/
 ├── src/                    # Rust source (lib + bin)
 ├── tests/
 │   ├── integration.rs      # Tower-test mock integration tests (8 tests)
-│   ├── guardrails.rs       # Mock-API guardrail tests for the typed tools; apply_manifest off by default / raw when enabled (27 tests)
+│   ├── guardrails.rs       # Mock-API guardrail tests for the typed tools; apply_manifest off by default / raw when enabled; exec_pod node-access check (34 tests)
+│   ├── namespace_allowlist.rs # Every namespaced tool refuses a namespace outside the allowlist offline; omitted-namespace, namespace-object and drain_node cases (15 tests)
 │   ├── typed_tools.rs      # Mock-API request-body tests for ConfigMap/Secret/PVC/PDB/SA/HPA/RBAC tools (9 tests)
 │   ├── k3s_integration.rs  # Testcontainers k3s tests (13 tests, #[ignore]; k3s v1.35, MCP_K8S_K3S_TAG overrides)
 │   └── k3s_workloads.rs    # k3s tests for the typed tools and guardrails (3 tests, #[ignore])
@@ -469,7 +480,7 @@ CI workflow (build, test, clippy, fmt) runs against them before merge.
 
 ```bash
 cargo build --release       # Build
-cargo test                  # 553 unit + 11 binary (router, telemetry) + 8 integration + 27 guardrail + 9 typed-tool tests
+cargo test                  # 557 unit + 11 binary (router, telemetry) + 8 integration + 34 guardrail + 15 namespace-allowlist + 9 typed-tool tests
 cargo test --no-default-features  # Same tests without `server` (what deckwatch compiles)
 cargo test --test k3s_integration -- --ignored --test-threads=2  # 13 k3s tests (needs Docker), as CI runs them
 cargo test --test k3s_workloads -- --ignored --test-threads=1  # k3s typed-tool and guardrail tests, as CI runs them
