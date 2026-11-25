@@ -36,7 +36,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-aca6ae64.js";
+            window.path_to_searchindex_js = "../searchindex-8fbf85c4.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-5b34cd39.js"></script>
@@ -189,6 +189,12 @@
 <pre><code class="language-bash">git clone https://github.com/alexconrey/mcp-k8s.git
 cd mcp-k8s
 </code></pre>
+<h3 id="install-read-only-recommended-starting-point"><a class="header" href="#install-read-only-recommended-starting-point">Install read-only (recommended starting point)</a></h3>
+<pre><code class="language-bash">helm install mcp-k8s ./helm/mcp-k8s -n mcp-k8s --create-namespace \
+  --set rbac.readOnly=true
+</code></pre>
+<p>The ServiceAccount gets only get/list/watch, and the server hides every write
+tool. See <a href="#rbac">RBAC</a> and <a href="rbac.html">RBAC Setup</a>.</p>
 <h3 id="install-with-default-values"><a class="header" href="#install-with-default-values">Install with default values</a></h3>
 <pre><code class="language-bash">helm install mcp-k8s ./helm/mcp-k8s -n mcp-k8s --create-namespace
 </code></pre>
@@ -282,7 +288,27 @@ cd mcp-k8s
 </tbody>
 </table>
 </div>
+<p>The server is a small static binary and idles at around 20Mi. Raise memory if
+you list very large collections or enable the response cache.</p>
+<h3 id="security-context"><a class="header" href="#security-context">Security context</a></h3>
+<p>The image is a <code>scratch</code> image holding one static binary that runs as user
+65534 and never writes to disk, so the defaults follow the Kubernetes
+“restricted” Pod Security Standard. The ServiceAccount token stays mounted
+(<code>automountServiceAccountToken: true</code>): the server needs it to call the API.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>podSecurityContext</code></td><td><code>runAsNonRoot: true</code>, <code>runAsUser</code>/<code>runAsGroup: 65534</code>, <code>seccompProfile: RuntimeDefault</code></td><td>Pod-level <code>securityContext</code>. Replaces the default as a whole when set</td></tr>
+<tr><td><code>securityContext</code></td><td>the same, plus <code>allowPrivilegeEscalation: false</code>, <code>readOnlyRootFilesystem: true</code>, <code>capabilities.drop: [ALL]</code></td><td>Container-level <code>securityContext</code></td></tr>
+</tbody>
+</table>
+</div>
 <h3 id="rbac"><a class="header" href="#rbac">RBAC</a></h3>
+<p>The chart grants only what the tools need, without wildcards. The rules, and
+the tool behind each one, are on the <a href="rbac.html">RBAC Setup</a> page.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -290,10 +316,18 @@ cd mcp-k8s
 </thead>
 <tbody>
 <tr><td><code>rbac.create</code></td><td><code>true</code></td><td>Create RBAC resources</td></tr>
-<tr><td><code>rbac.clusterWide</code></td><td><code>true</code></td><td>If true, creates ClusterRole/ClusterRoleBinding. If false, creates namespaced Role/RoleBinding.</td></tr>
+<tr><td><code>rbac.clusterWide</code></td><td><code>true</code></td><td><code>true</code>: a ClusterRole and ClusterRoleBinding. <code>false</code>: a Role and RoleBinding in each namespace of <code>namespaces</code> (the release namespace when empty), without cluster-scoped resources</td></tr>
+<tr><td><code>rbac.readOnly</code></td><td><code>false</code></td><td><strong>Recommended starting point.</strong> Grant only get/list/watch (plus the self-review creates <code>whoami</code>/<code>can_i</code> use) and set <code>DISABLE_CREATE</code>/<code>DISABLE_UPDATE</code>/<code>DISABLE_DELETE</code>, so <code>tools/list</code> matches. <code>port_forward_check</code> returns 403</td></tr>
+<tr><td><code>rbac.secrets</code></td><td><code>true</code></td><td>Grant access to Secrets. RBAC can’t grant “keys only”, so any read access lets the pod’s token read secret values even while the server redacts them. <code>false</code> leaves Secrets out and hides the secret write tools</td></tr>
+<tr><td><code>rbac.csrSigners</code></td><td><code>[]</code></td><td>Signer names <code>approve_csr</code>/<code>deny_csr</code> may act for (<code>approve</code> on <code>certificates.k8s.io/signers</code>). Kubernetes refuses approvals without it</td></tr>
+<tr><td><code>rbac.extraRules</code></td><td><code>[]</code></td><td>More rules, e.g. for custom resources the custom resource tools or <code>watch_resource</code> should reach</td></tr>
+<tr><td><code>rbac.allowWildcards</code></td><td><code>false</code></td><td>Allow <code>"*"</code> in <code>extraRules</code> (rendering fails otherwise)</td></tr>
 </tbody>
 </table>
 </div>
+<p>Secret value decoding is becoming opt-in on the server (<code>--enable-secret-decode</code>);
+its chart value arrives with that change. If you leave decoding off, consider
+whether the secret tools are needed at all, and set <code>rbac.secrets: false</code> if not.</p>
 <h3 id="serviceaccount"><a class="header" href="#serviceaccount">ServiceAccount</a></h3>
 <div class="table-wrapper">
 <table>
@@ -350,19 +384,37 @@ cd mcp-k8s
 </div>
 <p>When autoscaling is enabled, the HPA manages the replica count instead of <code>replicaCount</code>.</p>
 <h3 id="networkpolicy"><a class="header" href="#networkpolicy">NetworkPolicy</a></h3>
+<p>Off by default. When enabled, the pod gets a default-deny policy for ingress
+and (unless <code>egress.enabled</code> is false) egress, with these exceptions:</p>
+<ul>
+<li><strong>Ingress</strong>: the MCP port only (the container’s <code>http</code> port), from the
+sources below. With no sources set, the MCP port is open to any source.</li>
+<li><strong>Egress</strong>: the Kubernetes API server, cluster DNS and, when <code>otel.endpoint</code>
+is set, the OTLP collector (port taken from the endpoint, default 4318).</li>
+</ul>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Key</th><th>Default</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>networkPolicy.enabled</code></td><td><code>false</code></td><td>Create a NetworkPolicy restricting ingress to mcp-k8s pods</td></tr>
-<tr><td><code>networkPolicy.allowedCIDRs</code></td><td><code>[]</code></td><td>List of CIDR blocks allowed to reach the service port</td></tr>
-<tr><td><code>networkPolicy.allowedNamespaces</code></td><td><code>[]</code></td><td>List of namespace names whose pods are allowed to reach the service port</td></tr>
+<tr><td><code>networkPolicy.enabled</code></td><td><code>false</code></td><td>Create the NetworkPolicy</td></tr>
+<tr><td><code>networkPolicy.allowedCIDRs</code></td><td><code>[]</code></td><td>CIDR blocks allowed to reach the MCP port</td></tr>
+<tr><td><code>networkPolicy.allowedNamespaces</code></td><td><code>[]</code></td><td>Namespaces (by name) whose pods may reach the MCP port</td></tr>
+<tr><td><code>networkPolicy.extraIngressFrom</code></td><td><code>[]</code></td><td>More ingress peers (<code>podSelector</code>/<code>namespaceSelector</code>/<code>ipBlock</code>)</td></tr>
+<tr><td><code>networkPolicy.egress.enabled</code></td><td><code>true</code></td><td>Restrict egress as well</td></tr>
+<tr><td><code>networkPolicy.egress.apiServer.cidrs</code></td><td><code>[]</code></td><td>The API server’s endpoint addresses (<code>kubectl get endpointslices -n default -l kubernetes.io/service-name=kubernetes</code>). Empty allows the ports to any address</td></tr>
+<tr><td><code>networkPolicy.egress.apiServer.ports</code></td><td><code>[443, 6443]</code></td><td>API server endpoint ports</td></tr>
+<tr><td><code>networkPolicy.egress.dns.enabled</code></td><td><code>true</code></td><td>Allow DNS (UDP/TCP 53)</td></tr>
+<tr><td><code>networkPolicy.egress.dns.to</code></td><td>kube-system pods labelled <code>k8s-app: kube-dns</code></td><td>DNS peers. Add an <code>ipBlock</code> for NodeLocal DNSCache</td></tr>
+<tr><td><code>networkPolicy.egress.otlp.to</code></td><td><code>[]</code></td><td>OTLP collector peers. Empty allows the collector port to any address</td></tr>
+<tr><td><code>networkPolicy.egress.extra</code></td><td><code>[]</code></td><td>More egress rules</td></tr>
 </tbody>
 </table>
 </div>
-<p>When enabled, the NetworkPolicy restricts ingress to the service port (<code>service.port</code>) and only from the specified CIDRs and/or namespaces. If neither <code>allowedCIDRs</code> nor <code>allowedNamespaces</code> is set, all ingress traffic on the service port is allowed.</p>
+<p>Most CNIs evaluate NetworkPolicy after the <code>kubernetes</code> Service’s DNAT, so
+pin the API server with its endpoint IPs and ports (6443 on kubeadm and k3s,
+443 on most managed clusters), not the Service ClusterIP.</p>
 <h3 id="opentelemetry"><a class="header" href="#opentelemetry">OpenTelemetry</a></h3>
 <p>OTLP export of traces, the <code>mcp.server.operation.duration</code> metric and logs
 (see <a href="../telemetry.html">Telemetry</a>). Nothing is exported while <code>otel.endpoint</code>
@@ -395,10 +447,9 @@ is empty.</p>
 <h2 id="example-values-files"><a class="header" href="#example-values-files">Example Values Files</a></h2>
 <h3 id="read-only-deployment"><a class="header" href="#read-only-deployment">Read-only deployment</a></h3>
 <pre><code class="language-yaml"># values-readonly.yaml
-permissions:
-  disableCreate: true
-  disableUpdate: true
-  disableDelete: true
+rbac:
+  readOnly: true   # get/list/watch only, and the server hides write tools
+  secrets: false   # optional: keep Secret values out of the pod's reach
 </code></pre>
 <pre><code class="language-bash">helm install mcp-k8s ./helm/mcp-k8s \
   -n mcp-k8s --create-namespace \
@@ -464,6 +515,9 @@ networkPolicy:
   allowedNamespaces:
     - monitoring
     - ai-agents
+  egress:
+    apiServer:
+      cidrs: ["10.0.0.10/32"]   # the kubernetes endpoint IP(s)
 </code></pre>
 <h3 id="namespace-scoped-deployment"><a class="header" href="#namespace-scoped-deployment">Namespace-scoped deployment</a></h3>
 <pre><code class="language-yaml"># values-namespaced.yaml
