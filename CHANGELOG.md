@@ -12,6 +12,11 @@ release workflow refuses a tag that doesn't match `Cargo.toml`,
 
 ## [Unreleased]
 
+### Internal
+- The k3s tests pin their images by multi-arch index digest: the k3s image
+  (`MCP_K8S_K3S_TAG` still overrides it) and the busybox and pause images k3s
+  pulls for the workloads.
+
 ## [0.6.0] - 2026-11-24
 
 Typed workload tools that cover the pod template, workload guardrails on every
