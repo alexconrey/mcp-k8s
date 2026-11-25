@@ -12,6 +12,25 @@ release workflow refuses a tag that doesn't match `Cargo.toml`,
 
 ## [Unreleased]
 
+### Security
+- **No CORS by default, and cross-site browser requests are refused.** The
+  HTTP server used `CorsLayer::permissive()`, so any web page could call it
+  from a visitor's browser. It now sends no CORS headers unless
+  `--cors-allowed-origins` lists the origin, and a browser-initiated
+  cross-site request that could change state (`Origin`/`Sec-Fetch-Site` from
+  another site) gets 403. MCP clients and curl send neither header.
+- **DNS-rebinding protection** (required by the MCP Streamable HTTP spec):
+  `--allowed-hosts` (`MCP_K8S_ALLOWED_HOSTS`) refuses requests for other
+  `Host` names with 403. On a loopback `--listen` it defaults to
+  `localhost`, `127.0.0.1` and `[::1]`. Otherwise any host is accepted and a
+  warning is logged. `/healthz` is exempt.
+- **Request limits:** `--max-request-bytes` (default 4 MiB, 413) and
+  `--request-timeout-secs` (default 360 s, 408).
+- `--auth-token-file` (`AUTH_TOKEN_FILE`) reads the token from a file, so it
+  stays out of `ps`. An empty token is a startup error. The server warns at
+  startup when it serves HTTP without a token on a non-loopback address.
+
+
 ## [0.6.0] - 2026-11-24
 
 Typed workload tools that cover the pod template, workload guardrails on every
