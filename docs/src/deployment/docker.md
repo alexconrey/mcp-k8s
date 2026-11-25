@@ -203,13 +203,13 @@ Exposed metrics:
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `mcp_requests_total` | Counter | `method` | Total MCP JSON-RPC requests by method |
-| `mcp_k8s_tool_calls_total` | Counter | `tool`, `status` | Total tool calls by tool name. `status` is `ok`, `error` or `denied` (blocked by permissions) |
-| `mcp_k8s_tool_call_duration_seconds` | Histogram | `tool` | Tool call duration in seconds |
+| `mcp_requests_total` | Counter | `method` | Deprecated (removed in v0.8.0). Total MCP JSON-RPC requests by method |
+| `mcp_k8s_tool_calls_total` | Counter | `tool`, `status` | Deprecated (removed in v0.8.0). Total tool calls by tool name. `status` is `ok`, `error` or `denied` (blocked by permissions) |
+| `mcp_k8s_tool_call_duration_seconds` | Histogram | `tool` | Deprecated (removed in v0.8.0). Tool call duration in seconds |
 
-These names will be deprecated in a later release in favour of the
-OpenTelemetry metric `mcp.server.operation.duration`, exported over OTLP (see
-[Telemetry](../telemetry.md#old-metric-names)).
+These names are deprecated since v0.7.0 and will be removed in v0.8.0, in
+favour of the OpenTelemetry metric `mcp.server.operation.duration`, exported
+over OTLP (see [Telemetry](../telemetry.md#old-metric-names)).
 
 ## Health Checks
 

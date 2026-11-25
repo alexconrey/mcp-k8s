@@ -248,11 +248,23 @@ tools are labelled `exec`, the permission action that gates them is
 
 ## Old metric names
 
-The Prometheus counters at `/metrics` are unchanged:
-`mcp_k8s_tool_calls_total{tool,status}`,
+**Deprecated in v0.7.0, removed in v0.8.0.** The Prometheus metrics at
+`/metrics`, `mcp_k8s_tool_calls_total{tool,status}`,
 `mcp_k8s_tool_call_duration_seconds{tool}` (both from the library, also inside
-embedders) and `mcp_requests_total{method}` (binary). They overlap with
+embedders) and `mcp_requests_total{method}` (binary), overlap with
 `mcp.server.operation.duration`, which carries the same information with
-semantic-convention names. A later release will deprecate them in favour of
-the OTel metric and remove them one minor release after that; the changelog
-will say when.
+semantic-convention names. They're still emitted in 0.7.x, and their `# HELP`
+text says they're deprecated. Move dashboards and alerts to the OTel metric
+(export with `OTEL_EXPORTER_OTLP_ENDPOINT`).
+
+## Audit events
+
+Every tool call that writes, deletes or execs, and every denied call, also
+produces an `audit` event on the `tracing` target `mcp_k8s::audit`: the tool,
+action, decision and `mcp_k8s.denied_rule`, outcome and `error.type`, the
+target (cluster, namespace, kind, name, API version) and the argument keys.
+Argument values are never included (see Redaction). The event belongs to the
+request span, so JSON logs and OTLP log records carry the client and trace
+context with it. Route the target to its own sink to keep an audit trail, for
+example with `RUST_LOG=info` and a log pipeline that selects
+`target == "mcp_k8s::audit"`.
