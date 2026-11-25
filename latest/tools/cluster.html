@@ -36,10 +36,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-fb00c07e.js";
+            window.path_to_searchindex_js = "../searchindex-37af0f99.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-8f6ebf8b.js"></script>
+        <script src="../toc-5b34cd39.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -326,6 +326,9 @@
 <tr><td><code>selector</code></td><td>object</td><td>Yes</td><td>Label selector for target pods</td></tr>
 <tr><td><code>min_available</code></td><td>string</td><td>No</td><td>Minimum available pods (number or percentage)</td></tr>
 <tr><td><code>max_unavailable</code></td><td>string</td><td>No</td><td>Maximum unavailable pods (number or percentage)</td></tr>
+<tr><td><code>labels</code></td><td>object</td><td>No</td><td>Labels (<code>app.kubernetes.io/managed-by: mcp-k8s</code> is added)</td></tr>
+<tr><td><code>annotations</code></td><td>object</td><td>No</td><td>Annotations</td></tr>
+<tr><td><code>unhealthy_pod_eviction_policy</code></td><td>string</td><td>No</td><td><code>IfHealthyBudget</code> or <code>AlwaysAllow</code></td></tr>
 </tbody>
 </table>
 </div>
@@ -341,6 +344,7 @@
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>PDB name</td></tr>
 <tr><td><code>min_available</code></td><td>string</td><td>No</td><td>Updated minimum available</td></tr>
 <tr><td><code>max_unavailable</code></td><td>string</td><td>No</td><td>Updated maximum unavailable</td></tr>
+<tr><td><code>unhealthy_pod_eviction_policy</code></td><td>string</td><td>No</td><td><code>IfHealthyBudget</code> or <code>AlwaysAllow</code></td></tr>
 </tbody>
 </table>
 </div>

@@ -36,10 +36,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-fb00c07e.js";
+            window.path_to_searchindex_js = "../searchindex-37af0f99.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-8f6ebf8b.js"></script>
+        <script src="../toc-5b34cd39.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -229,6 +229,14 @@
 </table>
 </div>
 <hr>
+<h2 id="escalation-guardrails"><a class="header" href="#escalation-guardrails">Escalation guardrails</a></h2>
+<p>The RBAC write tools reject privilege escalation primitives unless the operator sets <code>--allow-rbac-escalation</code>:</p>
+<ul>
+<li><strong>Rules:</strong> verbs <code>escalate</code>, <code>bind</code>, <code>impersonate</code>, and wildcard (<code>*</code>) verbs, resources (also <code>pods/*</code>), apiGroups or nonResourceURLs.</li>
+<li><strong>ClusterRoles:</strong> <code>aggregationRule</code>, and the <code>rbac.authorization.k8s.io/aggregate-to-*</code> labels, which push a role’s rules into the built-in admin/edit/view roles.</li>
+<li><strong>Bindings:</strong> binding <code>cluster-admin</code>; binding <code>system:anonymous</code> or <code>system:unauthenticated</code>; and binding a role whose rules contain any of the above. The bound role is fetched and checked, so the built-in <code>edit</code> and <code>admin</code> roles, which can impersonate service accounts, count.</li>
+</ul>
+<p>Rules accept <code>resource_names</code>; ClusterRole rules also accept <code>non_resource_urls</code>. <code>apply_manifest</code>, if the operator enables it, applies RBAC objects without these rules.</p>
 <h2 id="roles"><a class="header" href="#roles">Roles</a></h2>
 <h3 id="list_roles"><a class="header" href="#list_roles">list_roles</a></h3>
 <p>List Roles in a namespace.</p>
@@ -266,7 +274,9 @@
 <tbody>
 <tr><td><code>namespace</code></td><td>string</td><td>Yes</td><td>Kubernetes namespace</td></tr>
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Role name</td></tr>
-<tr><td><code>rules</code></td><td>array</td><td>Yes</td><td>Policy rules (array of <code>{apiGroups, resources, verbs}</code>)</td></tr>
+<tr><td><code>rules</code></td><td>array</td><td>Yes</td><td>Policy rules: <code>{api_groups, resources, verbs, resource_names}</code>; escalation primitives are rejected (see above)</td></tr>
+<tr><td><code>labels</code></td><td>object</td><td>No</td><td>Labels (<code>app.kubernetes.io/managed-by: mcp-k8s</code> is added)</td></tr>
+<tr><td><code>annotations</code></td><td>object</td><td>No</td><td>Annotations</td></tr>
 </tbody>
 </table>
 </div>
@@ -337,6 +347,8 @@
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>RoleBinding name</td></tr>
 <tr><td><code>role_name</code></td><td>string</td><td>Yes</td><td>Name of the Role to bind</td></tr>
 <tr><td><code>subjects</code></td><td>array</td><td>Yes</td><td>Subjects (users, groups, or service accounts)</td></tr>
+<tr><td><code>labels</code></td><td>object</td><td>No</td><td>Labels (<code>app.kubernetes.io/managed-by: mcp-k8s</code> is added)</td></tr>
+<tr><td><code>annotations</code></td><td>object</td><td>No</td><td>Annotations</td></tr>
 </tbody>
 </table>
 </div>
@@ -388,7 +400,9 @@
 </thead>
 <tbody>
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>ClusterRole name</td></tr>
-<tr><td><code>rules</code></td><td>array</td><td>Yes</td><td>Policy rules (array of <code>{apiGroups, resources, verbs}</code>)</td></tr>
+<tr><td><code>rules</code></td><td>array</td><td>Yes</td><td>Policy rules: <code>{api_groups, resources, verbs, resource_names}</code>; escalation primitives are rejected (see above)</td></tr>
+<tr><td><code>labels</code></td><td>object</td><td>No</td><td>Labels (<code>app.kubernetes.io/managed-by: mcp-k8s</code> is added)</td></tr>
+<tr><td><code>annotations</code></td><td>object</td><td>No</td><td>Annotations</td></tr>
 </tbody>
 </table>
 </div>
@@ -454,6 +468,8 @@
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>ClusterRoleBinding name</td></tr>
 <tr><td><code>role_name</code></td><td>string</td><td>Yes</td><td>Name of the ClusterRole to bind</td></tr>
 <tr><td><code>subjects</code></td><td>array</td><td>Yes</td><td>Subjects (users, groups, or service accounts)</td></tr>
+<tr><td><code>labels</code></td><td>object</td><td>No</td><td>Labels (<code>app.kubernetes.io/managed-by: mcp-k8s</code> is added)</td></tr>
+<tr><td><code>annotations</code></td><td>object</td><td>No</td><td>Annotations</td></tr>
 </tbody>
 </table>
 </div>

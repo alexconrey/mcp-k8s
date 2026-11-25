@@ -36,10 +36,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-fb00c07e.js";
+            window.path_to_searchindex_js = "../searchindex-37af0f99.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-8f6ebf8b.js"></script>
+        <script src="../toc-5b34cd39.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -182,11 +182,11 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="tools-overview"><a class="header" href="#tools-overview">Tools Overview</a></h1>
-<p>mcp-k8s exposes 210 tools (including one deprecated alias) covering every GA Kubernetes resource type plus CRDs, multi-cluster management, and resource watching. Each tool corresponds to a specific Kubernetes API operation. Tools are categorized by action type:</p>
+<p>mcp-k8s exposes 211 tools (including one deprecated alias) covering every GA Kubernetes resource type plus CRDs, multi-cluster management, and resource watching. Each tool corresponds to a specific Kubernetes API operation. The typed create/update tools are preferred over <code>apply_manifest</code>; see <a href="./coverage.html">Typed Tool Coverage</a>. Every write tool enforces the <a href="../permissions.html#workload-guardrails">workload guardrails</a>. Tools are categorized by action type:</p>
 <ul>
 <li><strong>Read</strong> – List, get, and inspect resources. Always available regardless of permission configuration.</li>
 <li><strong>Create</strong> – Create new resources. Disabled by <code>--disable-create</code>.</li>
-<li><strong>Update</strong> – Modify existing resources (patch, scale, restart, rollback, cordon, drain). Disabled by <code>--disable-update</code>.</li>
+<li><strong>Update</strong> – Modify existing resources (patch, scale, restart, rollback, cordon, drain, exec). Disabled by <code>--disable-update</code>.</li>
 <li><strong>Delete</strong> – Remove resources (delete, evict). Disabled by <code>--disable-delete</code>.</li>
 </ul>
 <h2 id="tools-by-resource-category"><a class="header" href="#tools-by-resource-category">Tools by Resource Category</a></h2>
@@ -205,8 +205,8 @@
 <tr><td><code>list_deployments</code></td><td>Read</td><td>List deployments in a namespace</td></tr>
 <tr><td><code>get_deployment</code></td><td>Read</td><td>Get deployment detail with pods and ingresses</td></tr>
 <tr><td><code>get_deployment_history</code></td><td>Read</td><td>List ReplicaSet revision history</td></tr>
-<tr><td><code>create_deployment</code></td><td>Create</td><td>Create a new deployment</td></tr>
-<tr><td><code>update_deployment</code></td><td>Update</td><td>Patch a deployment (image, replicas, env)</td></tr>
+<tr><td><code>create_deployment</code></td><td>Create</td><td>Create a deployment (full pod template, rollout strategy)</td></tr>
+<tr><td><code>update_deployment</code></td><td>Update</td><td>Patch a deployment (any pod template field, replicas, strategy; dry-run checked)</td></tr>
 <tr><td><code>delete_deployment</code></td><td>Delete</td><td>Delete a deployment</td></tr>
 <tr><td><code>restart_deployment</code></td><td>Update</td><td>Trigger a rolling restart</td></tr>
 <tr><td><code>scale_deployment</code></td><td>Update</td><td>Scale replica count</td></tr>
@@ -214,14 +214,14 @@
 <tr><td><code>list_pods</code></td><td>Read</td><td>List pods in a namespace</td></tr>
 <tr><td><code>get_pod</code></td><td>Read</td><td>Get pod detail</td></tr>
 <tr><td><code>get_pod_logs</code></td><td>Read</td><td>Fetch pod logs</td></tr>
-<tr><td><code>create_pod</code></td><td>Create</td><td>Create a standalone pod</td></tr>
+<tr><td><code>create_pod</code></td><td>Create</td><td>Create a standalone pod (full pod template)</td></tr>
 <tr><td><code>delete_pod</code></td><td>Delete</td><td>Delete a pod</td></tr>
 <tr><td><code>evict_pod</code></td><td>Delete</td><td>Evict a pod respecting PDBs</td></tr>
-<tr><td><code>exec_pod</code></td><td>Read</td><td>Execute a command in a pod</td></tr>
+<tr><td><code>exec_pod</code></td><td>Update</td><td>Execute a command in a pod</td></tr>
 <tr><td><code>list_services</code></td><td>Read</td><td>List services in a namespace</td></tr>
 <tr><td><code>get_service</code></td><td>Read</td><td>Get service detail</td></tr>
-<tr><td><code>create_service</code></td><td>Create</td><td>Create a ClusterIP Service</td></tr>
-<tr><td><code>update_service</code></td><td>Update</td><td>Patch a service</td></tr>
+<tr><td><code>create_service</code></td><td>Create</td><td>Create a Service (ClusterIP by default; ports, headless, affinity, traffic policies)</td></tr>
+<tr><td><code>update_service</code></td><td>Update</td><td>Patch a service (dry-run checked)</td></tr>
 <tr><td><code>delete_service</code></td><td>Delete</td><td>Delete a service</td></tr>
 <tr><td><code>get_events</code></td><td>Read</td><td>List events in a namespace</td></tr>
 <tr><td><code>get_build_logs</code></td><td>Read</td><td>Fetch logs from a Job’s pod</td></tr>
@@ -259,7 +259,7 @@
 </table>
 </div>
 <p>See <a href="./core.html">Core Resources</a> for full parameter details.</p>
-<h3 id="workloads-25-tools"><a class="header" href="#workloads-25-tools">Workloads (25 tools)</a></h3>
+<h3 id="workloads-26-tools"><a class="header" href="#workloads-26-tools">Workloads (26 tools)</a></h3>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -268,22 +268,23 @@
 <tbody>
 <tr><td><code>list_statefulsets</code></td><td>Read</td><td>List StatefulSets</td></tr>
 <tr><td><code>get_statefulset</code></td><td>Read</td><td>Get StatefulSet detail</td></tr>
-<tr><td><code>create_statefulset</code></td><td>Create</td><td>Create a StatefulSet</td></tr>
-<tr><td><code>update_statefulset</code></td><td>Update</td><td>Patch a StatefulSet</td></tr>
+<tr><td><code>create_statefulset</code></td><td>Create</td><td>Create a StatefulSet (pod template, volume claim templates, update strategy)</td></tr>
+<tr><td><code>update_statefulset</code></td><td>Update</td><td>Patch a StatefulSet (any pod template field; dry-run checked)</td></tr>
 <tr><td><code>delete_statefulset</code></td><td>Delete</td><td>Delete a StatefulSet</td></tr>
 <tr><td><code>list_daemonsets</code></td><td>Read</td><td>List DaemonSets</td></tr>
 <tr><td><code>get_daemonset</code></td><td>Read</td><td>Get DaemonSet detail</td></tr>
-<tr><td><code>create_daemonset</code></td><td>Create</td><td>Create a DaemonSet</td></tr>
-<tr><td><code>update_daemonset</code></td><td>Update</td><td>Patch a DaemonSet</td></tr>
+<tr><td><code>create_daemonset</code></td><td>Create</td><td>Create a DaemonSet (pod template, update strategy)</td></tr>
+<tr><td><code>update_daemonset</code></td><td>Update</td><td>Patch a DaemonSet (any pod template field; dry-run checked)</td></tr>
 <tr><td><code>delete_daemonset</code></td><td>Delete</td><td>Delete a DaemonSet</td></tr>
 <tr><td><code>list_cronjobs</code></td><td>Read</td><td>List CronJobs</td></tr>
 <tr><td><code>get_cronjob</code></td><td>Read</td><td>Get CronJob detail</td></tr>
-<tr><td><code>create_cronjob</code></td><td>Create</td><td>Create a CronJob</td></tr>
-<tr><td><code>update_cronjob</code></td><td>Update</td><td>Patch a CronJob</td></tr>
+<tr><td><code>create_cronjob</code></td><td>Create</td><td>Create a CronJob (pod template, schedule, time zone, concurrency, job settings)</td></tr>
+<tr><td><code>update_cronjob</code></td><td>Update</td><td>Patch a CronJob (schedule, job settings, pod template; dry-run checked)</td></tr>
 <tr><td><code>delete_cronjob</code></td><td>Delete</td><td>Delete a CronJob</td></tr>
 <tr><td><code>list_jobs</code></td><td>Read</td><td>List Jobs</td></tr>
 <tr><td><code>get_job</code></td><td>Read</td><td>Get Job detail</td></tr>
-<tr><td><code>create_job</code></td><td>Create</td><td>Create a Job</td></tr>
+<tr><td><code>create_job</code></td><td>Create</td><td>Create a Job (pod template, completions, indexed mode, failure policy, TTL)</td></tr>
+<tr><td><code>create_job_from_cronjob</code></td><td>Create</td><td>Run a CronJob now (like <code>kubectl create job --from=cronjob/x</code>)</td></tr>
 <tr><td><code>delete_job</code></td><td>Delete</td><td>Delete a Job</td></tr>
 <tr><td><code>list_hpas</code></td><td>Read</td><td>List HPAs</td></tr>
 <tr><td><code>get_hpa</code></td><td>Read</td><td>Get HPA detail</td></tr>
@@ -305,8 +306,8 @@
 <tbody>
 <tr><td><code>list_ingresses</code></td><td>Read</td><td>List Ingresses</td></tr>
 <tr><td><code>get_ingress</code></td><td>Read</td><td>Get Ingress detail</td></tr>
-<tr><td><code>create_ingress</code></td><td>Create</td><td>Create an Ingress (auto-creates backing Service)</td></tr>
-<tr><td><code>update_ingress</code></td><td>Update</td><td>Patch an Ingress</td></tr>
+<tr><td><code>create_ingress</code></td><td>Create</td><td>Create an Ingress (rules, TLS, default backend; auto-creates backing Services)</td></tr>
+<tr><td><code>update_ingress</code></td><td>Update</td><td>Patch an Ingress (dry-run checked)</td></tr>
 <tr><td><code>delete_ingress</code></td><td>Delete</td><td>Delete an Ingress</td></tr>
 <tr><td><code>list_ingressclasses</code></td><td>Read</td><td>List IngressClasses</td></tr>
 <tr><td><code>get_ingressclass</code></td><td>Read</td><td>Get IngressClass detail</td></tr>
@@ -500,7 +501,7 @@
 <tr><th>Tool</th><th>Action</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>apply_manifest</code></td><td>Create</td><td>Last resort: apply any JSON manifest via server-side apply (prefer the typed tools)</td></tr>
+<tr><td><code>apply_manifest</code></td><td>Create</td><td>Raw server-side apply of a JSON manifest, without the workload guardrails. Off unless <code>--enable-apply-manifest</code>; clients confirm each call with the user</td></tr>
 <tr><td><code>get_resource_json</code></td><td>Read</td><td>Get any resource as JSON via API discovery</td></tr>
 <tr><td><code>get_resource_yaml</code></td><td>Read</td><td>Deprecated alias for <code>get_resource_json</code> (returns JSON)</td></tr>
 </tbody>
@@ -516,7 +517,7 @@
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="../tools/core.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../tools/coverage.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -530,7 +531,7 @@
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="../tools/core.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../tools/coverage.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>

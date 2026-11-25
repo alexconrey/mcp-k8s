@@ -36,10 +36,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-fb00c07e.js";
+            window.path_to_searchindex_js = "../searchindex-37af0f99.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-8f6ebf8b.js"></script>
+        <script src="../toc-5b34cd39.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -184,12 +184,18 @@
                         <h1 id="generic-tools"><a class="header" href="#generic-tools">Generic Tools</a></h1>
 <p>mcp-k8s provides generic tools that work with any Kubernetes resource type, including Custom Resource Definitions (CRDs). These tools use Kubernetes API discovery to resolve resource types at runtime.</p>
 <h2 id="apply_manifest"><a class="header" href="#apply_manifest">apply_manifest</a></h2>
-<p><strong>Last resort.</strong> Apply an arbitrary Kubernetes manifest, given as <strong>JSON</strong>, using server-side apply. Accepts any resource type.</p>
+<p><strong>Off by default; unrestricted when enabled.</strong> Apply an arbitrary Kubernetes manifest, given as <strong>JSON</strong>, using server-side apply. Accepts any resource type.</p>
 <blockquote>
-<p>Prefer the typed tools (<code>create_deployment</code>, <code>create_job</code>, <code>create_pod</code>, <code>update_*</code>, …). They validate their input and enforce mcp-k8s’s guardrails, whereas <code>apply_manifest</code> sends the raw object to the API server. Use it only for resource types that have no typed tool, and consider disabling it with <code>--disable-apply-manifest</code> (see <a href="../permissions.html">Permissions</a>).</p>
+<p>This tool is for people who know exactly what they’re applying. It’s only listed once the operator starts mcp-k8s with <code>--enable-apply-manifest</code>, and when it is, it <strong>skips the <a href="../permissions.html#workload-guardrails">workload guardrails</a></strong>: it can create privileged pods, <code>hostPath</code> mounts, RBAC bindings, webhooks, CRDs or anything else. Agents should use the typed tools (<code>create_deployment</code>, <code>create_job</code>, <code>create_pod</code>, <code>create_service</code>, <code>create_ingress</code>, <code>update_*</code>, …) and call <code>apply_manifest</code> only when the user explicitly asks for a manifest to be applied, after showing them the full manifest.</p>
 </blockquote>
+<p>What still applies when it’s enabled:</p>
+<ul>
+<li>the namespace allowlist, on the manifest’s namespace;</li>
+<li>the per-resource create/update switches. It looks the object up first: creating needs <code>&lt;resource&gt;-create</code>, updating needs <code>&lt;resource&gt;-update</code>.</li>
+</ul>
+<p>Its tool definition carries the MCP annotation <code>destructiveHint: true</code>, so MCP clients (Claude Code, for example) ask the user before each call. A manifest without a managed-by label gets <code>app.kubernetes.io/managed-by: mcp-k8s</code>. See <a href="../permissions.html#apply_manifest">Permissions: apply_manifest</a> for the reasoning.</p>
 <p>It returns the applied object’s metadata (name, namespace, kind, resource_version).</p>
-<p>YAML is <strong>not</strong> accepted: convert it to JSON first (for example <code>yq -o=json manifest.yaml</code>). The output of <a href="#get_resource_json"><code>get_resource_json</code></a> can be edited and passed straight back.</p>
+<p>YAML is <strong>not</strong> accepted: convert it to JSON first (for example <code>yq -o=json manifest.yaml</code>).</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -212,13 +218,14 @@
 }
 </code></pre>
 <h3 id="example-apply-a-crd-instance"><a class="header" href="#example-apply-a-crd-instance">Example: Apply a CRD Instance</a></h3>
+<p>Needs <code>--allow-custom-resource-groups monitoring.coreos.com</code>.</p>
 <pre><code class="language-json">{
   "manifest": "{\"apiVersion\":\"monitoring.coreos.com/v1\",\"kind\":\"ServiceMonitor\",\"metadata\":{\"name\":\"my-app\",\"namespace\":\"monitoring\"},\"spec\":{\"selector\":{\"matchLabels\":{\"app\":\"my-app\"}},\"endpoints\":[{\"port\":\"metrics\",\"interval\":\"30s\"}]}}"
 }
 </code></pre>
 <h3 id="notes"><a class="header" href="#notes">Notes</a></h3>
 <ul>
-<li><code>apply_manifest</code> is classified as a <strong>create</strong> action. It is disabled when <code>--disable-create</code> is set.</li>
+<li><code>apply_manifest</code> is off unless <code>--enable-apply-manifest</code> is set. It’s classified as a <strong>create</strong> action, so <code>--disable-create</code> also removes it. Updating an existing object additionally needs update permission for its kind.</li>
 <li>The manifest must be a single JSON object. YAML (including multi-document <code>---</code> files) is rejected with a parse error; convert it to JSON and apply one resource per call.</li>
 <li>If the resource already exists, it is updated (server-side apply merges fields).</li>
 <li>For CRDs, the API group must be installed in the cluster for discovery to succeed.</li>
@@ -226,7 +233,7 @@
 </ul>
 <hr>
 <h2 id="get_resource_json"><a class="header" href="#get_resource_json">get_resource_json</a></h2>
-<p>Get any Kubernetes resource as JSON, the object as the API server returns it. Accepts apiVersion, kind, name, and optional namespace. Uses API discovery to resolve the resource type. The output can be edited and passed back to <code>apply_manifest</code>; if a person needs YAML, convert it client-side (for example <code>yq -P</code>).</p>
+<p>Get any Kubernetes resource as JSON, the object as the API server returns it. Accepts apiVersion, kind, name, and optional namespace. Uses API discovery to resolve the resource type. Use it to inspect an object before changing it with a typed <code>update_*</code> tool; if a person needs YAML, convert it client-side (for example <code>yq -P</code>).</p>
 <div class="table-wrapper">
 <table>
 <thead>

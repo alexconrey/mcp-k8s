@@ -36,10 +36,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-fb00c07e.js";
+            window.path_to_searchindex_js = "../searchindex-37af0f99.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-8f6ebf8b.js"></script>
+        <script src="../toc-5b34cd39.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -270,7 +270,8 @@ MCP_K8S_NAMESPACES=default,production,staging mcp-k8s
 <tr><td><code>--disable-create</code></td><td><code>DISABLE_CREATE</code></td><td><code>false</code></td><td>Globally disable all create tools. When set, tools like <code>create_deployment</code>, <code>create_pod</code>, <code>create_service</code>, and <code>apply_manifest</code> are removed from the tool list.</td></tr>
 <tr><td><code>--disable-update</code></td><td><code>DISABLE_UPDATE</code></td><td><code>false</code></td><td>Globally disable all update tools. When set, tools like <code>update_deployment</code>, <code>scale_deployment</code>, <code>restart_deployment</code>, <code>cordon_node</code>, and <code>drain_node</code> are removed.</td></tr>
 <tr><td><code>--disable-delete</code></td><td><code>DISABLE_DELETE</code></td><td><code>false</code></td><td>Globally disable all delete tools. When set, tools like <code>delete_deployment</code>, <code>delete_pod</code>, and <code>evict_pod</code> are removed.</td></tr>
-<tr><td><code>--disable-apply-manifest</code></td><td><code>DISABLE_APPLY_MANIFEST</code></td><td><code>false</code></td><td>Completely disable the <code>apply_manifest</code> tool. Unlike <code>--disable-create</code>, this is a dedicated kill-switch for <code>apply_manifest</code> because it can both create and update arbitrary resources. See <a href="../permissions.html">Permissions</a> for details.</td></tr>
+<tr><td><code>--enable-apply-manifest</code></td><td><code>ENABLE_APPLY_MANIFEST</code></td><td><code>false</code></td><td>Enable the <code>apply_manifest</code> tool. It’s an <strong>unrestricted</strong> raw server-side apply that skips the workload guardrails below (the namespace allowlist and the create/update switches still apply), for users who know exactly what they’re applying. It’s marked destructive, so MCP clients ask the user before each call. See <a href="../permissions.html#apply_manifest">Permissions</a>.</td></tr>
+<tr><td><code>--disable-apply-manifest</code></td><td><code>DISABLE_APPLY_MANIFEST</code></td><td><code>false</code></td><td>Deprecated: apply_manifest is off by default. Still honoured, and wins over <code>--enable-apply-manifest</code>.</td></tr>
 </tbody>
 </table>
 </div>
@@ -294,6 +295,43 @@ mcp-k8s --disable deployment-delete,pod-create
 MCP_K8S_DISABLE=deployment-delete,pod-create mcp-k8s
 </code></pre>
 <p>See the <a href="../permissions.html">Permissions</a> page for full details on the permission resolution logic and example configurations.</p>
+<h2 id="workload-guardrails"><a class="header" href="#workload-guardrails">Workload Guardrails</a></h2>
+<p>Every typed write tool and the custom resource tools enforce a workload policy (<code>apply_manifest</code>, when enabled, doesn’t). The defaults are restrictive; each flag relaxes one rule. Errors name the flag that would allow the rejected setting. See <a href="../permissions.html#workload-guardrails">Permissions: Workload Guardrails</a> for the full rules.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Env Var</th><th>Default</th><th>Allows</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--allow-privileged</code></td><td><code>MCP_K8S_ALLOW_PRIVILEGED</code></td><td><code>false</code></td><td>Privileged containers, Windows hostProcess, <code>pod-security.kubernetes.io/*=privileged</code> namespace labels</td></tr>
+<tr><td><code>--allow-privilege-escalation</code></td><td><code>MCP_K8S_ALLOW_PRIVILEGE_ESCALATION</code></td><td><code>false</code></td><td><code>allowPrivilegeEscalation: true</code></td></tr>
+<tr><td><code>--allow-capabilities</code></td><td><code>MCP_K8S_ALLOW_CAPABILITIES</code></td><td><em>(none)</em></td><td>Comma-separated capabilities beyond the runtime’s default set (<code>ALL</code> for any)</td></tr>
+<tr><td><code>--allow-host-namespaces</code></td><td><code>MCP_K8S_ALLOW_HOST_NAMESPACES</code></td><td><code>false</code></td><td><code>hostNetwork</code>, <code>hostPID</code>, <code>hostIPC</code></td></tr>
+<tr><td><code>--allow-host-path</code></td><td><code>MCP_K8S_ALLOW_HOST_PATH</code></td><td><code>false</code></td><td><code>hostPath</code> volumes</td></tr>
+<tr><td><code>--allow-host-ports</code></td><td><code>MCP_K8S_ALLOW_HOST_PORTS</code></td><td><code>false</code></td><td><code>hostPort</code></td></tr>
+<tr><td><code>--allow-volume-types</code></td><td><code>MCP_K8S_ALLOW_VOLUME_TYPES</code></td><td><em>(none)</em></td><td>Comma-separated volume types beyond the safe set, e.g. <code>nfs,csi</code> (<code>*</code> for any except hostPath)</td></tr>
+<tr><td><code>--allow-unconfined</code></td><td><code>MCP_K8S_ALLOW_UNCONFINED</code></td><td><code>false</code></td><td>Unconfined seccomp/AppArmor, custom SELinux options, <code>procMount: Unmasked</code>, unsafe sysctls, probe/hook hosts other than localhost</td></tr>
+<tr><td><code>--allowed-registries</code></td><td><code>MCP_K8S_ALLOWED_REGISTRIES</code></td><td><em>(any)</em></td><td>Restricts images to these registry prefixes, e.g. <code>ghcr.io/myorg,docker.io/library</code></td></tr>
+<tr><td><code>--allow-nodeport</code></td><td><code>MCP_K8S_ALLOW_NODEPORT</code></td><td><code>false</code></td><td>NodePort Services</td></tr>
+<tr><td><code>--allow-loadbalancer</code></td><td><code>MCP_K8S_ALLOW_LOADBALANCER</code></td><td><code>false</code></td><td>LoadBalancer Services, <code>loadBalancer*</code> fields, cloud LB annotations</td></tr>
+<tr><td><code>--allow-external-services</code></td><td><code>MCP_K8S_ALLOW_EXTERNAL_SERVICES</code></td><td><code>false</code></td><td>ExternalName Services and <code>externalIPs</code></td></tr>
+<tr><td><code>--allow-ingress-snippets</code></td><td><code>MCP_K8S_ALLOW_INGRESS_SNIPPETS</code></td><td><code>false</code></td><td><code>*-snippet</code> annotations and nginx config syntax in ingress-nginx annotation values</td></tr>
+<tr><td><code>--ingress-annotation-allowlist</code></td><td><code>MCP_K8S_INGRESS_ANNOTATION_ALLOWLIST</code></td><td><em>(none)</em></td><td>When set, only these Ingress annotation keys (trailing <code>*</code> = prefix)</td></tr>
+<tr><td><code>--ingress-annotation-denylist</code></td><td><code>MCP_K8S_INGRESS_ANNOTATION_DENYLIST</code></td><td><em>(none)</em></td><td>Ingress annotation keys that are always rejected</td></tr>
+<tr><td><code>--allow-manifest-kinds</code></td><td><code>MCP_K8S_ALLOW_MANIFEST_KINDS</code></td><td><em>(none)</em></td><td>Cluster-scoped custom resource kinds the custom resource tools may write; <code>Kind</code> or <code>group/Kind</code>, <code>*</code> for all</td></tr>
+<tr><td><code>--allow-custom-resource-groups</code></td><td><code>MCP_K8S_ALLOW_CUSTOM_RESOURCE_GROUPS</code></td><td><em>(none)</em></td><td>Custom resource API groups that may be written (<code>*</code> for any)</td></tr>
+<tr><td><code>--allow-rbac-escalation</code></td><td><code>MCP_K8S_ALLOW_RBAC_ESCALATION</code></td><td><code>false</code></td><td>escalate/bind/impersonate verbs, wildcards, aggregation, binding cluster-admin or anonymous subjects, service-account token Secrets</td></tr>
+<tr><td><code>--no-secure-defaults</code></td><td><code>MCP_K8S_NO_SECURE_DEFAULTS</code></td><td><code>false</code></td><td>Don’t fill in the restricted securityContext and <code>automountServiceAccountToken: false</code> defaults</td></tr>
+</tbody>
+</table>
+</div>
+<pre><code class="language-bash"># A cluster where agents may expose services through cloud load balancers and
+# manage cert-manager certificates, with images restricted to the org registry:
+mcp-k8s --http \
+  --allow-loadbalancer \
+  --allow-custom-resource-groups cert-manager.io \
+  --allowed-registries ghcr.io/acme
+</code></pre>
 <h2 id="kubernetes-authentication"><a class="header" href="#kubernetes-authentication">Kubernetes Authentication</a></h2>
 <div class="table-wrapper">
 <table>
@@ -441,7 +479,6 @@ CACHE_TTL=60 mcp-k8s
   --listen 0.0.0.0:9090 \
   --namespaces default,production \
   --disable-delete \
-  --disable-apply-manifest \
   --disable deployment-create,secret-create \
   --auth-token my-secret-token \
   --tls-cert /etc/certs/tls.crt \
@@ -451,7 +488,7 @@ CACHE_TTL=60 mcp-k8s
   --cache-ttl 30 \
   --contexts staging,production
 </code></pre>
-<p>This starts mcp-k8s as an HTTPS server on port 9090 with bearer token authentication, restricted to the <code>default</code> and <code>production</code> namespaces, with all delete operations disabled globally, <code>apply_manifest</code> blocked entirely, deployment/secret creation disabled individually, secret decoding disabled, structured JSON logging enabled, a 30-second response cache, and two cluster contexts loaded (<code>staging</code> active by default).</p>
+<p>This starts mcp-k8s as an HTTPS server on port 9090 with bearer token authentication, restricted to the <code>default</code> and <code>production</code> namespaces, with all delete operations disabled globally (<code>apply_manifest</code> stays off, its default), deployment/secret creation disabled individually, secret decoding disabled, structured JSON logging enabled, a 30-second response cache, and two cluster contexts loaded (<code>staging</code> active by default).</p>
 
                     </main>
 

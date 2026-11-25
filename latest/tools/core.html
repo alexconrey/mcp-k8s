@@ -36,10 +36,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-fb00c07e.js";
+            window.path_to_searchindex_js = "../searchindex-37af0f99.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-8f6ebf8b.js"></script>
+        <script src="../toc-5b34cd39.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -225,7 +225,8 @@
 </table>
 </div>
 <h3 id="create_deployment"><a class="header" href="#create_deployment">create_deployment</a></h3>
-<p>Create a new deployment in the specified namespace.</p>
+<p>Create a Deployment whose pods are selected by <code>app=&lt;name&gt;</code> (or a custom <code>selector</code>). Preferred over <code>apply_manifest</code>.</p>
+<p>It takes every <a href="./pod-template.html">pod template argument</a>: the single-container shorthand (<code>image</code>, <code>command</code>, <code>args</code>, <code>env</code>, <code>env_from</code>, <code>ports</code>, <code>resources</code>, <code>volume_mounts</code>, probes, <code>lifecycle</code>) or <code>containers</code>; <code>init_containers</code> (native sidecars); volumes; scheduling; and <code>security_context</code>. Plus:</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -234,13 +235,21 @@
 <tbody>
 <tr><td><code>namespace</code></td><td>string</td><td>Yes</td><td>Kubernetes namespace</td></tr>
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Deployment name</td></tr>
-<tr><td><code>image</code></td><td>string</td><td>Yes</td><td>Container image</td></tr>
+<tr><td><code>image</code></td><td>string</td><td>Yes*</td><td>Container image (*or <code>containers</code>)</td></tr>
 <tr><td><code>replicas</code></td><td>integer</td><td>No</td><td>Number of replicas (default: 1)</td></tr>
-<tr><td><code>port</code></td><td>integer</td><td>No</td><td>Container port to expose</td></tr>
-<tr><td><code>env</code></td><td>object</td><td>No</td><td>Environment variables as key-value string pairs</td></tr>
+<tr><td><code>port</code></td><td>integer</td><td>No</td><td>Container port to expose (shorthand for <code>ports</code>)</td></tr>
+<tr><td><code>env</code></td><td>object/array</td><td>No</td><td>Environment variables, including secret/configMap/field references</td></tr>
+<tr><td><code>env_from</code></td><td>array</td><td>No</td><td>Load all keys of Secrets/ConfigMaps</td></tr>
+<tr><td><code>strategy</code></td><td>object</td><td>No</td><td><code>{type: RollingUpdate, max_surge, max_unavailable}</code> or <code>{type: Recreate}</code></td></tr>
+<tr><td><code>min_ready_seconds</code></td><td>integer</td><td>No</td><td></td></tr>
+<tr><td><code>revision_history_limit</code></td><td>integer</td><td>No</td><td></td></tr>
+<tr><td><code>progress_deadline_seconds</code></td><td>integer</td><td>No</td><td></td></tr>
+<tr><td><code>selector</code></td><td>object</td><td>No</td><td>Pod selector labels (default <code>{app: &lt;name&gt;}</code>)</td></tr>
+<tr><td><code>pod_annotations</code></td><td>object</td><td>No</td><td>Pod template annotations</td></tr>
 </tbody>
 </table>
 </div>
+<p>Pods get the secure defaults (non-root, seccomp RuntimeDefault, no privilege escalation, drop ALL capabilities, no service account token). For images that must run as root, set <code>security_context: {"run_as_non_root": false}</code>. Privileged mode, host namespaces/paths/ports and extra capabilities are rejected unless the server allows them.</p>
 <p>Example:</p>
 <pre><code class="language-json">{
   "namespace": "default",
@@ -250,12 +259,15 @@
   "port": 80,
   "env": {
     "ENV": "production",
-    "LOG_LEVEL": "info"
-  }
+    "API_KEY": { "secret_key_ref": { "name": "my-app", "key": "api-key" } }
+  },
+  "readiness_probe": { "probe_type": "httpGet", "path": "/", "port": 80 },
+  "resources": { "requests": { "cpu": "100m", "memory": "128Mi" } },
+  "security_context": { "run_as_non_root": false }
 }
 </code></pre>
 <h3 id="update_deployment"><a class="header" href="#update_deployment">update_deployment</a></h3>
-<p>Update (merge patch) an existing deployment. Supports changing image, replicas, and env vars.</p>
+<p>Update (strategic merge patch) an existing Deployment. Preferred over <code>apply_manifest</code>. It takes the same fields as <code>create_deployment</code>, all optional, plus <code>container</code> (which container the single-container fields change). Only the given fields change. See <a href="./pod-template.html#updates">Updates</a>.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -266,11 +278,16 @@
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Deployment name</td></tr>
 <tr><td><code>image</code></td><td>string</td><td>No</td><td>New container image</td></tr>
 <tr><td><code>replicas</code></td><td>integer</td><td>No</td><td>New replica count</td></tr>
-<tr><td><code>env</code></td><td>object</td><td>No</td><td>Environment variables (replaces all env vars)</td></tr>
+<tr><td><code>env</code></td><td>object/array</td><td>No</td><td>Environment variables (merged by name)</td></tr>
+<tr><td><code>env_from</code></td><td>array</td><td>No</td><td>envFrom sources</td></tr>
+<tr><td><code>liveness_probe</code> / <code>readiness_probe</code> / <code>startup_probe</code></td><td>object</td><td>No</td><td>Probes</td></tr>
+<tr><td><code>container</code></td><td>string</td><td>No</td><td>Target container (default: the one named after the Deployment, or the only one)</td></tr>
+<tr><td><em>any pod template field</em></td><td></td><td>No</td><td><code>resources</code>, <code>volumes</code>, <code>volume_mounts</code>, <code>security_context</code>, <code>tolerations</code>, <code>affinity</code>, <code>init_containers</code>, …</td></tr>
+<tr><td><code>strategy</code>, <code>min_ready_seconds</code>, <code>revision_history_limit</code>, <code>progress_deadline_seconds</code></td><td></td><td>No</td><td>Rollout settings</td></tr>
 </tbody>
 </table>
 </div>
-<p>At least one of <code>image</code>, <code>replicas</code>, or <code>env</code> must be provided.</p>
+<p>The patch is dry-run and its result checked against the guardrails before it is written. That means an update also can’t modify a Deployment that already breaks the policy.</p>
 <h3 id="delete_deployment"><a class="header" href="#delete_deployment">delete_deployment</a></h3>
 <p>Delete a deployment by name from a namespace.</p>
 <div class="table-wrapper">
@@ -312,7 +329,7 @@
 </table>
 </div>
 <h3 id="rollback_deployment"><a class="header" href="#rollback_deployment">rollback_deployment</a></h3>
-<p>Rollback a deployment to a specific revision by restoring the pod template from the matching ReplicaSet.</p>
+<p>Rollback a deployment to a specific revision by restoring the pod template from the matching ReplicaSet. The restored template is checked against the guardrails like any update, so rolling back to a revision that predates them can be refused.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -370,7 +387,7 @@
 </table>
 </div>
 <h3 id="create_pod"><a class="header" href="#create_pod">create_pod</a></h3>
-<p>Create a standalone pod. Useful for debugging, one-shot tasks, or running a quick container.</p>
+<p>Create a standalone pod: debugging, one-shot tasks, or a quick container. Preferred over <code>apply_manifest</code>. It takes every <a href="./pod-template.html">pod template argument</a>. <code>restart_policy</code> is <code>Never</code> (default), <code>OnFailure</code> or <code>Always</code>.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -379,9 +396,10 @@
 <tbody>
 <tr><td><code>namespace</code></td><td>string</td><td>Yes</td><td>Kubernetes namespace</td></tr>
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Pod name</td></tr>
-<tr><td><code>image</code></td><td>string</td><td>Yes</td><td>Container image</td></tr>
+<tr><td><code>image</code></td><td>string</td><td>Yes*</td><td>Container image (*or <code>containers</code>)</td></tr>
 <tr><td><code>command</code></td><td>string[]</td><td>No</td><td>Command to run</td></tr>
 <tr><td><code>restart_policy</code></td><td>string</td><td>No</td><td>Restart policy: <code>Never</code> (default), <code>Always</code>, <code>OnFailure</code></td></tr>
+<tr><td><em>any pod template field</em></td><td></td><td>No</td><td><code>args</code>, <code>env</code>, <code>ports</code>, <code>resources</code>, probes, <code>volumes</code>, <code>service_account_name</code>, <code>security_context</code>, <code>init_containers</code>, …</td></tr>
 </tbody>
 </table>
 </div>
@@ -429,6 +447,7 @@
 </table>
 </div>
 <p>Returns <code>stdout</code>, <code>stderr</code>, and <code>exit_code</code>.</p>
+<p><code>exec_pod</code> runs arbitrary commands, so it counts as an <strong>update</strong> (<code>pod-update</code>): read-only mode and <code>--disable-update</code> turn it off.</p>
 <hr>
 <h2 id="services"><a class="header" href="#services">Services</a></h2>
 <h3 id="list_services"><a class="header" href="#list_services">list_services</a></h3>
@@ -459,7 +478,7 @@
 </table>
 </div>
 <h3 id="create_service"><a class="header" href="#create_service">create_service</a></h3>
-<p>Create a Kubernetes ClusterIP Service pointing to pods with a matching app label.</p>
+<p>Create a Service. Preferred over <code>apply_manifest</code>. ClusterIP by default, selecting pods labelled <code>app=&lt;name&gt;</code>.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -467,14 +486,26 @@
 </thead>
 <tbody>
 <tr><td><code>namespace</code></td><td>string</td><td>Yes</td><td>Kubernetes namespace</td></tr>
-<tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Service name (also used as the app label selector)</td></tr>
-<tr><td><code>port</code></td><td>integer</td><td>No</td><td>Service port (default: 80)</td></tr>
-<tr><td><code>target_port</code></td><td>integer</td><td>No</td><td>Container port to forward to (defaults to same as port)</td></tr>
+<tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Service name (also the default <code>app</code> selector)</td></tr>
+<tr><td><code>port</code></td><td>integer</td><td>No</td><td>Shorthand for a single port (default: 80)</td></tr>
+<tr><td><code>target_port</code></td><td>integer/string</td><td>No</td><td>Target for the shorthand (default: <code>port</code>)</td></tr>
+<tr><td><code>ports</code></td><td>array</td><td>No</td><td><code>{port, target_port (number or container port name), name, protocol, app_protocol, node_port}</code></td></tr>
+<tr><td><code>selector</code></td><td>object</td><td>No</td><td>Pod selector (default <code>{app: &lt;name&gt;}</code>)</td></tr>
+<tr><td><code>type</code></td><td>string</td><td>No</td><td><code>ClusterIP</code> (default); <code>NodePort</code>, <code>LoadBalancer</code>, <code>ExternalName</code> are gated</td></tr>
+<tr><td><code>headless</code> / <code>cluster_ip</code></td><td>boolean / string</td><td>No</td><td><code>headless: true</code> = <code>clusterIP: None</code></td></tr>
+<tr><td><code>session_affinity</code>, <code>session_affinity_timeout_seconds</code></td><td></td><td>No</td><td><code>None</code> or <code>ClientIP</code></td></tr>
+<tr><td><code>external_traffic_policy</code>, <code>internal_traffic_policy</code></td><td>string</td><td>No</td><td><code>Cluster</code> or <code>Local</code></td></tr>
+<tr><td><code>traffic_distribution</code></td><td>string</td><td>No</td><td>e.g. <code>PreferClose</code></td></tr>
+<tr><td><code>ip_families</code>, <code>ip_family_policy</code></td><td></td><td>No</td><td>Dual-stack settings</td></tr>
+<tr><td><code>publish_not_ready_addresses</code></td><td>boolean</td><td>No</td><td></td></tr>
+<tr><td><code>load_balancer_source_ranges</code>, <code>load_balancer_class</code>, <code>allocate_load_balancer_node_ports</code></td><td></td><td>No</td><td>Need <code>--allow-loadbalancer</code></td></tr>
+<tr><td><code>external_name</code>, <code>external_ips</code></td><td></td><td>No</td><td>Need <code>--allow-external-services</code></td></tr>
+<tr><td><code>labels</code>, <code>annotations</code></td><td>object</td><td>No</td><td>Cloud load-balancer annotations need <code>--allow-loadbalancer</code></td></tr>
 </tbody>
 </table>
 </div>
 <h3 id="update_service"><a class="header" href="#update_service">update_service</a></h3>
-<p>Patch a service. Accepts optional fields: ports, selector, type.</p>
+<p>Patch a Service. Preferred over <code>apply_manifest</code>. It takes the same fields as <code>create_service</code> except the immutable ones (<code>headless</code>, <code>cluster_ip</code>, IP families). <code>ports</code> merge by port number. The result is dry-run and checked against the guardrails, so an update can’t switch a Service to a disallowed type.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -483,9 +514,10 @@
 <tbody>
 <tr><td><code>namespace</code></td><td>string</td><td>Yes</td><td>Kubernetes namespace</td></tr>
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Service name</td></tr>
-<tr><td><code>ports</code></td><td>array</td><td>No</td><td>Array of port definitions (<code>{port, target_port, protocol}</code>)</td></tr>
+<tr><td><code>ports</code></td><td>array</td><td>No</td><td>Port definitions (<code>{port, target_port, name, protocol, app_protocol, node_port}</code>)</td></tr>
 <tr><td><code>selector</code></td><td>object</td><td>No</td><td>Label selector for pods</td></tr>
-<tr><td><code>type</code></td><td>string</td><td>No</td><td>Service type: <code>ClusterIP</code>, <code>NodePort</code>, <code>LoadBalancer</code>, <code>ExternalName</code></td></tr>
+<tr><td><code>type</code></td><td>string</td><td>No</td><td><code>ClusterIP</code>, <code>NodePort</code>, <code>LoadBalancer</code>, <code>ExternalName</code> (gated as on create)</td></tr>
+<tr><td><em>other create_service fields</em></td><td></td><td>No</td><td>Traffic policies, affinity, annotations, labels, …</td></tr>
 </tbody>
 </table>
 </div>
@@ -536,7 +568,7 @@
 </table>
 </div>
 <h3 id="create_namespace"><a class="header" href="#create_namespace">create_namespace</a></h3>
-<p>Create a new Kubernetes namespace.</p>
+<p>Create a new Kubernetes namespace. Labelling it <code>pod-security.kubernetes.io/{enforce,audit,warn}=privileged</code> turns off Pod Security Admission for the namespace and needs <code>--allow-privileged</code>.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -549,7 +581,7 @@
 </table>
 </div>
 <h3 id="update_namespace"><a class="header" href="#update_namespace">update_namespace</a></h3>
-<p>Update a namespace’s labels and/or annotations.</p>
+<p>Update a namespace’s labels and/or annotations. The result is dry-run and checked: the pod-security labels can’t be set to <code>privileged</code> without <code>--allow-privileged</code>.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -614,6 +646,10 @@
 <tr><td><code>namespace</code></td><td>string</td><td>Yes</td><td>Kubernetes namespace</td></tr>
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>ConfigMap name</td></tr>
 <tr><td><code>data</code></td><td>object</td><td>Yes</td><td>Key-value string pairs for the configmap data</td></tr>
+<tr><td><code>labels</code></td><td>object</td><td>No</td><td>Labels (<code>app.kubernetes.io/managed-by: mcp-k8s</code> is added)</td></tr>
+<tr><td><code>annotations</code></td><td>object</td><td>No</td><td>Annotations</td></tr>
+<tr><td><code>binary_data</code></td><td>object</td><td>No</td><td>Base64-encoded binary values (<code>data</code> or <code>binary_data</code> is required)</td></tr>
+<tr><td><code>immutable</code></td><td>boolean</td><td>No</td><td>Make the ConfigMap immutable</td></tr>
 </tbody>
 </table>
 </div>
@@ -678,7 +714,7 @@
 </table>
 </div>
 <h3 id="create_secret"><a class="header" href="#create_secret">create_secret</a></h3>
-<p>Create a Kubernetes Secret. Accepts string_data as key-value pairs.</p>
+<p>Create a Kubernetes Secret. Accepts string_data as key-value pairs. <code>type: kubernetes.io/service-account-token</code> mints a long-lived token for a service account and needs <code>--allow-rbac-escalation</code>.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -689,6 +725,10 @@
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Secret name</td></tr>
 <tr><td><code>type</code></td><td>string</td><td>No</td><td>Secret type (default: <code>Opaque</code>)</td></tr>
 <tr><td><code>string_data</code></td><td>object</td><td>Yes</td><td>Key-value pairs of secret data</td></tr>
+<tr><td><code>labels</code></td><td>object</td><td>No</td><td>Labels (<code>app.kubernetes.io/managed-by: mcp-k8s</code> is added)</td></tr>
+<tr><td><code>annotations</code></td><td>object</td><td>No</td><td>Annotations</td></tr>
+<tr><td><code>data</code></td><td>object</td><td>No</td><td>Base64-encoded values (<code>string_data</code> or <code>data</code> is required)</td></tr>
+<tr><td><code>immutable</code></td><td>boolean</td><td>No</td><td>Make the Secret immutable</td></tr>
 </tbody>
 </table>
 </div>
@@ -813,6 +853,8 @@
 <tbody>
 <tr><td><code>namespace</code></td><td>string</td><td>Yes</td><td>Kubernetes namespace</td></tr>
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>ServiceAccount name</td></tr>
+<tr><td><code>labels</code></td><td>object</td><td>No</td><td>Labels</td></tr>
+<tr><td><code>image_pull_secrets</code></td><td>string[]</td><td>No</td><td>Image pull Secrets for pods using this service account</td></tr>
 </tbody>
 </table>
 </div>
@@ -902,7 +944,7 @@
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../tools/overview.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../tools/pod-template.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
@@ -916,7 +958,7 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../tools/overview.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../tools/pod-template.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 

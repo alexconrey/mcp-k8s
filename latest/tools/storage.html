@@ -36,10 +36,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-fb00c07e.js";
+            window.path_to_searchindex_js = "../searchindex-37af0f99.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-8f6ebf8b.js"></script>
+        <script src="../toc-5b34cd39.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -261,6 +261,12 @@
 <tr><td><code>storage_class</code></td><td>string</td><td>No</td><td>StorageClass name</td></tr>
 <tr><td><code>access_modes</code></td><td>string[]</td><td>No</td><td>Access modes (default: <code>["ReadWriteOnce"]</code>)</td></tr>
 <tr><td><code>storage</code></td><td>string</td><td>Yes</td><td>Storage size (e.g. <code>10Gi</code>)</td></tr>
+<tr><td><code>labels</code></td><td>object</td><td>No</td><td>Labels (<code>app.kubernetes.io/managed-by: mcp-k8s</code> is added)</td></tr>
+<tr><td><code>annotations</code></td><td>object</td><td>No</td><td>Annotations</td></tr>
+<tr><td><code>volume_mode</code></td><td>string</td><td>No</td><td><code>Filesystem</code> (default) or <code>Block</code></td></tr>
+<tr><td><code>data_source</code></td><td>object</td><td>No</td><td><code>{kind: VolumeSnapshot | PersistentVolumeClaim, name, api_group}</code>: restore a snapshot or clone a PVC</td></tr>
+<tr><td><code>selector</code></td><td>object</td><td>No</td><td>Bind only to PVs with these labels</td></tr>
+<tr><td><code>volume_name</code></td><td>string</td><td>No</td><td>Bind to this PersistentVolume</td></tr>
 </tbody>
 </table>
 </div>

@@ -36,10 +36,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-fb00c07e.js";
+            window.path_to_searchindex_js = "../searchindex-37af0f99.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-8f6ebf8b.js"></script>
+        <script src="../toc-5b34cd39.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -182,7 +182,8 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="workloads"><a class="header" href="#workloads">Workloads</a></h1>
-<p>This page documents tools for workload resources: StatefulSets, DaemonSets, CronJobs, Jobs, HorizontalPodAutoscalers, and ReplicaSets.</p>
+<p>This page documents tools for workload resources: StatefulSets, DaemonSets, CronJobs, Jobs, HorizontalPodAutoscalers, and ReplicaSets. Deployments and Pods are on <a href="./core.html">Core Resources</a>.</p>
+<p>Every workload create/update tool takes the shared <a href="./pod-template.html">pod template arguments</a>: containers, init containers and native sidecars, env with secret/configMap/field references, probes, resources, volumes, scheduling and security settings. Each section below lists only the tool’s own fields. Prefer these tools over <code>apply_manifest</code>; both enforce the same <a href="../permissions.html#workload-guardrails">guardrails</a>.</p>
 <h2 id="statefulsets"><a class="header" href="#statefulsets">StatefulSets</a></h2>
 <h3 id="list_statefulsets"><a class="header" href="#list_statefulsets">list_statefulsets</a></h3>
 <p>List StatefulSets in a namespace with replica counts and status.</p>
@@ -211,7 +212,7 @@
 </table>
 </div>
 <h3 id="create_statefulset"><a class="header" href="#create_statefulset">create_statefulset</a></h3>
-<p>Create a new StatefulSet in the specified namespace.</p>
+<p>Create a StatefulSet (pods selected by <code>app=&lt;name&gt;</code> or a custom <code>selector</code>). It takes the <a href="./pod-template.html">pod template arguments</a> plus:</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -220,10 +221,16 @@
 <tbody>
 <tr><td><code>namespace</code></td><td>string</td><td>Yes</td><td>Kubernetes namespace</td></tr>
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>StatefulSet name</td></tr>
-<tr><td><code>image</code></td><td>string</td><td>Yes</td><td>Container image</td></tr>
+<tr><td><code>image</code></td><td>string</td><td>Yes*</td><td>Container image (*or <code>containers</code>)</td></tr>
 <tr><td><code>service_name</code></td><td>string</td><td>Yes</td><td>Governing headless service name</td></tr>
 <tr><td><code>replicas</code></td><td>integer</td><td>No</td><td>Number of replicas (default: 1)</td></tr>
 <tr><td><code>port</code></td><td>integer</td><td>No</td><td>Container port to expose</td></tr>
+<tr><td><code>volume_claim_templates</code></td><td>array</td><td>No</td><td>Per-pod PVCs: <code>{name, storage, storage_class_name, access_modes (default [ReadWriteOnce]), volume_mode, labels, annotations}</code>. Mount them by name in <code>volume_mounts</code>.</td></tr>
+<tr><td><code>pod_management_policy</code></td><td>string</td><td>No</td><td><code>OrderedReady</code> (default) or <code>Parallel</code></td></tr>
+<tr><td><code>update_strategy</code></td><td>object</td><td>No</td><td><code>{type: RollingUpdate, partition, max_unavailable}</code> or <code>{type: OnDelete}</code></td></tr>
+<tr><td><code>persistent_volume_claim_retention_policy</code></td><td>object</td><td>No</td><td><code>{when_deleted, when_scaled}</code>: <code>Retain</code> or <code>Delete</code></td></tr>
+<tr><td><code>min_ready_seconds</code>, <code>revision_history_limit</code></td><td>integer</td><td>No</td><td></td></tr>
+<tr><td><code>selector</code>, <code>pod_annotations</code></td><td>object</td><td>No</td><td></td></tr>
 </tbody>
 </table>
 </div>
@@ -234,11 +241,15 @@
   "image": "postgres:16",
   "service_name": "postgres-headless",
   "replicas": 3,
-  "port": 5432
+  "port": 5432,
+  "env": { "POSTGRES_PASSWORD": { "secret_key_ref": { "name": "pg", "key": "password" } } },
+  "volume_claim_templates": [{ "name": "data", "storage": "10Gi" }],
+  "volume_mounts": [{ "name": "data", "mount_path": "/var/lib/postgresql/data" }],
+  "security_context": { "run_as_non_root": false, "fs_group": 999 }
 }
 </code></pre>
 <h3 id="update_statefulset"><a class="header" href="#update_statefulset">update_statefulset</a></h3>
-<p>Update (patch) an existing StatefulSet. Supports changing image and replica count.</p>
+<p>Update (patch) an existing StatefulSet: <code>replicas</code>, <code>update_strategy</code>, <code>persistent_volume_claim_retention_policy</code>, <code>min_ready_seconds</code>, <code>revision_history_limit</code>, and any pod template field (<code>image</code>, <code>env</code>, <code>resources</code>, probes, …). <code>container</code> picks the target container. The result is dry-run and checked against the guardrails before it is written (see <a href="./pod-template.html#updates">Updates</a>).</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -249,10 +260,10 @@
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>StatefulSet name</td></tr>
 <tr><td><code>image</code></td><td>string</td><td>No</td><td>New container image</td></tr>
 <tr><td><code>replicas</code></td><td>integer</td><td>No</td><td>New replica count</td></tr>
+<tr><td><em>other fields</em></td><td></td><td>No</td><td>As above</td></tr>
 </tbody>
 </table>
 </div>
-<p>At least one of <code>image</code> or <code>replicas</code> must be provided.</p>
 <h3 id="delete_statefulset"><a class="header" href="#delete_statefulset">delete_statefulset</a></h3>
 <p>Delete a StatefulSet by name.</p>
 <div class="table-wrapper">
@@ -295,7 +306,7 @@
 </table>
 </div>
 <h3 id="create_daemonset"><a class="header" href="#create_daemonset">create_daemonset</a></h3>
-<p>Create a DaemonSet that runs a pod on all (or selected) nodes.</p>
+<p>Create a DaemonSet that runs a pod on all (or selected) nodes. It takes the <a href="./pod-template.html">pod template arguments</a>; use <code>node_selector</code>, <code>affinity</code> and <code>tolerations</code> to pick nodes. Plus:</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -304,13 +315,17 @@
 <tbody>
 <tr><td><code>namespace</code></td><td>string</td><td>Yes</td><td>Kubernetes namespace</td></tr>
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>DaemonSet name</td></tr>
-<tr><td><code>image</code></td><td>string</td><td>Yes</td><td>Container image</td></tr>
+<tr><td><code>image</code></td><td>string</td><td>Yes*</td><td>Container image (*or <code>containers</code>)</td></tr>
 <tr><td><code>port</code></td><td>integer</td><td>No</td><td>Container port</td></tr>
+<tr><td><code>update_strategy</code></td><td>object</td><td>No</td><td><code>{type: RollingUpdate, max_unavailable, max_surge}</code> or <code>{type: OnDelete}</code></td></tr>
+<tr><td><code>min_ready_seconds</code>, <code>revision_history_limit</code></td><td>integer</td><td>No</td><td></td></tr>
+<tr><td><code>selector</code>, <code>pod_annotations</code></td><td>object</td><td>No</td><td></td></tr>
 </tbody>
 </table>
 </div>
+<p>Node agents often need <code>hostPath</code>, <code>hostNetwork</code> or privileged mode. Those are rejected unless the operator enables <code>--allow-host-path</code>, <code>--allow-host-namespaces</code> or <code>--allow-privileged</code>. With the flag set, this tool can express them.</p>
 <h3 id="update_daemonset"><a class="header" href="#update_daemonset">update_daemonset</a></h3>
-<p>Patch a DaemonSet. Supports updating the container image.</p>
+<p>Patch a DaemonSet: <code>update_strategy</code>, <code>min_ready_seconds</code>, <code>revision_history_limit</code>, and any pod template field. The result is dry-run and checked against the guardrails, so an image change on an existing privileged DaemonSet is refused unless the operator allows privileged workloads.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -320,6 +335,7 @@
 <tr><td><code>namespace</code></td><td>string</td><td>Yes</td><td>Kubernetes namespace</td></tr>
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>DaemonSet name</td></tr>
 <tr><td><code>image</code></td><td>string</td><td>No</td><td>New container image</td></tr>
+<tr><td><em>other fields</em></td><td></td><td>No</td><td>As above</td></tr>
 </tbody>
 </table>
 </div>
@@ -365,7 +381,7 @@
 </table>
 </div>
 <h3 id="create_cronjob"><a class="header" href="#create_cronjob">create_cronjob</a></h3>
-<p>Create a CronJob.</p>
+<p>Create a CronJob. It takes the <a href="./pod-template.html">pod template arguments</a> (<code>restart_policy</code> defaults to <code>OnFailure</code>), every Job setting from <a href="#create_job"><code>create_job</code></a> for the job template, plus:</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -374,14 +390,20 @@
 <tbody>
 <tr><td><code>namespace</code></td><td>string</td><td>Yes</td><td>Kubernetes namespace</td></tr>
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>CronJob name</td></tr>
-<tr><td><code>image</code></td><td>string</td><td>Yes</td><td>Container image</td></tr>
 <tr><td><code>schedule</code></td><td>string</td><td>Yes</td><td>Cron schedule expression (e.g. <code>*/5 * * * *</code>)</td></tr>
+<tr><td><code>image</code></td><td>string</td><td>Yes*</td><td>Container image (*or <code>containers</code>)</td></tr>
 <tr><td><code>command</code></td><td>string[]</td><td>No</td><td>Command to run</td></tr>
+<tr><td><code>restart_policy</code></td><td>string</td><td>No</td><td><code>OnFailure</code> (default) or <code>Never</code></td></tr>
+<tr><td><code>time_zone</code></td><td>string</td><td>No</td><td>IANA time zone, e.g. <code>Europe/Berlin</code></td></tr>
+<tr><td><code>concurrency_policy</code></td><td>string</td><td>No</td><td><code>Allow</code> (default), <code>Forbid</code>, <code>Replace</code></td></tr>
+<tr><td><code>suspend</code></td><td>boolean</td><td>No</td><td>Suspend future runs</td></tr>
+<tr><td><code>starting_deadline_seconds</code></td><td>integer</td><td>No</td><td></td></tr>
+<tr><td><code>successful_jobs_history_limit</code>, <code>failed_jobs_history_limit</code></td><td>integer</td><td>No</td><td></td></tr>
 </tbody>
 </table>
 </div>
 <h3 id="update_cronjob"><a class="header" href="#update_cronjob">update_cronjob</a></h3>
-<p>Patch a CronJob. Supports updating image, schedule, and suspend state.</p>
+<p>Update (patch) an existing CronJob: <code>schedule</code>, <code>suspend</code>, <code>time_zone</code>, <code>concurrency_policy</code>, history limits, job settings, and any pod template field (<code>image</code>, <code>env</code>, …). The result is dry-run and checked against the guardrails before it is written.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -390,9 +412,10 @@
 <tbody>
 <tr><td><code>namespace</code></td><td>string</td><td>Yes</td><td>Kubernetes namespace</td></tr>
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>CronJob name</td></tr>
+<tr><td><code>schedule</code></td><td>string</td><td>No</td><td>New cron schedule expression</td></tr>
+<tr><td><code>suspend</code></td><td>boolean</td><td>No</td><td>Whether to suspend the cronjob</td></tr>
 <tr><td><code>image</code></td><td>string</td><td>No</td><td>New container image</td></tr>
-<tr><td><code>schedule</code></td><td>string</td><td>No</td><td>New cron schedule</td></tr>
-<tr><td><code>suspend</code></td><td>boolean</td><td>No</td><td>Suspend or resume the CronJob</td></tr>
+<tr><td><em>other fields</em></td><td></td><td>No</td><td>As above</td></tr>
 </tbody>
 </table>
 </div>
@@ -438,7 +461,7 @@
 </table>
 </div>
 <h3 id="create_job"><a class="header" href="#create_job">create_job</a></h3>
-<p>Create a Job.</p>
+<p>Create a Job. It takes the <a href="./pod-template.html">pod template arguments</a> (<code>restart_policy</code>: <code>Never</code> by default, or <code>OnFailure</code>) plus:</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -447,8 +470,33 @@
 <tbody>
 <tr><td><code>namespace</code></td><td>string</td><td>Yes</td><td>Kubernetes namespace</td></tr>
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Job name</td></tr>
-<tr><td><code>image</code></td><td>string</td><td>Yes</td><td>Container image</td></tr>
+<tr><td><code>image</code></td><td>string</td><td>Yes*</td><td>Container image (*or <code>containers</code>)</td></tr>
 <tr><td><code>command</code></td><td>string[]</td><td>No</td><td>Command to run</td></tr>
+<tr><td><code>restart_policy</code></td><td>string</td><td>No</td><td><code>Never</code> (default) or <code>OnFailure</code></td></tr>
+<tr><td><code>backoff_limit</code></td><td>integer</td><td>No</td><td>Retries before failure (default: 6)</td></tr>
+<tr><td><code>ttl_seconds_after_finished</code></td><td>integer</td><td>No</td><td>Delete the Job this long after it finishes</td></tr>
+<tr><td><code>active_deadline_seconds</code></td><td>integer</td><td>No</td><td>Fail the Job after this long</td></tr>
+<tr><td><code>completions</code>, <code>parallelism</code></td><td>integer</td><td>No</td><td></td></tr>
+<tr><td><code>completion_mode</code></td><td>string</td><td>No</td><td><code>NonIndexed</code> or <code>Indexed</code></td></tr>
+<tr><td><code>backoff_limit_per_index</code>, <code>max_failed_indexes</code></td><td>integer</td><td>No</td><td>Indexed Jobs</td></tr>
+<tr><td><code>pod_failure_policy</code></td><td>object</td><td>No</td><td>Kubernetes PodFailurePolicy (<code>{rules: [{action, onExitCodes | onPodConditions}]}</code>)</td></tr>
+<tr><td><code>success_policy</code></td><td>object</td><td>No</td><td>Kubernetes SuccessPolicy for Indexed Jobs</td></tr>
+<tr><td><code>pod_replacement_policy</code></td><td>string</td><td>No</td><td><code>TerminatingOrFailed</code> or <code>Failed</code></td></tr>
+<tr><td><code>suspend</code></td><td>boolean</td><td>No</td><td>Create the Job suspended</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="create_job_from_cronjob"><a class="header" href="#create_job_from_cronjob">create_job_from_cronjob</a></h3>
+<p>Run a CronJob now: create a Job from its job template, like <code>kubectl create job --from=cronjob/NAME</code>. The Job is owned by the CronJob and annotated <code>cronjob.kubernetes.io/instantiate: manual</code>. The template is checked against the guardrails like any workload.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>namespace</code></td><td>string</td><td>Yes</td><td>Kubernetes namespace</td></tr>
+<tr><td><code>cronjob</code></td><td>string</td><td>Yes</td><td>CronJob name</td></tr>
+<tr><td><code>name</code></td><td>string</td><td>No</td><td>Job name (default: <code>&lt;cronjob&gt;-manual-&lt;timestamp&gt;</code>)</td></tr>
 </tbody>
 </table>
 </div>
@@ -507,6 +555,11 @@
 <tr><td><code>min_replicas</code></td><td>integer</td><td>No</td><td>Minimum replicas (default: 1)</td></tr>
 <tr><td><code>max_replicas</code></td><td>integer</td><td>Yes</td><td>Maximum replicas</td></tr>
 <tr><td><code>cpu_target_percent</code></td><td>integer</td><td>No</td><td>Target CPU utilization percentage</td></tr>
+<tr><td><code>labels</code></td><td>object</td><td>No</td><td>Labels (<code>app.kubernetes.io/managed-by: mcp-k8s</code> is added)</td></tr>
+<tr><td><code>annotations</code></td><td>object</td><td>No</td><td>Annotations</td></tr>
+<tr><td><code>target_memory_utilization</code></td><td>integer</td><td>No</td><td>Target average memory utilization (%)</td></tr>
+<tr><td><code>metrics</code></td><td>array</td><td>No</td><td>Kubernetes autoscaling/v2 MetricSpec objects (Resource, Pods, Object, External, ContainerResource), added to the cpu/memory shorthands</td></tr>
+<tr><td><code>behavior</code></td><td>object</td><td>No</td><td>Scale-up/scale-down policies and stabilization windows</td></tr>
 </tbody>
 </table>
 </div>
@@ -523,6 +576,8 @@
 <tr><td><code>min_replicas</code></td><td>integer</td><td>No</td><td>New minimum replicas</td></tr>
 <tr><td><code>max_replicas</code></td><td>integer</td><td>No</td><td>New maximum replicas</td></tr>
 <tr><td><code>cpu_target_percent</code></td><td>integer</td><td>No</td><td>New CPU target percentage</td></tr>
+<tr><td><code>target_cpu_utilization</code>, <code>target_memory_utilization</code>, <code>metrics</code></td><td></td><td>No</td><td>Replace the metrics</td></tr>
+<tr><td><code>behavior</code></td><td>object</td><td>No</td><td>Scaling behavior</td></tr>
 </tbody>
 </table>
 </div>

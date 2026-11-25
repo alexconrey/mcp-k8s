@@ -36,10 +36,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-fb00c07e.js";
+            window.path_to_searchindex_js = "../searchindex-37af0f99.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-8f6ebf8b.js"></script>
+        <script src="../toc-5b34cd39.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -262,6 +262,9 @@ cd mcp-k8s
 <tr><td><code>permissions.disableUpdate</code></td><td><code>false</code></td><td>Globally disable update operations</td></tr>
 <tr><td><code>permissions.disableDelete</code></td><td><code>false</code></td><td>Globally disable delete operations</td></tr>
 <tr><td><code>permissions.disableActions</code></td><td><code>[]</code></td><td>List of resource-action strings to disable (e.g. <code>["pods-delete", "secrets-create"]</code>)</td></tr>
+<tr><td><code>permissions.enableApplyManifest</code></td><td><code>false</code></td><td>Enable <code>apply_manifest</code>, an unrestricted raw apply that skips the workload guardrails (see <a href="../permissions.html#apply_manifest">Permissions</a>)</td></tr>
+<tr><td><code>permissions.disableApplyManifest</code></td><td><code>false</code></td><td>Deprecated (it’s off by default); still honoured and wins over <code>enableApplyManifest</code></td></tr>
+<tr><td><code>extraEnv</code></td><td><code>[]</code></td><td>Extra container environment variables, e.g. <code>MCP_K8S_ALLOW_LOADBALANCER=true</code> to relax a <a href="../permissions.html#workload-guardrails">workload guardrail</a>. Quote values in a values file, or use <code>--set-string</code> on the command line</td></tr>
 </tbody>
 </table>
 </div>

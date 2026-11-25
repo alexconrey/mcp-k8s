@@ -36,10 +36,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-fb00c07e.js";
+            window.path_to_searchindex_js = "searchindex-37af0f99.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-8f6ebf8b.js"></script>
+        <script src="toc-5b34cd39.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -200,12 +200,13 @@
 <tbody>
 <tr><td><strong>Read</strong></td><td><code>list_</code>, <code>get_</code>, <code>*_logs</code>, <code>*_metrics</code>, <code>can_i</code>, <code>whoami</code>, <code>list_my_permissions</code>, <code>get_resource_json</code> (and its deprecated alias <code>get_resource_yaml</code>)</td><td><code>list_deployments</code>, <code>get_pod_logs</code>, <code>get_metrics</code></td></tr>
 <tr><td><strong>Create</strong></td><td><code>create_</code>, <code>apply_manifest</code></td><td><code>create_deployment</code>, <code>create_pod</code>, <code>apply_manifest</code></td></tr>
-<tr><td><strong>Update</strong></td><td><code>update_</code>, <code>scale_</code>, <code>restart_</code>, <code>rollback_</code>, <code>approve_</code>, <code>deny_</code>, <code>cordon_</code>, <code>uncordon_</code>, <code>drain_</code></td><td><code>update_deployment</code>, <code>scale_deployment</code>, <code>cordon_node</code></td></tr>
+<tr><td><strong>Update</strong></td><td><code>update_</code>, <code>exec_</code>, <code>scale_</code>, <code>restart_</code>, <code>rollback_</code>, <code>approve_</code>, <code>deny_</code>, <code>cordon_</code>, <code>uncordon_</code>, <code>drain_</code></td><td><code>update_deployment</code>, <code>exec_pod</code>, <code>scale_deployment</code>, <code>cordon_node</code></td></tr>
 <tr><td><strong>Delete</strong></td><td><code>delete_</code>, <code>evict_</code></td><td><code>delete_pod</code>, <code>evict_pod</code></td></tr>
 </tbody>
 </table>
 </div>
 <p>Unknown tool names default to <strong>Read</strong> as a safe fallback.</p>
+<p><code>exec_pod</code> runs arbitrary commands inside a container, so it counts as an <strong>Update</strong> on <code>pod</code>: read-only mode, <code>--disable-update</code> and <code>--disable pod-update</code> all turn it off. Before this change it fell through to Read and stayed available even in read-only mode.</p>
 <h2 id="resolution-logic"><a class="header" href="#resolution-logic">Resolution Logic</a></h2>
 <p>When checking whether a tool is allowed, mcp-k8s follows this resolution order:</p>
 <ol>
@@ -263,30 +264,98 @@
   clusterrolebinding-create,\
   clusterrolebinding-delete
 </code></pre>
-<h2 id="apply_manifest-guardrails"><a class="header" href="#apply_manifest-guardrails"><code>apply_manifest</code> Guardrails</a></h2>
-<p><code>apply_manifest</code> is the most powerful tool in mcp-k8s. It uses Kubernetes server-side apply to create or update <strong>any</strong> resource from a raw JSON manifest, making it capable of both create and update operations in a single tool. Because of this dual nature, it requires special consideration:</p>
+<h2 id="workload-guardrails"><a class="header" href="#workload-guardrails">Workload Guardrails</a></h2>
+<p>The permission switches above decide <strong>which tools</strong> run. The workload policy decides <strong>what those tools may create</strong>. The typed tools and the custom resource tools enforce it, with the same code:</p>
 <ul>
-<li><strong><code>--disable-create</code></strong> removes <code>apply_manifest</code> (since it is classified as a Create action), but this also disables all other create tools.</li>
-<li><strong><code>--disable-apply-manifest</code></strong> / <code>DISABLE_APPLY_MANIFEST</code> is a dedicated kill-switch that blocks <code>apply_manifest</code> without affecting other create tools like <code>create_deployment</code> or <code>create_service</code>.</li>
+<li>the typed <code>create_*</code> tools check the object they built;</li>
+<li>the typed <code>update_*</code> tools check the server’s dry-run result of the patch;</li>
+<li><code>create_custom_resource</code> and <code>update_custom_resource</code> check the raw manifest (or, for updates, the dry-run result).</li>
 </ul>
-<p>For production environments, consider blocking <code>apply_manifest</code> entirely:</p>
-<pre><code class="language-bash"># Block apply_manifest but keep typed create tools available
-mcp-k8s --disable-apply-manifest
+<p><code>apply_manifest</code> is the one exception, on purpose: it’s off by default, and when an operator enables it it’s an unrestricted raw apply (see <a href="#apply_manifest"><code>apply_manifest</code></a>). The defaults are restrictive. Each relaxation is an explicit opt-in, and every rejection names the flag that allows it, for example:</p>
+<pre><code class="language-text">rejected by the mcp-k8s workload policy (1 violation):
+- spec.template.spec.containers[0] (agent).securityContext: privileged: true gives the container full access to the node; an operator can allow this with --allow-privileged (env MCP_K8S_ALLOW_PRIVILEGED=true; library: WorkloadPolicy.allow_privileged)
+These guardrails apply to every typed tool and the custom resource tools. Don't work around a rejection with another tool (including apply_manifest): report it to the user.
 </code></pre>
-<p>Or via environment variable:</p>
-<pre><code class="language-bash">DISABLE_APPLY_MANIFEST=true mcp-k8s
-</code></pre>
-<p>This is the recommended approach for production because:</p>
-<ol>
-<li><code>apply_manifest</code> can create any resource type, including ClusterRoles, Namespaces, and other privileged objects</li>
-<li>It can also update existing resources, bypassing the <code>--disable-update</code> flag since it is classified as a Create action</li>
-<li>The typed create tools (e.g. <code>create_deployment</code>) are safer because they only operate on their specific resource type</li>
-</ol>
+<h3 id="rules-and-flags"><a class="header" href="#rules-and-flags">Rules and flags</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Rule (default: rejected)</th><th>Applies to</th><th>Flag / env var</th><th><code>WorkloadPolicy</code> field</th></tr>
+</thead>
+<tbody>
+<tr><td><code>securityContext.privileged: true</code>, Windows <code>hostProcess</code>, namespaces labelled <code>pod-security.kubernetes.io/*=privileged</code></td><td>every container (incl. init and ephemeral), Namespaces</td><td><code>--allow-privileged</code> / <code>MCP_K8S_ALLOW_PRIVILEGED</code></td><td><code>allow_privileged</code></td></tr>
+<tr><td><code>allowPrivilegeEscalation: true</code></td><td>containers</td><td><code>--allow-privilege-escalation</code> / <code>MCP_K8S_ALLOW_PRIVILEGE_ESCALATION</code></td><td><code>allow_privilege_escalation</code></td></tr>
+<tr><td><code>capabilities.add</code> beyond the runtime’s default set (AUDIT_WRITE, CHOWN, DAC_OVERRIDE, FOWNER, FSETID, KILL, MKNOD, NET_BIND_SERVICE, SETFCAP, SETGID, SETPCAP, SETUID, SYS_CHROOT)</td><td>containers</td><td><code>--allow-capabilities NET_ADMIN,…</code> (<code>ALL</code> = any) / <code>MCP_K8S_ALLOW_CAPABILITIES</code></td><td><code>allowed_capabilities</code></td></tr>
+<tr><td><code>hostNetwork</code>, <code>hostPID</code>, <code>hostIPC</code></td><td>pods</td><td><code>--allow-host-namespaces</code> / <code>MCP_K8S_ALLOW_HOST_NAMESPACES</code></td><td><code>allow_host_namespaces</code></td></tr>
+<tr><td><code>hostPath</code> volumes</td><td>pods</td><td><code>--allow-host-path</code> / <code>MCP_K8S_ALLOW_HOST_PATH</code></td><td><code>allow_host_path</code></td></tr>
+<tr><td><code>hostPort</code></td><td>container ports</td><td><code>--allow-host-ports</code> / <code>MCP_K8S_ALLOW_HOST_PORTS</code></td><td><code>allow_host_ports</code></td></tr>
+<tr><td>Volume types other than configMap, secret, emptyDir, persistentVolumeClaim, projected, downwardAPI, ephemeral (e.g. <code>nfs</code>, inline <code>csi</code>, <code>gitRepo</code>, <code>iscsi</code>)</td><td>pods</td><td><code>--allow-volume-types nfs,csi</code> (<code>*</code> = any but hostPath) / <code>MCP_K8S_ALLOW_VOLUME_TYPES</code></td><td><code>allowed_volume_types</code></td></tr>
+<tr><td>seccomp/AppArmor <code>Unconfined</code> (fields or legacy annotations), custom SELinux type/user/role, <code>procMount: Unmasked</code>, sysctls outside the safe set, probe/lifecycle <code>host</code> other than localhost</td><td>pods, containers</td><td><code>--allow-unconfined</code> / <code>MCP_K8S_ALLOW_UNCONFINED</code></td><td><code>allow_unconfined</code></td></tr>
+<tr><td>Images outside the registry allowlist (only when one is set)</td><td>containers</td><td><code>--allowed-registries ghcr.io/myorg,docker.io/library</code> / <code>MCP_K8S_ALLOWED_REGISTRIES</code></td><td><code>allowed_registries</code></td></tr>
+<tr><td><code>type: NodePort</code>, explicit <code>nodePort</code></td><td>Services</td><td><code>--allow-nodeport</code> / <code>MCP_K8S_ALLOW_NODEPORT</code></td><td><code>allow_node_port</code></td></tr>
+<tr><td><code>type: LoadBalancer</code>, <code>loadBalancerSourceRanges</code>/<code>Class</code>/<code>IP</code>, <code>allocateLoadBalancerNodePorts</code>, cloud load-balancer annotations (<code>service.beta.kubernetes.io/*</code>, GKE, MetalLB, kube-vip, Cilium LB-IPAM)</td><td>Services</td><td><code>--allow-loadbalancer</code> / <code>MCP_K8S_ALLOW_LOADBALANCER</code></td><td><code>allow_load_balancer</code></td></tr>
+<tr><td><code>type: ExternalName</code>, <code>spec.externalIPs</code> (CVE-2020-8554)</td><td>Services</td><td><code>--allow-external-services</code> / <code>MCP_K8S_ALLOW_EXTERNAL_SERVICES</code></td><td><code>allow_external_services</code></td></tr>
+<tr><td><code>*-snippet(s)</code> annotations (any controller); characters and words that inject nginx config (<code>;</code>, <code>{</code>, <code>}</code>, quotes, <code>\</code>, newlines, <code>_by_lua</code>, <code>load_module</code>, …) in ingress-nginx annotation values; <code>auth-url</code>/<code>auth-signin</code>/<code>mirror-target</code>/redirect values that aren’t plain http(s) URLs; paths with injection characters (the IngressNightmare class: CVE-2025-1097, CVE-2025-1098, CVE-2025-24514)</td><td>Ingresses</td><td><code>--allow-ingress-snippets</code> / <code>MCP_K8S_ALLOW_INGRESS_SNIPPETS</code></td><td><code>allow_ingress_snippets</code></td></tr>
+<tr><td>Annotations not in the allowlist (when set) / in the denylist; trailing <code>*</code> matches a prefix</td><td>Ingresses</td><td><code>--ingress-annotation-allowlist</code>, <code>--ingress-annotation-denylist</code> / <code>MCP_K8S_INGRESS_ANNOTATION_ALLOWLIST</code>, <code>MCP_K8S_INGRESS_ANNOTATION_DENYLIST</code></td><td><code>ingress_annotation_allowlist</code>, <code>ingress_annotation_denylist</code></td></tr>
+<tr><td>RBAC escalation primitives: verbs <code>escalate</code>, <code>bind</code>, <code>impersonate</code>; wildcard verbs, resources (<code>*</code>, <code>x/*</code>), apiGroups or nonResourceURLs; aggregated ClusterRoles and <code>aggregate-to-*</code> labels; binding <code>cluster-admin</code>, or a role whose rules contain any of the above (fetched live); binding <code>system:anonymous</code>/<code>system:unauthenticated</code>; <code>kubernetes.io/service-account-token</code> Secrets</td><td>Roles, ClusterRoles, bindings, Secrets</td><td><code>--allow-rbac-escalation</code> / <code>MCP_K8S_ALLOW_RBAC_ESCALATION</code></td><td><code>allow_rbac_escalation</code></td></tr>
+<tr><td>Cluster-scoped custom resource kinds</td><td>custom resource tools</td><td><code>--allow-manifest-kinds ClusterRole,rbac.authorization.k8s.io/RoleBinding</code> (<code>*</code> = all) / <code>MCP_K8S_ALLOW_MANIFEST_KINDS</code></td><td><code>allowed_manifest_kinds</code></td></tr>
+<tr><td>Custom resources (any non-built-in API group). Operators can turn them into pods or RBAC objects; pod specs, containers and manifests embedded in an allowlisted custom resource still get the rules above.</td><td>custom resource tools</td><td><code>--allow-custom-resource-groups cert-manager.io</code> (<code>*</code> = any) / <code>MCP_K8S_ALLOW_CUSTOM_RESOURCE_GROUPS</code></td><td><code>allowed_custom_resource_groups</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>The namespace allowlist (<code>--namespaces</code>) applies to every tool, including the object’s namespace in <code>apply_manifest</code> manifests (even when the workload policy doesn’t).</p>
+<h3 id="secure-defaults"><a class="header" href="#secure-defaults">Secure defaults</a></h3>
+<p>The typed create tools also fill in a restricted securityContext when the caller leaves it unset:</p>
+<ul>
+<li><code>runAsNonRoot: true</code>;</li>
+<li>seccomp <code>RuntimeDefault</code>;</li>
+<li><code>allowPrivilegeEscalation: false</code>;</li>
+<li><code>capabilities.drop: [ALL]</code> for non-root containers;</li>
+<li><code>automountServiceAccountToken: false</code> unless <code>service_account_name</code> is set.</li>
+</ul>
+<p>They add the label <code>app.kubernetes.io/managed-by: mcp-k8s</code>; <code>apply_manifest</code> adds it too when the manifest has no managed-by label. These are defaults, not rules: <code>security_context.run_as_non_root: false</code> runs root images. <code>--no-secure-defaults</code> (<code>MCP_K8S_NO_SECURE_DEFAULTS</code>, <code>WorkloadPolicy.secure_defaults = false</code>) turns them off. See <a href="./tools/pod-template.html#security-context-and-secure-defaults">Pod Template Arguments</a>.</p>
+<h3 id="updates"><a class="header" href="#updates">Updates</a></h3>
+<p>Update tools patch with a server-side <strong>dry run</strong> first, check the resulting object, then write with the dry run’s <code>resourceVersion</code> as a precondition. An update therefore can’t add a disallowed setting. It also can’t modify a workload that already breaks the policy, for example swapping the image of an existing privileged DaemonSet. That block is deliberate; allow the relevant rule to manage such workloads through mcp-k8s. <code>scale_deployment</code> and <code>restart_deployment</code> don’t change pod content and aren’t checked.</p>
+<h3 id="library-users"><a class="header" href="#library-users">Library users</a></h3>
+<p><code>WorkloadPolicy</code> lives on <code>ActionPermissions</code>. <code>ActionPermissions::default()</code> and <code>ActionPermissions::new(...)</code> use the restrictive <code>WorkloadPolicy::default()</code>; replace it with <code>with_workload_policy</code>:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use mcp_k8s::permissions::ActionPermissions;
+use mcp_k8s::policy::WorkloadPolicy;
+
+let mut policy = WorkloadPolicy::default();
+policy.allow_load_balancer = true;
+policy.allowed_custom_resource_groups = vec!["cert-manager.io".into()];
+let permissions = ActionPermissions::default().with_workload_policy(policy);
+// WorkloadPolicy::permissive() restores the pre-0.5 behaviour (no guardrails).
+<span class="boring">}</span></code></pre>
+<p><code>mcp_k8s::policy::check_object</code> is public, so an embedding application can run the same checks on objects it writes itself.</p>
+<h3 id="limits"><a class="header" href="#limits">Limits</a></h3>
+<p>The policy decides what mcp-k8s writes. It is not an admission controller:</p>
+<ul>
+<li>it doesn’t stop other clients;</li>
+<li>it doesn’t follow what an allowlisted operator does with a custom resource (for example a GitOps controller pulling from a repository);</li>
+<li>it can’t see the user an image runs as.</li>
+</ul>
+<p>Use Pod Security Admission, an admission policy engine and Kubernetes RBAC for cluster-wide enforcement; the guardrails keep the AI-facing tools inside those lines.</p>
+<h2 id="apply_manifest"><a class="header" href="#apply_manifest"><code>apply_manifest</code></a></h2>
+<p><code>apply_manifest</code> uses server-side apply to create <strong>or</strong> update an object from a raw JSON manifest. It’s for users who know exactly what they’re applying, and it’s built so that the decision stays with them rather than with the agent:</p>
+<ul>
+<li><strong>Off by default.</strong> It isn’t listed in <code>tools/list</code> and calls are refused until the operator starts mcp-k8s with <code>--enable-apply-manifest</code> (<code>ENABLE_APPLY_MANIFEST=true</code>; Helm <code>permissions.enableApplyManifest</code>; library <code>ActionPermissions::with_apply_manifest(true)</code>). An agent can’t turn it on. The old <code>--disable-apply-manifest</code> still works and wins over <code>--enable-apply-manifest</code>.</li>
+<li><strong>Unrestricted when enabled.</strong> It skips the workload policy entirely: no pod rules, no Service/Ingress/RBAC rules, no kind gates, no custom resource group allowlist. It can create privileged pods, <code>hostPath</code> mounts, RBAC bindings, webhooks and CRDs.</li>
+<li><strong>Still scoped by the operator.</strong> The namespace allowlist applies to the manifest’s namespace, and the per-resource switches apply: it looks the object up first, so creating it needs <code>&lt;resource&gt;-create</code> and updating an existing one needs <code>&lt;resource&gt;-update</code>, with the typed tools’ keys (e.g. <code>deployment-update</code>). <code>--disable-create</code> removes it.</li>
+<li><strong>The human confirms each call.</strong> Its tool definition carries the MCP annotation <code>destructiveHint: true</code>, so clients such as Claude Code ask the user before running it. Its description and the server instructions tell agents to use it only when the user explicitly asks for a manifest to be applied, to show the user the full manifest first, and never to use it to get around a rejection or a missing typed-tool field.</li>
+<li>A manifest without a managed-by label gets <code>app.kubernetes.io/managed-by: mcp-k8s</code>.</li>
+</ul>
+<p><strong>Why not guard it like the other tools?</strong> A guarded <code>apply_manifest</code> (as in early v0.6.0 drafts) is just a worse typed tool, and the risky case is an agent that’s confident while the person behind it doesn’t know what the manifest does. An operator opt-in plus per-call human confirmation addresses that directly; a policy only an operator can relax doesn’t help a user who really does need a raw manifest.</p>
+<p><strong>Recommendation.</strong> Leave it off for shared or agent-driven deployments; agents get everything they need from the typed tools (see <a href="./tools/coverage.html">Typed Tool Coverage</a>). Enable it for a person who manages the cluster and wants a raw escape hatch, ideally with a narrow <code>--namespaces</code> list.</p>
 <h2 id="how-it-works-internally"><a class="header" href="#how-it-works-internally">How It Works Internally</a></h2>
 <p>The <code>ActionPermissions</code> struct maintains:</p>
 <ul>
 <li>Three global flags: <code>global_create_enabled</code>, <code>global_update_enabled</code>, <code>global_delete_enabled</code></li>
 <li>A <code>resource_overrides</code> map of <code>"&lt;resource&gt;-&lt;action&gt;"</code> -&gt; <code>false</code> entries</li>
+<li><code>secret_decode_enabled</code> and <code>apply_manifest_enabled</code></li>
+<li>The <code>WorkloadPolicy</code> (see <a href="#workload-guardrails">Workload Guardrails</a>)</li>
 </ul>
 <p>When <code>tool_definitions()</code> is called (in response to <code>tools/list</code>), each tool definition is passed through <code>permissions.is_tool_allowed(name)</code>. Tools that are not allowed are filtered out of the response.</p>
 <p>The resource name is extracted from the tool name by stripping the action prefix:</p>
@@ -302,11 +371,12 @@ mcp-k8s --disable-apply-manifest
 <tr><td><code>rollback_deployment</code></td><td><code>deployment</code></td><td>Update</td></tr>
 <tr><td><code>evict_pod</code></td><td><code>pod</code></td><td>Delete</td></tr>
 <tr><td><code>cordon_node</code></td><td><code>node</code></td><td>Update</td></tr>
+<tr><td><code>exec_pod</code></td><td><code>pod</code></td><td>Update</td></tr>
 <tr><td><code>apply_manifest</code></td><td><code>apply_manifest</code></td><td>Create</td></tr>
 </tbody>
 </table>
 </div>
-<p>The override key format is <code>&lt;resource&gt;-&lt;action&gt;</code>, all lowercase. So to disable <code>apply_manifest</code>, you would use <code>--disable apply_manifest-create</code>.</p>
+<p>The override key format is <code>&lt;resource&gt;-&lt;action&gt;</code>, all lowercase. <code>apply_manifest</code> is off unless <code>--enable-apply-manifest</code> is set; when it’s enabled, <code>--disable apply_manifest-create</code> also removes it. Inside <code>apply_manifest</code>, the object’s own kind is checked against the same keys, e.g. <code>deployment-create</code> or <code>deployment-update</code>.</p>
 <h2 id="relationship-to-kubernetes-rbac"><a class="header" href="#relationship-to-kubernetes-rbac">Relationship to Kubernetes RBAC</a></h2>
 <p>The mcp-k8s permission system and Kubernetes RBAC serve complementary purposes:</p>
 <div class="table-wrapper">

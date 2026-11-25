@@ -36,10 +36,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-fb00c07e.js";
+            window.path_to_searchindex_js = "../searchindex-37af0f99.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-8f6ebf8b.js"></script>
+        <script src="../toc-5b34cd39.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -211,7 +211,8 @@
 </table>
 </div>
 <h3 id="create_ingress"><a class="header" href="#create_ingress">create_ingress</a></h3>
-<p>Create a Kubernetes Ingress resource. Automatically creates a backing ClusterIP Service if one does not already exist.</p>
+<p>Create an Ingress. Preferred over <code>apply_manifest</code>. It takes several rules, TLS, a default backend and the ingress class. The original single-rule arguments (<code>host</code>, <code>service_name</code>, <code>service_port</code>, <code>path</code>, <code>path_type</code>) still work as a shorthand.</p>
+<p>By default, a ClusterIP Service selecting <code>app=&lt;service_name&gt;</code> is created for each numbered backend that doesn’t exist yet (<code>create_missing_services</code>).</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -220,32 +221,46 @@
 <tbody>
 <tr><td><code>namespace</code></td><td>string</td><td>Yes</td><td>Kubernetes namespace</td></tr>
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Ingress name</td></tr>
-<tr><td><code>service_name</code></td><td>string</td><td>Yes</td><td>Backend service name</td></tr>
-<tr><td><code>host</code></td><td>string</td><td>No</td><td>Hostname for the ingress rule (e.g. <code>myapp.example.com</code>)</td></tr>
-<tr><td><code>service_port</code></td><td>integer</td><td>No</td><td>Backend service port (default: 80)</td></tr>
-<tr><td><code>path</code></td><td>string</td><td>No</td><td>URL path (default: <code>/</code>)</td></tr>
-<tr><td><code>path_type</code></td><td>string</td><td>No</td><td>Path matching type: <code>Prefix</code> (default), <code>Exact</code>, <code>ImplementationSpecific</code></td></tr>
-<tr><td><code>ingress_class</code></td><td>string</td><td>No</td><td>IngressClass name (e.g. <code>alb</code>, <code>nginx</code>)</td></tr>
-<tr><td><code>annotations</code></td><td>object</td><td>No</td><td>Ingress annotations as key-value pairs</td></tr>
+<tr><td><code>rules</code></td><td>array</td><td>No*</td><td><code>{host, paths: [{path (default /), path_type (default Prefix), service_name, service_port | service_port_name}]}</code></td></tr>
+<tr><td><code>tls</code></td><td>array</td><td>No</td><td><code>{hosts, secret_name}</code></td></tr>
+<tr><td><code>default_backend</code></td><td>object</td><td>No*</td><td><code>{service_name, service_port | service_port_name}</code></td></tr>
+<tr><td><code>service_name</code></td><td>string</td><td>No*</td><td>Single-rule shorthand: backend service</td></tr>
+<tr><td><code>host</code></td><td>string</td><td>No</td><td>Single-rule shorthand: hostname (e.g. <code>myapp.example.com</code>)</td></tr>
+<tr><td><code>service_port</code></td><td>integer</td><td>No</td><td>Single-rule shorthand: backend port (default: 80)</td></tr>
+<tr><td><code>path</code></td><td>string</td><td>No</td><td>Single-rule shorthand: URL path (default: <code>/</code>)</td></tr>
+<tr><td><code>path_type</code></td><td>string</td><td>No</td><td><code>Prefix</code> (default), <code>Exact</code>, <code>ImplementationSpecific</code></td></tr>
+<tr><td><code>ingress_class</code></td><td>string</td><td>No</td><td>IngressClass name (e.g. <code>alb</code>, <code>nginx</code>, <code>traefik</code>)</td></tr>
+<tr><td><code>annotations</code></td><td>object</td><td>No</td><td>Ingress annotations (checked, see below)</td></tr>
+<tr><td><code>labels</code></td><td>object</td><td>No</td><td></td></tr>
+<tr><td><code>create_missing_services</code></td><td>boolean</td><td>No</td><td>Default: true</td></tr>
 </tbody>
 </table>
 </div>
+<p>*One of <code>rules</code>, <code>default_backend</code> or <code>service_name</code> is required.</p>
+<p><strong>Annotation guardrails.</strong> These are rejected unless the operator sets <code>--allow-ingress-snippets</code>:</p>
+<ul>
+<li><code>*-snippet(s)</code> annotations, for any controller;</li>
+<li>characters and words that inject nginx configuration in <code>nginx.ingress.kubernetes.io/*</code> values (<code>;</code>, <code>{</code>, <code>}</code>, quotes, backslashes, newlines, <code>_by_lua</code>, <code>load_module</code>, …);</li>
+<li><code>auth-url</code>/<code>auth-signin</code>/<code>mirror-target</code>/redirect values that aren’t plain http(s) URLs.</li>
+</ul>
+<p>This is the IngressNightmare class of attacks (CVE-2025-1097, CVE-2025-1098, CVE-2025-24514). Operators can also set an annotation allowlist or denylist (<code>--ingress-annotation-allowlist</code>, <code>--ingress-annotation-denylist</code>).</p>
 <p>Example:</p>
 <pre><code class="language-json">{
   "namespace": "default",
-  "name": "my-app-ingress",
-  "service_name": "my-app",
-  "host": "my-app.example.com",
-  "service_port": 8080,
-  "path": "/",
+  "name": "shop",
   "ingress_class": "nginx",
-  "annotations": {
-    "cert-manager.io/cluster-issuer": "letsencrypt-prod"
-  }
+  "rules": [
+    { "host": "shop.example.com", "paths": [
+      { "path": "/api", "service_name": "api", "service_port_name": "http" },
+      { "path": "/", "service_name": "web", "service_port": 80 }
+    ] }
+  ],
+  "tls": [{ "hosts": ["shop.example.com"], "secret_name": "shop-tls" }],
+  "annotations": { "cert-manager.io/cluster-issuer": "letsencrypt-prod" }
 }
 </code></pre>
 <h3 id="update_ingress"><a class="header" href="#update_ingress">update_ingress</a></h3>
-<p>Update an existing Kubernetes Ingress resource (host, paths, annotations, TLS).</p>
+<p>Update an existing Ingress. Preferred over <code>apply_manifest</code>. <code>rules</code>, <code>tls</code> and <code>default_backend</code> replace the current values; <code>annotations</code> and <code>labels</code> merge. The single-rule shorthand replaces all rules with one. The result is dry-run and checked against the guardrails before it is written.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -254,13 +269,10 @@
 <tbody>
 <tr><td><code>namespace</code></td><td>string</td><td>Yes</td><td>Kubernetes namespace</td></tr>
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Ingress name</td></tr>
-<tr><td><code>service_name</code></td><td>string</td><td>Yes</td><td>Backend service name</td></tr>
-<tr><td><code>host</code></td><td>string</td><td>No</td><td>Hostname for the ingress rule</td></tr>
-<tr><td><code>service_port</code></td><td>integer</td><td>No</td><td>Backend service port (default: 80)</td></tr>
-<tr><td><code>path</code></td><td>string</td><td>No</td><td>URL path (default: <code>/</code>)</td></tr>
-<tr><td><code>path_type</code></td><td>string</td><td>No</td><td>Path matching type (default: <code>Prefix</code>)</td></tr>
+<tr><td><code>rules</code>, <code>tls</code>, <code>default_backend</code></td><td>array/object</td><td>No</td><td>As in <code>create_ingress</code></td></tr>
+<tr><td><code>service_name</code>, <code>host</code>, <code>service_port</code>, <code>path</code>, <code>path_type</code></td><td></td><td>No</td><td>Single-rule shorthand</td></tr>
 <tr><td><code>ingress_class</code></td><td>string</td><td>No</td><td>IngressClass name</td></tr>
-<tr><td><code>annotations</code></td><td>object</td><td>No</td><td>Ingress annotations as key-value pairs</td></tr>
+<tr><td><code>annotations</code>, <code>labels</code></td><td>object</td><td>No</td><td>Merged into the existing ones</td></tr>
 </tbody>
 </table>
 </div>
@@ -336,6 +348,8 @@
 <tr><td><code>ingress_rules</code></td><td>array</td><td>No</td><td>Ingress rules</td></tr>
 <tr><td><code>egress_rules</code></td><td>array</td><td>No</td><td>Egress rules</td></tr>
 <tr><td><code>policy_types</code></td><td>string[]</td><td>No</td><td>Policy types: <code>Ingress</code>, <code>Egress</code></td></tr>
+<tr><td><code>labels</code></td><td>object</td><td>No</td><td>Labels (<code>app.kubernetes.io/managed-by: mcp-k8s</code> is added)</td></tr>
+<tr><td><code>annotations</code></td><td>object</td><td>No</td><td>Annotations</td></tr>
 </tbody>
 </table>
 </div>

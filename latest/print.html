@@ -37,10 +37,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-fb00c07e.js";
+            window.path_to_searchindex_js = "searchindex-37af0f99.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-8f6ebf8b.js"></script>
+        <script src="toc-5b34cd39.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -185,7 +185,7 @@
 <p>mcp-k8s bridges the gap between AI assistants and Kubernetes clusters. It translates natural-language requests from an MCP client into Kubernetes API calls, returning structured, token-efficient responses. Instead of raw Kubernetes JSON objects (which can be hundreds of lines), mcp-k8s returns focused summaries containing only the fields relevant to the caller.</p>
 <h2 id="key-features"><a class="header" href="#key-features">Key Features</a></h2>
 <ul>
-<li><strong>210 tools</strong> across 49 resource modules covering every GA Kubernetes resource type – Deployments, Pods, Services, Ingresses, ConfigMaps, Secrets, StatefulSets, DaemonSets, CronJobs, Jobs, RBAC resources, Nodes, PVs, PVCs, HPAs, PDBs, NetworkPolicies, admission controllers, CSI resources, and more.</li>
+<li><strong>211 tools</strong> across 49 resource modules covering every GA Kubernetes resource type – Deployments, Pods, Services, Ingresses, ConfigMaps, Secrets, StatefulSets, DaemonSets, CronJobs, Jobs, RBAC resources, Nodes, PVs, PVCs, HPAs, PDBs, NetworkPolicies, admission controllers, CSI resources, and more.</li>
 <li><strong>Two runtime modes</strong> – stdio for local use with Claude Code, and HTTP for in-cluster deployment as a Kubernetes pod.</li>
 <li><strong>SSE transport</strong> – <code>POST /mcp/sse</code> endpoint for Server-Sent Events streaming alongside the standard <code>POST /mcp</code> JSON-RPC endpoint.</li>
 <li><strong>MCP resources</strong> – <code>resources/list</code> and <code>resources/read</code> support for direct resource access via <code>k8s://</code> URIs (pods, deployments, services, configmaps, secrets, statefulsets, daemonsets, jobs, cronjobs, ingresses, nodes, namespaces).</li>
@@ -197,7 +197,7 @@
 <li><strong>Multi-cluster support</strong> – Load multiple kubeconfig contexts with <code>--contexts</code> and switch between clusters at runtime using <code>list_clusters</code>, <code>switch_cluster</code>, and <code>get_active_cluster</code> tools.</li>
 <li><strong>Watch/subscribe</strong> – <code>watch_resource</code> tool watches any resource type for ADDED, MODIFIED, and DELETED events over a configurable time window.</li>
 <li><strong>CRD discovery</strong> – <code>list_crds</code>, <code>get_crd</code>, <code>list_custom_resources</code>, <code>get_custom_resource</code>, <code>create_custom_resource</code>, <code>update_custom_resource</code>, and <code>delete_custom_resource</code> tools provide full lifecycle management of any installed CRD via dynamic API discovery.</li>
-<li><strong>Generic tools</strong> – <code>apply_manifest</code> (server-side apply, a last resort behind the typed tools) and <code>get_resource_json</code> work with any Kubernetes resource type, including CRDs.</li>
+<li><strong>Generic tools</strong> – <code>apply_manifest</code> (an unrestricted raw server-side apply, off unless the operator enables it) and <code>get_resource_json</code> work with any Kubernetes resource type, including CRDs.</li>
 <li><strong>Auth introspection</strong> – <code>whoami</code>, <code>can_i</code>, and <code>list_my_permissions</code> tools let the AI understand its own access level.</li>
 <li><strong>TLS and bearer token auth</strong> – Optional <code>--tls-cert</code>/<code>--tls-key</code> for HTTPS and <code>--auth-token</code> for bearer token authentication on the HTTP server.</li>
 <li><strong>Swagger UI</strong> – Interactive API documentation at <code>GET /swagger-ui</code> with OpenAPI spec at <code>GET /openapi.json</code>.</li>
@@ -275,7 +275,7 @@
 <li><a href="#installation">Installation</a> – Build from source or pull the Docker image</li>
 <li><a href="#configuration">Configuration</a> – CLI args, environment variables, and permission flags</li>
 <li><a href="#quick-start">Quick Start</a> – Get up and running in minutes</li>
-<li><a href="#tools-overview">Tools Reference</a> – Complete reference for all 210 tools</li>
+<li><a href="#tools-overview">Tools Reference</a> – Complete reference for all 211 tools</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="installation"><a class="header" href="#installation">Installation</a></h1>
@@ -456,7 +456,8 @@ MCP_K8S_NAMESPACES=default,production,staging mcp-k8s
 <tr><td><code>--disable-create</code></td><td><code>DISABLE_CREATE</code></td><td><code>false</code></td><td>Globally disable all create tools. When set, tools like <code>create_deployment</code>, <code>create_pod</code>, <code>create_service</code>, and <code>apply_manifest</code> are removed from the tool list.</td></tr>
 <tr><td><code>--disable-update</code></td><td><code>DISABLE_UPDATE</code></td><td><code>false</code></td><td>Globally disable all update tools. When set, tools like <code>update_deployment</code>, <code>scale_deployment</code>, <code>restart_deployment</code>, <code>cordon_node</code>, and <code>drain_node</code> are removed.</td></tr>
 <tr><td><code>--disable-delete</code></td><td><code>DISABLE_DELETE</code></td><td><code>false</code></td><td>Globally disable all delete tools. When set, tools like <code>delete_deployment</code>, <code>delete_pod</code>, and <code>evict_pod</code> are removed.</td></tr>
-<tr><td><code>--disable-apply-manifest</code></td><td><code>DISABLE_APPLY_MANIFEST</code></td><td><code>false</code></td><td>Completely disable the <code>apply_manifest</code> tool. Unlike <code>--disable-create</code>, this is a dedicated kill-switch for <code>apply_manifest</code> because it can both create and update arbitrary resources. See <a href="#permissions">Permissions</a> for details.</td></tr>
+<tr><td><code>--enable-apply-manifest</code></td><td><code>ENABLE_APPLY_MANIFEST</code></td><td><code>false</code></td><td>Enable the <code>apply_manifest</code> tool. It’s an <strong>unrestricted</strong> raw server-side apply that skips the workload guardrails below (the namespace allowlist and the create/update switches still apply), for users who know exactly what they’re applying. It’s marked destructive, so MCP clients ask the user before each call. See <a href="#apply_manifest-1">Permissions</a>.</td></tr>
+<tr><td><code>--disable-apply-manifest</code></td><td><code>DISABLE_APPLY_MANIFEST</code></td><td><code>false</code></td><td>Deprecated: apply_manifest is off by default. Still honoured, and wins over <code>--enable-apply-manifest</code>.</td></tr>
 </tbody>
 </table>
 </div>
@@ -480,6 +481,43 @@ mcp-k8s --disable deployment-delete,pod-create
 MCP_K8S_DISABLE=deployment-delete,pod-create mcp-k8s
 </code></pre>
 <p>See the <a href="#permissions">Permissions</a> page for full details on the permission resolution logic and example configurations.</p>
+<h2 id="workload-guardrails"><a class="header" href="#workload-guardrails">Workload Guardrails</a></h2>
+<p>Every typed write tool and the custom resource tools enforce a workload policy (<code>apply_manifest</code>, when enabled, doesn’t). The defaults are restrictive; each flag relaxes one rule. Errors name the flag that would allow the rejected setting. See <a href="#workload-guardrails-1">Permissions: Workload Guardrails</a> for the full rules.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Env Var</th><th>Default</th><th>Allows</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--allow-privileged</code></td><td><code>MCP_K8S_ALLOW_PRIVILEGED</code></td><td><code>false</code></td><td>Privileged containers, Windows hostProcess, <code>pod-security.kubernetes.io/*=privileged</code> namespace labels</td></tr>
+<tr><td><code>--allow-privilege-escalation</code></td><td><code>MCP_K8S_ALLOW_PRIVILEGE_ESCALATION</code></td><td><code>false</code></td><td><code>allowPrivilegeEscalation: true</code></td></tr>
+<tr><td><code>--allow-capabilities</code></td><td><code>MCP_K8S_ALLOW_CAPABILITIES</code></td><td><em>(none)</em></td><td>Comma-separated capabilities beyond the runtime’s default set (<code>ALL</code> for any)</td></tr>
+<tr><td><code>--allow-host-namespaces</code></td><td><code>MCP_K8S_ALLOW_HOST_NAMESPACES</code></td><td><code>false</code></td><td><code>hostNetwork</code>, <code>hostPID</code>, <code>hostIPC</code></td></tr>
+<tr><td><code>--allow-host-path</code></td><td><code>MCP_K8S_ALLOW_HOST_PATH</code></td><td><code>false</code></td><td><code>hostPath</code> volumes</td></tr>
+<tr><td><code>--allow-host-ports</code></td><td><code>MCP_K8S_ALLOW_HOST_PORTS</code></td><td><code>false</code></td><td><code>hostPort</code></td></tr>
+<tr><td><code>--allow-volume-types</code></td><td><code>MCP_K8S_ALLOW_VOLUME_TYPES</code></td><td><em>(none)</em></td><td>Comma-separated volume types beyond the safe set, e.g. <code>nfs,csi</code> (<code>*</code> for any except hostPath)</td></tr>
+<tr><td><code>--allow-unconfined</code></td><td><code>MCP_K8S_ALLOW_UNCONFINED</code></td><td><code>false</code></td><td>Unconfined seccomp/AppArmor, custom SELinux options, <code>procMount: Unmasked</code>, unsafe sysctls, probe/hook hosts other than localhost</td></tr>
+<tr><td><code>--allowed-registries</code></td><td><code>MCP_K8S_ALLOWED_REGISTRIES</code></td><td><em>(any)</em></td><td>Restricts images to these registry prefixes, e.g. <code>ghcr.io/myorg,docker.io/library</code></td></tr>
+<tr><td><code>--allow-nodeport</code></td><td><code>MCP_K8S_ALLOW_NODEPORT</code></td><td><code>false</code></td><td>NodePort Services</td></tr>
+<tr><td><code>--allow-loadbalancer</code></td><td><code>MCP_K8S_ALLOW_LOADBALANCER</code></td><td><code>false</code></td><td>LoadBalancer Services, <code>loadBalancer*</code> fields, cloud LB annotations</td></tr>
+<tr><td><code>--allow-external-services</code></td><td><code>MCP_K8S_ALLOW_EXTERNAL_SERVICES</code></td><td><code>false</code></td><td>ExternalName Services and <code>externalIPs</code></td></tr>
+<tr><td><code>--allow-ingress-snippets</code></td><td><code>MCP_K8S_ALLOW_INGRESS_SNIPPETS</code></td><td><code>false</code></td><td><code>*-snippet</code> annotations and nginx config syntax in ingress-nginx annotation values</td></tr>
+<tr><td><code>--ingress-annotation-allowlist</code></td><td><code>MCP_K8S_INGRESS_ANNOTATION_ALLOWLIST</code></td><td><em>(none)</em></td><td>When set, only these Ingress annotation keys (trailing <code>*</code> = prefix)</td></tr>
+<tr><td><code>--ingress-annotation-denylist</code></td><td><code>MCP_K8S_INGRESS_ANNOTATION_DENYLIST</code></td><td><em>(none)</em></td><td>Ingress annotation keys that are always rejected</td></tr>
+<tr><td><code>--allow-manifest-kinds</code></td><td><code>MCP_K8S_ALLOW_MANIFEST_KINDS</code></td><td><em>(none)</em></td><td>Cluster-scoped custom resource kinds the custom resource tools may write; <code>Kind</code> or <code>group/Kind</code>, <code>*</code> for all</td></tr>
+<tr><td><code>--allow-custom-resource-groups</code></td><td><code>MCP_K8S_ALLOW_CUSTOM_RESOURCE_GROUPS</code></td><td><em>(none)</em></td><td>Custom resource API groups that may be written (<code>*</code> for any)</td></tr>
+<tr><td><code>--allow-rbac-escalation</code></td><td><code>MCP_K8S_ALLOW_RBAC_ESCALATION</code></td><td><code>false</code></td><td>escalate/bind/impersonate verbs, wildcards, aggregation, binding cluster-admin or anonymous subjects, service-account token Secrets</td></tr>
+<tr><td><code>--no-secure-defaults</code></td><td><code>MCP_K8S_NO_SECURE_DEFAULTS</code></td><td><code>false</code></td><td>Don’t fill in the restricted securityContext and <code>automountServiceAccountToken: false</code> defaults</td></tr>
+</tbody>
+</table>
+</div>
+<pre><code class="language-bash"># A cluster where agents may expose services through cloud load balancers and
+# manage cert-manager certificates, with images restricted to the org registry:
+mcp-k8s --http \
+  --allow-loadbalancer \
+  --allow-custom-resource-groups cert-manager.io \
+  --allowed-registries ghcr.io/acme
+</code></pre>
 <h2 id="kubernetes-authentication"><a class="header" href="#kubernetes-authentication">Kubernetes Authentication</a></h2>
 <div class="table-wrapper">
 <table>
@@ -627,7 +665,6 @@ CACHE_TTL=60 mcp-k8s
   --listen 0.0.0.0:9090 \
   --namespaces default,production \
   --disable-delete \
-  --disable-apply-manifest \
   --disable deployment-create,secret-create \
   --auth-token my-secret-token \
   --tls-cert /etc/certs/tls.crt \
@@ -637,7 +674,7 @@ CACHE_TTL=60 mcp-k8s
   --cache-ttl 30 \
   --contexts staging,production
 </code></pre>
-<p>This starts mcp-k8s as an HTTPS server on port 9090 with bearer token authentication, restricted to the <code>default</code> and <code>production</code> namespaces, with all delete operations disabled globally, <code>apply_manifest</code> blocked entirely, deployment/secret creation disabled individually, secret decoding disabled, structured JSON logging enabled, a 30-second response cache, and two cluster contexts loaded (<code>staging</code> active by default).</p>
+<p>This starts mcp-k8s as an HTTPS server on port 9090 with bearer token authentication, restricted to the <code>default</code> and <code>production</code> namespaces, with all delete operations disabled globally (<code>apply_manifest</code> stays off, its default), deployment/secret creation disabled individually, secret decoding disabled, structured JSON logging enabled, a 30-second response cache, and two cluster contexts loaded (<code>staging</code> active by default).</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h1>
 <p>This guide walks you through setting up mcp-k8s with Claude Code and using it to interact with a Kubernetes cluster.</p>
@@ -855,11 +892,11 @@ CACHE_TTL=60 mcp-k8s
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="tools-overview"><a class="header" href="#tools-overview">Tools Overview</a></h1>
-<p>mcp-k8s exposes 210 tools (including one deprecated alias) covering every GA Kubernetes resource type plus CRDs, multi-cluster management, and resource watching. Each tool corresponds to a specific Kubernetes API operation. Tools are categorized by action type:</p>
+<p>mcp-k8s exposes 211 tools (including one deprecated alias) covering every GA Kubernetes resource type plus CRDs, multi-cluster management, and resource watching. Each tool corresponds to a specific Kubernetes API operation. The typed create/update tools are preferred over <code>apply_manifest</code>; see <a href="#typed-tool-coverage">Typed Tool Coverage</a>. Every write tool enforces the <a href="#workload-guardrails-1">workload guardrails</a>. Tools are categorized by action type:</p>
 <ul>
 <li><strong>Read</strong> – List, get, and inspect resources. Always available regardless of permission configuration.</li>
 <li><strong>Create</strong> – Create new resources. Disabled by <code>--disable-create</code>.</li>
-<li><strong>Update</strong> – Modify existing resources (patch, scale, restart, rollback, cordon, drain). Disabled by <code>--disable-update</code>.</li>
+<li><strong>Update</strong> – Modify existing resources (patch, scale, restart, rollback, cordon, drain, exec). Disabled by <code>--disable-update</code>.</li>
 <li><strong>Delete</strong> – Remove resources (delete, evict). Disabled by <code>--disable-delete</code>.</li>
 </ul>
 <h2 id="tools-by-resource-category"><a class="header" href="#tools-by-resource-category">Tools by Resource Category</a></h2>
@@ -878,8 +915,8 @@ CACHE_TTL=60 mcp-k8s
 <tr><td><code>list_deployments</code></td><td>Read</td><td>List deployments in a namespace</td></tr>
 <tr><td><code>get_deployment</code></td><td>Read</td><td>Get deployment detail with pods and ingresses</td></tr>
 <tr><td><code>get_deployment_history</code></td><td>Read</td><td>List ReplicaSet revision history</td></tr>
-<tr><td><code>create_deployment</code></td><td>Create</td><td>Create a new deployment</td></tr>
-<tr><td><code>update_deployment</code></td><td>Update</td><td>Patch a deployment (image, replicas, env)</td></tr>
+<tr><td><code>create_deployment</code></td><td>Create</td><td>Create a deployment (full pod template, rollout strategy)</td></tr>
+<tr><td><code>update_deployment</code></td><td>Update</td><td>Patch a deployment (any pod template field, replicas, strategy; dry-run checked)</td></tr>
 <tr><td><code>delete_deployment</code></td><td>Delete</td><td>Delete a deployment</td></tr>
 <tr><td><code>restart_deployment</code></td><td>Update</td><td>Trigger a rolling restart</td></tr>
 <tr><td><code>scale_deployment</code></td><td>Update</td><td>Scale replica count</td></tr>
@@ -887,14 +924,14 @@ CACHE_TTL=60 mcp-k8s
 <tr><td><code>list_pods</code></td><td>Read</td><td>List pods in a namespace</td></tr>
 <tr><td><code>get_pod</code></td><td>Read</td><td>Get pod detail</td></tr>
 <tr><td><code>get_pod_logs</code></td><td>Read</td><td>Fetch pod logs</td></tr>
-<tr><td><code>create_pod</code></td><td>Create</td><td>Create a standalone pod</td></tr>
+<tr><td><code>create_pod</code></td><td>Create</td><td>Create a standalone pod (full pod template)</td></tr>
 <tr><td><code>delete_pod</code></td><td>Delete</td><td>Delete a pod</td></tr>
 <tr><td><code>evict_pod</code></td><td>Delete</td><td>Evict a pod respecting PDBs</td></tr>
-<tr><td><code>exec_pod</code></td><td>Read</td><td>Execute a command in a pod</td></tr>
+<tr><td><code>exec_pod</code></td><td>Update</td><td>Execute a command in a pod</td></tr>
 <tr><td><code>list_services</code></td><td>Read</td><td>List services in a namespace</td></tr>
 <tr><td><code>get_service</code></td><td>Read</td><td>Get service detail</td></tr>
-<tr><td><code>create_service</code></td><td>Create</td><td>Create a ClusterIP Service</td></tr>
-<tr><td><code>update_service</code></td><td>Update</td><td>Patch a service</td></tr>
+<tr><td><code>create_service</code></td><td>Create</td><td>Create a Service (ClusterIP by default; ports, headless, affinity, traffic policies)</td></tr>
+<tr><td><code>update_service</code></td><td>Update</td><td>Patch a service (dry-run checked)</td></tr>
 <tr><td><code>delete_service</code></td><td>Delete</td><td>Delete a service</td></tr>
 <tr><td><code>get_events</code></td><td>Read</td><td>List events in a namespace</td></tr>
 <tr><td><code>get_build_logs</code></td><td>Read</td><td>Fetch logs from a Job’s pod</td></tr>
@@ -932,7 +969,7 @@ CACHE_TTL=60 mcp-k8s
 </table>
 </div>
 <p>See <a href="#core-resources">Core Resources</a> for full parameter details.</p>
-<h3 id="workloads-25-tools"><a class="header" href="#workloads-25-tools">Workloads (25 tools)</a></h3>
+<h3 id="workloads-26-tools"><a class="header" href="#workloads-26-tools">Workloads (26 tools)</a></h3>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -941,22 +978,23 @@ CACHE_TTL=60 mcp-k8s
 <tbody>
 <tr><td><code>list_statefulsets</code></td><td>Read</td><td>List StatefulSets</td></tr>
 <tr><td><code>get_statefulset</code></td><td>Read</td><td>Get StatefulSet detail</td></tr>
-<tr><td><code>create_statefulset</code></td><td>Create</td><td>Create a StatefulSet</td></tr>
-<tr><td><code>update_statefulset</code></td><td>Update</td><td>Patch a StatefulSet</td></tr>
+<tr><td><code>create_statefulset</code></td><td>Create</td><td>Create a StatefulSet (pod template, volume claim templates, update strategy)</td></tr>
+<tr><td><code>update_statefulset</code></td><td>Update</td><td>Patch a StatefulSet (any pod template field; dry-run checked)</td></tr>
 <tr><td><code>delete_statefulset</code></td><td>Delete</td><td>Delete a StatefulSet</td></tr>
 <tr><td><code>list_daemonsets</code></td><td>Read</td><td>List DaemonSets</td></tr>
 <tr><td><code>get_daemonset</code></td><td>Read</td><td>Get DaemonSet detail</td></tr>
-<tr><td><code>create_daemonset</code></td><td>Create</td><td>Create a DaemonSet</td></tr>
-<tr><td><code>update_daemonset</code></td><td>Update</td><td>Patch a DaemonSet</td></tr>
+<tr><td><code>create_daemonset</code></td><td>Create</td><td>Create a DaemonSet (pod template, update strategy)</td></tr>
+<tr><td><code>update_daemonset</code></td><td>Update</td><td>Patch a DaemonSet (any pod template field; dry-run checked)</td></tr>
 <tr><td><code>delete_daemonset</code></td><td>Delete</td><td>Delete a DaemonSet</td></tr>
 <tr><td><code>list_cronjobs</code></td><td>Read</td><td>List CronJobs</td></tr>
 <tr><td><code>get_cronjob</code></td><td>Read</td><td>Get CronJob detail</td></tr>
-<tr><td><code>create_cronjob</code></td><td>Create</td><td>Create a CronJob</td></tr>
-<tr><td><code>update_cronjob</code></td><td>Update</td><td>Patch a CronJob</td></tr>
+<tr><td><code>create_cronjob</code></td><td>Create</td><td>Create a CronJob (pod template, schedule, time zone, concurrency, job settings)</td></tr>
+<tr><td><code>update_cronjob</code></td><td>Update</td><td>Patch a CronJob (schedule, job settings, pod template; dry-run checked)</td></tr>
 <tr><td><code>delete_cronjob</code></td><td>Delete</td><td>Delete a CronJob</td></tr>
 <tr><td><code>list_jobs</code></td><td>Read</td><td>List Jobs</td></tr>
 <tr><td><code>get_job</code></td><td>Read</td><td>Get Job detail</td></tr>
-<tr><td><code>create_job</code></td><td>Create</td><td>Create a Job</td></tr>
+<tr><td><code>create_job</code></td><td>Create</td><td>Create a Job (pod template, completions, indexed mode, failure policy, TTL)</td></tr>
+<tr><td><code>create_job_from_cronjob</code></td><td>Create</td><td>Run a CronJob now (like <code>kubectl create job --from=cronjob/x</code>)</td></tr>
 <tr><td><code>delete_job</code></td><td>Delete</td><td>Delete a Job</td></tr>
 <tr><td><code>list_hpas</code></td><td>Read</td><td>List HPAs</td></tr>
 <tr><td><code>get_hpa</code></td><td>Read</td><td>Get HPA detail</td></tr>
@@ -978,8 +1016,8 @@ CACHE_TTL=60 mcp-k8s
 <tbody>
 <tr><td><code>list_ingresses</code></td><td>Read</td><td>List Ingresses</td></tr>
 <tr><td><code>get_ingress</code></td><td>Read</td><td>Get Ingress detail</td></tr>
-<tr><td><code>create_ingress</code></td><td>Create</td><td>Create an Ingress (auto-creates backing Service)</td></tr>
-<tr><td><code>update_ingress</code></td><td>Update</td><td>Patch an Ingress</td></tr>
+<tr><td><code>create_ingress</code></td><td>Create</td><td>Create an Ingress (rules, TLS, default backend; auto-creates backing Services)</td></tr>
+<tr><td><code>update_ingress</code></td><td>Update</td><td>Patch an Ingress (dry-run checked)</td></tr>
 <tr><td><code>delete_ingress</code></td><td>Delete</td><td>Delete an Ingress</td></tr>
 <tr><td><code>list_ingressclasses</code></td><td>Read</td><td>List IngressClasses</td></tr>
 <tr><td><code>get_ingressclass</code></td><td>Read</td><td>Get IngressClass detail</td></tr>
@@ -1173,13 +1211,201 @@ CACHE_TTL=60 mcp-k8s
 <tr><th>Tool</th><th>Action</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>apply_manifest</code></td><td>Create</td><td>Last resort: apply any JSON manifest via server-side apply (prefer the typed tools)</td></tr>
+<tr><td><code>apply_manifest</code></td><td>Create</td><td>Raw server-side apply of a JSON manifest, without the workload guardrails. Off unless <code>--enable-apply-manifest</code>; clients confirm each call with the user</td></tr>
 <tr><td><code>get_resource_json</code></td><td>Read</td><td>Get any resource as JSON via API discovery</td></tr>
 <tr><td><code>get_resource_yaml</code></td><td>Read</td><td>Deprecated alias for <code>get_resource_json</code> (returns JSON)</td></tr>
 </tbody>
 </table>
 </div>
 <p>See <a href="#generic-tools">Generic Tools</a> for full parameter details.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="typed-tool-coverage"><a class="header" href="#typed-tool-coverage">Typed Tool Coverage</a></h1>
+<p>This page shows how far the typed tools go, kind by kind. The goal is that agents never need <code>apply_manifest</code> for everyday work: the “reasons to use apply_manifest” column should be empty or justified.</p>
+<p><code>apply_manifest</code> is off by default and, when an operator enables it, skips the <a href="#workload-guardrails-1">guardrails</a> entirely; it’s for people who know what they’re applying, not a fallback for agents. So a gap listed here is a reason to extend the typed tools. “Gated” means the field is in the typed schema but rejected unless an operator enables the named flag. The typed tool can express it once the flag is set.</p>
+<p>The pod template fields (containers, init containers and sidecars, env, probes, resources, volumes, scheduling, security) are shared by every workload tool and described on <a href="#pod-template-arguments">Pod Template Arguments</a>.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Kind</th><th>Typed tools</th><th>Fields the typed tools support</th><th>Gated by policy (flag)</th><th>Reasons to use apply_manifest</th></tr>
+</thead>
+<tbody>
+<tr><td><strong>Pod</strong></td><td><code>create_pod</code>, <code>delete_pod</code>, <code>evict_pod</code>, <code>exec_pod</code></td><td><strong>Containers:</strong> every <a href="#pod-template-arguments">pod template field</a>: image, command, args, env (value, secretKeyRef, configMapKeyRef, fieldRef, resourceFieldRef), envFrom, ports, resources (incl. ephemeral-storage, extended resources), volumeMounts, liveness/readiness/startup probes, lifecycle, workingDir, imagePullPolicy, container securityContext; multiple containers; initContainers and native sidecars.<br><strong>Pod:</strong> volumes (configMap, secret, emptyDir with medium/sizeLimit, PVC, projected, downwardAPI), serviceAccountName, automountServiceAccountToken, imagePullSecrets, nodeSelector, tolerations, affinity, topologySpreadConstraints, priorityClassName, terminationGracePeriodSeconds, dnsPolicy/dnsConfig, hostAliases, runtimeClassName, hostname, subdomain, shareProcessNamespace, enableServiceLinks, pod securityContext (runAsUser/Group/NonRoot, fsGroup, supplementalGroups, seccomp, AppArmor, sysctls), restartPolicy, labels, annotations</td><td>privileged (<code>--allow-privileged</code>), allowPrivilegeEscalation (<code>--allow-privilege-escalation</code>), extra capabilities (<code>--allow-capabilities</code>), hostNetwork/hostPID/hostIPC (<code>--allow-host-namespaces</code>), hostPath (<code>--allow-host-path</code>), hostPort (<code>--allow-host-ports</code>), nfs/csi volumes (<code>--allow-volume-types</code>), Unconfined profiles and unsafe sysctls (<code>--allow-unconfined</code>), images outside <code>--allowed-registries</code></td><td>Rare fields: nodeName, schedulingGates, readinessGates, DRA resourceClaims, os, overhead, generic ephemeral volumes, raw block volumeDevices, image volumes, resizePolicy, hostUsers, seLinuxOptions, stdin/tty. Agents rarely need them, and they are policy-checked in apply_manifest too.</td></tr>
+<tr><td><strong>Job</strong></td><td><code>create_job</code>, <code>create_job_from_cronjob</code>, <code>delete_job</code></td><td>Pod template, plus backoffLimit, ttlSecondsAfterFinished, activeDeadlineSeconds, completions, parallelism, completionMode (Indexed), backoffLimitPerIndex, maxFailedIndexes, podFailurePolicy, successPolicy, podReplacementPolicy, suspend</td><td>As Pod</td><td>manualSelector and managedBy (for external job controllers such as MultiKueue). Job pod templates are immutable, so there is deliberately no <code>update_job</code>.</td></tr>
+<tr><td><strong>CronJob</strong></td><td><code>create_cronjob</code>, <code>update_cronjob</code>, <code>delete_cronjob</code>, <code>create_job_from_cronjob</code></td><td>Pod template, plus schedule, timeZone, concurrencyPolicy, suspend, startingDeadlineSeconds, successful/failedJobsHistoryLimit, and every Job setting for the job template</td><td>As Pod</td><td>None.</td></tr>
+<tr><td><strong>Deployment</strong></td><td><code>create_deployment</code>, <code>update_deployment</code>, <code>update_deployment_labels</code>, <code>update_deployment_annotations</code>, <code>update_deployment_affinity</code>, <code>scale_deployment</code>, <code>restart_deployment</code>, <code>rollback_deployment</code>, <code>delete_deployment</code></td><td>Pod template, plus replicas, selector (custom match labels), strategy (RollingUpdate maxSurge/maxUnavailable, Recreate), minReadySeconds, revisionHistoryLimit, progressDeadlineSeconds, pod annotations</td><td>As Pod</td><td><code>paused</code>, and selectors with matchExpressions. Both are rare; selectors are immutable.</td></tr>
+<tr><td><strong>StatefulSet</strong></td><td><code>create_statefulset</code>, <code>update_statefulset</code>, <code>delete_statefulset</code></td><td>Pod template, plus serviceName, replicas, selector, volumeClaimTemplates (size, storageClassName, accessModes, volumeMode, labels, annotations), podManagementPolicy, updateStrategy (partition, maxUnavailable, OnDelete), persistentVolumeClaimRetentionPolicy, minReadySeconds, revisionHistoryLimit</td><td>As Pod</td><td><code>ordinals.start</code>, and claim templates restored from a snapshot (dataSource).</td></tr>
+<tr><td><strong>DaemonSet</strong></td><td><code>create_daemonset</code>, <code>update_daemonset</code>, <code>delete_daemonset</code></td><td>Pod template, plus selector, updateStrategy (maxUnavailable, maxSurge, OnDelete), minReadySeconds, revisionHistoryLimit</td><td>As Pod. Node agents usually need hostPath, hostNetwork or privileged mode, which an operator must allow explicitly.</td><td>None.</td></tr>
+<tr><td><strong>Service</strong></td><td><code>create_service</code>, <code>update_service</code>, <code>delete_service</code></td><td>type, ports (port, targetPort by number or name, name, protocol, appProtocol), selector, headless / clusterIP, sessionAffinity and its timeout, externalTrafficPolicy, internalTrafficPolicy, trafficDistribution, ipFamilies, ipFamilyPolicy, publishNotReadyAddresses, labels, annotations</td><td>NodePort and nodePort (<code>--allow-nodeport</code>); LoadBalancer, loadBalancerSourceRanges/Class/IP, allocateLoadBalancerNodePorts and cloud LB annotations (<code>--allow-loadbalancer</code>); ExternalName and externalIPs (<code>--allow-external-services</code>)</td><td>healthCheckNodePort and explicit dual-stack clusterIPs. Rare.</td></tr>
+<tr><td><strong>Ingress</strong></td><td><code>create_ingress</code>, <code>update_ingress</code>, <code>delete_ingress</code></td><td>ingressClassName, rules (host, paths with pathType, backend Service by port number or name), TLS (hosts, secretName), defaultBackend, labels, annotations; optional backing ClusterIP Services</td><td><code>*-snippet</code> annotations and nginx config syntax in ingress-nginx annotation values (<code>--allow-ingress-snippets</code>); annotation allowlist/denylist (<code>--ingress-annotation-allowlist</code>/<code>--ingress-annotation-denylist</code>)</td><td>Resource backends (non-Service backends that point at custom resources). Rare.</td></tr>
+<tr><td><strong>ConfigMap</strong></td><td><code>create_configmap</code>, <code>update_configmap</code>, <code>delete_configmap</code></td><td>data, binaryData, immutable, labels, annotations</td><td>n/a</td><td>None.</td></tr>
+<tr><td><strong>Secret</strong></td><td><code>create_secret</code>, <code>update_secret</code>, <code>delete_secret</code></td><td>type, stringData, data (base64), immutable, labels, annotations</td><td>Service account token Secrets (<code>--allow-rbac-escalation</code>)</td><td>None.</td></tr>
+<tr><td><strong>PersistentVolumeClaim</strong></td><td><code>create_pvc</code>, <code>update_pvc</code>, <code>delete_pvc</code></td><td>storage, storageClassName, accessModes, volumeMode, dataSource (restore a VolumeSnapshot, clone a PVC), selector, volumeName, labels, annotations; resize</td><td>n/a</td><td>dataSourceRef (volume populators, cross-namespace sources). Rare.</td></tr>
+<tr><td><strong>HorizontalPodAutoscaler</strong></td><td><code>create_hpa</code>, <code>update_hpa</code>, <code>delete_hpa</code></td><td>scaleTargetRef, min/maxReplicas, CPU and memory utilization, any autoscaling/v2 metric (Pods, Object, External, ContainerResource), behavior, labels, annotations</td><td>n/a</td><td>None.</td></tr>
+<tr><td><strong>PodDisruptionBudget</strong></td><td><code>create_pdb</code>, <code>update_pdb</code>, <code>delete_pdb</code></td><td>minAvailable, maxUnavailable, selector (match labels), unhealthyPodEvictionPolicy, labels, annotations</td><td>n/a</td><td>matchExpressions selectors. Rare.</td></tr>
+<tr><td><strong>NetworkPolicy</strong></td><td><code>create_networkpolicy</code>, <code>update_networkpolicy</code>, <code>delete_networkpolicy</code></td><td>podSelector, policyTypes, ingress and egress rules (Kubernetes rule objects as-is), labels, annotations</td><td>n/a</td><td>None.</td></tr>
+<tr><td><strong>ServiceAccount</strong></td><td><code>create_serviceaccount</code>, <code>delete_serviceaccount</code></td><td>annotations, labels, automountServiceAccountToken, imagePullSecrets</td><td>n/a</td><td>None.</td></tr>
+<tr><td><strong>Role</strong></td><td><code>create_role</code>, <code>update_role</code>, <code>delete_role</code></td><td>rules (apiGroups, resources, verbs, resourceNames), labels, annotations</td><td>escalate/bind/impersonate verbs and wildcards (<code>--allow-rbac-escalation</code>)</td><td>None.</td></tr>
+<tr><td><strong>RoleBinding</strong></td><td><code>create_rolebinding</code>, <code>delete_rolebinding</code></td><td>roleRef, subjects, labels, annotations</td><td>Binding cluster-admin, a role with escalation rules (checked live), or anonymous subjects (<code>--allow-rbac-escalation</code>)</td><td>None. roleRef is immutable, so there is deliberately no update tool.</td></tr>
+</tbody>
+</table>
+</div>
+<p>ClusterRoles and ClusterRoleBindings work like Roles and RoleBindings. ClusterRoles also accept <code>non_resource_urls</code>. Aggregated ClusterRoles and <code>aggregate-to-*</code> labels count as escalation.</p>
+<h2 id="kinds-only-apply_manifest-writes"><a class="header" href="#kinds-only-apply_manifest-writes">Kinds only apply_manifest writes</a></h2>
+<p>These kinds have no typed write tool, so only <code>apply_manifest</code> can write them:</p>
+<ul>
+<li>admission webhooks and admission policies, CustomResourceDefinitions and APIServices;</li>
+<li>Endpoints and EndpointSlices;</li>
+<li>ControllerRevisions;</li>
+<li>most cluster-scoped kinds (Namespaces have typed tools; PersistentVolumes, StorageClasses, PriorityClasses, … don’t);</li>
+<li>fields the typed tools don’t cover, for example some ResourceQuota and LimitRange fields, ReplicaSets, ReplicationControllers and PodTemplates.</li>
+</ul>
+<p><code>apply_manifest</code> is off unless the operator passes <code>--enable-apply-manifest</code>, and it applies these as given, without the workload policy. Custom resources can also go through the custom resource tools, which do apply the policy (their API group needs <code>--allow-custom-resource-groups</code>).</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="pod-template-arguments"><a class="header" href="#pod-template-arguments">Pod Template Arguments</a></h1>
+<p><code>create_pod</code>, <code>create_job</code>, <code>create_cronjob</code>, <code>create_deployment</code>, <code>create_statefulset</code> and <code>create_daemonset</code> take the same container and pod arguments. One module (<code>src/resources/podspec.rs</code>) parses them, so a field means the same thing in every tool. The matching <code>update_*</code> tools take the same fields, all optional.</p>
+<p>Use these tools rather than <code>apply_manifest</code>. They validate input, fill in secure defaults, and run the <a href="#workload-guardrails-1">workload guardrails</a>. <code>apply_manifest</code> is off by default and, when an operator enables it, is an unrestricted raw apply for people who know what they’re applying; agents shouldn’t fall back to it.</p>
+<h2 id="conventions"><a class="header" href="#conventions">Conventions</a></h2>
+<ul>
+<li><strong>Names:</strong> arguments are snake_case. Kubernetes’ camelCase spelling is accepted as an alias at every level (<code>serviceAccountName</code>, <code>securityContext.runAsUser</code>, <code>volumeMounts[].mountPath</code>, …).</li>
+<li><strong>Unknown fields are rejected.</strong> The error lists the valid fields, so a typo can’t silently drop a setting.</li>
+<li><strong>Pass-through fields:</strong> <code>affinity</code>, <code>topology_spread_constraints</code>, <code>dns_config</code>, and the Job <code>pod_failure_policy</code>/<code>success_policy</code> take the Kubernetes object as written in the API. snake_case keys are converted.</li>
+</ul>
+<h2 id="one-container-or-several"><a class="header" href="#one-container-or-several">One container or several</a></h2>
+<p>For a single container, put the container fields at the top level: <code>image</code>, <code>command</code>, <code>args</code>, <code>env</code>, …. The container is named after the workload, or <code>container_name</code>.</p>
+<p>For several containers, use <code>containers</code>: a list of container objects, each with <code>name</code> and <code>image</code>. Don’t mix the two forms.</p>
+<p><code>init_containers</code> run to completion before the main containers start. An init container with <code>restart_policy: "Always"</code> is a <strong>native sidecar</strong>: it starts first and keeps running alongside the main containers.</p>
+<h2 id="container-fields"><a class="header" href="#container-fields">Container fields</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Type</th><th>Notes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>image</code></td><td>string</td><td>Required.</td></tr>
+<tr><td><code>command</code>, <code>args</code></td><td>string[]</td><td>Entrypoint and arguments.</td></tr>
+<tr><td><code>working_dir</code></td><td>string</td><td></td></tr>
+<tr><td><code>image_pull_policy</code></td><td><code>Always</code> | <code>IfNotPresent</code> | <code>Never</code></td><td></td></tr>
+<tr><td><code>env</code></td><td>object or array</td><td><code>{NAME: "value"}</code>, where a value may also be a source object such as <code>{"secret_key_ref": {"name": "db", "key": "password"}}</code>. The array form is <code>[{name, value}]</code> or <code>[{name, value_from: {...}}]</code>. Sources: <code>secret_key_ref</code>, <code>config_map_key_ref</code> (each <code>{name, key, optional}</code>), <code>field_ref</code> (<code>{field_path}</code>, e.g. <code>status.podIP</code>), <code>resource_field_ref</code> (<code>{resource, container_name, divisor}</code>).</td></tr>
+<tr><td><code>env_from</code></td><td>array</td><td><code>[{secret_ref: "name"}]</code> or <code>[{config_map_ref: "name"}]</code>, with optional <code>prefix</code> and <code>optional</code>.</td></tr>
+<tr><td><code>port</code></td><td>integer</td><td>Top-level shorthand for one port.</td></tr>
+<tr><td><code>ports</code></td><td>array</td><td>Numbers, or <code>{container_port, name, protocol}</code>. <code>host_port</code> is <a href="#guardrails">gated</a>.</td></tr>
+<tr><td><code>resources</code></td><td>object</td><td><code>{requests: {...}, limits: {...}}</code>. Any resource name works: <code>cpu</code>, <code>memory</code>, <code>ephemeral-storage</code>, <code>nvidia.com/gpu</code>, ….</td></tr>
+<tr><td><code>volume_mounts</code></td><td>array</td><td><code>{name, mount_path, sub_path, sub_path_expr, read_only, mount_propagation}</code>.</td></tr>
+<tr><td><code>liveness_probe</code>, <code>readiness_probe</code>, <code>startup_probe</code></td><td>object</td><td><code>probe_type</code>: <code>httpGet</code> (<code>path</code>, <code>port</code>, <code>scheme</code>, <code>http_headers</code>), <code>tcpSocket</code> (<code>port</code>), <code>exec</code> (<code>command</code>) or <code>grpc</code> (<code>port</code>, <code>service</code>). Timing fields: <code>initial_delay_seconds</code>, <code>period_seconds</code>, <code>timeout_seconds</code>, <code>failure_threshold</code>, <code>success_threshold</code>, <code>termination_grace_period_seconds</code>. <code>port</code> is a number or a named container port; the default is 80.</td></tr>
+<tr><td><code>lifecycle</code></td><td>object</td><td><code>post_start</code> and <code>pre_stop</code> hooks, each <code>{handler_type: exec|httpGet|sleep, command, path, port, scheme, seconds}</code>.</td></tr>
+<tr><td><code>security_context</code></td><td>object</td><td>Only inside a <code>containers[]</code> entry. Container-level settings, see below.</td></tr>
+<tr><td><code>restart_policy</code></td><td><code>Always</code></td><td>Only on <code>init_containers[]</code> entries; makes a native sidecar.</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="pod-fields"><a class="header" href="#pod-fields">Pod fields</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Type</th><th>Notes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>volumes</code></td><td>array</td><td><code>name</code> plus exactly one source: <code>config_map</code>, <code>secret</code> (<code>secret_name</code>), <code>empty_dir</code> (<code>medium</code>: <code>""</code>/<code>Memory</code>, <code>size_limit</code>), <code>persistent_volume_claim</code> (<code>claim_name</code>, <code>read_only</code>), <code>projected</code> (<code>sources</code>: <code>config_map</code>, <code>secret</code>, <code>service_account_token</code> with <code>{path, audience, expiration_seconds}</code>, <code>downward_api</code>), <code>downward_api</code>. <code>host_path</code>, <code>nfs</code> and inline <code>csi</code> are <a href="#guardrails">gated</a>.</td></tr>
+<tr><td><code>service_account_name</code></td><td>string</td><td><code>service_account</code> is accepted as an alias.</td></tr>
+<tr><td><code>automount_service_account_token</code></td><td>boolean</td><td>Defaults to <code>false</code> unless <code>service_account_name</code> is set (see below).</td></tr>
+<tr><td><code>image_pull_secrets</code></td><td>string[]</td><td>Secret names.</td></tr>
+<tr><td><code>node_selector</code></td><td>object</td><td></td></tr>
+<tr><td><code>tolerations</code></td><td>array</td><td><code>{key, operator, value, effect, toleration_seconds}</code>.</td></tr>
+<tr><td><code>affinity</code></td><td>object</td><td>A Kubernetes <code>Affinity</code>: <code>nodeAffinity</code>, <code>podAffinity</code> or <code>podAntiAffinity</code>.</td></tr>
+<tr><td><code>topology_spread_constraints</code></td><td>array</td><td>Kubernetes <code>TopologySpreadConstraint</code> objects.</td></tr>
+<tr><td><code>priority_class_name</code>, <code>runtime_class_name</code></td><td>string</td><td></td></tr>
+<tr><td><code>termination_grace_period_seconds</code></td><td>integer</td><td></td></tr>
+<tr><td><code>dns_policy</code></td><td>string</td><td><code>ClusterFirst</code>, <code>ClusterFirstWithHostNet</code>, <code>Default</code> or <code>None</code>.</td></tr>
+<tr><td><code>dns_config</code></td><td>object</td><td><code>{nameservers, searches, options}</code>.</td></tr>
+<tr><td><code>host_aliases</code></td><td>array</td><td><code>{ip, hostnames}</code> entries for <code>/etc/hosts</code>.</td></tr>
+<tr><td><code>hostname</code>, <code>subdomain</code></td><td>string</td><td></td></tr>
+<tr><td><code>share_process_namespace</code>, <code>enable_service_links</code></td><td>boolean</td><td></td></tr>
+<tr><td><code>security_context</code></td><td>object</td><td>Pod-wide settings, see below.</td></tr>
+<tr><td><code>host_network</code>, <code>host_pid</code>, <code>host_ipc</code></td><td>boolean</td><td><a href="#guardrails">Gated</a>.</td></tr>
+<tr><td><code>restart_policy</code></td><td>string</td><td><code>create_pod</code>: <code>Never</code> (default), <code>OnFailure</code>, <code>Always</code>. Jobs and CronJobs: <code>Never</code> or <code>OnFailure</code>; the default is <code>Never</code> for Jobs and <code>OnFailure</code> for CronJobs.</td></tr>
+<tr><td><code>labels</code></td><td>object</td><td>Applied to the object and its pods. <code>app: &lt;name&gt;</code> and <code>app.kubernetes.io/managed-by: mcp-k8s</code> are added.</td></tr>
+<tr><td><code>annotations</code></td><td>object</td><td>Object annotations (for <code>create_pod</code>, the pod’s).</td></tr>
+<tr><td><code>pod_annotations</code></td><td>object</td><td>Pod template annotations. Every workload tool except <code>create_pod</code>.</td></tr>
+<tr><td><code>selector</code></td><td>object</td><td>Deployment, StatefulSet and DaemonSet only. Pod selector labels, added to the pod labels. Default: <code>{app: &lt;name&gt;}</code>.</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="security-context-and-secure-defaults"><a class="header" href="#security-context-and-secure-defaults">Security context and secure defaults</a></h2>
+<p>The <strong>top-level</strong> <code>security_context</code> covers the whole pod:</p>
+<ul>
+<li><strong>Pod securityContext:</strong> <code>run_as_non_root</code>, <code>run_as_user</code>, <code>run_as_group</code>, <code>fs_group</code>, <code>fs_group_change_policy</code>, <code>supplemental_groups</code>, <code>seccomp_profile</code>, <code>app_armor_profile</code>, <code>sysctls</code>.</li>
+<li><strong>Default for every container:</strong> <code>privileged</code>, <code>allow_privilege_escalation</code>, <code>capabilities</code> (<code>add</code>, <code>drop</code>), <code>read_only_root_filesystem</code>.</li>
+</ul>
+<p>A <code>containers[]</code> entry’s own <code>security_context</code> takes container-level fields and overrides the top-level defaults.</p>
+<p>With secure defaults on (the default), any field the caller leaves unset gets:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Setting</th><th>Default</th><th>Notes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>runAsNonRoot</code></td><td><code>true</code></td><td>Not set when <code>run_as_user</code> is 0.</td></tr>
+<tr><td><code>seccompProfile</code></td><td><code>RuntimeDefault</code></td><td></td></tr>
+<tr><td><code>allowPrivilegeEscalation</code></td><td><code>false</code></td><td>Not set for privileged containers or ones that add <code>SYS_ADMIN</code>; Kubernetes rejects that combination.</td></tr>
+<tr><td><code>capabilities.drop</code></td><td><code>["ALL"]</code></td><td>Only for containers that don’t run as root.</td></tr>
+<tr><td><code>automountServiceAccountToken</code></td><td><code>false</code></td><td>Unless <code>service_account_name</code> is set.</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Images that must run as root</strong> (official nginx, redis, postgres, …) need <code>security_context: {"run_as_non_root": false}</code>. They then keep the container runtime’s default capabilities and still have no privilege escalation. An operator can turn these defaults off with <code>--no-secure-defaults</code>.</p>
+<h2 id="guardrails"><a class="header" href="#guardrails">Guardrails</a></h2>
+<p>The <a href="#workload-guardrails-1">workload policy</a> checks every object these tools build. By default it rejects:</p>
+<ul>
+<li><code>privileged</code>, <code>allowPrivilegeEscalation: true</code>, and capabilities beyond the runtime’s defaults;</li>
+<li><code>hostNetwork</code>/<code>hostPID</code>/<code>hostIPC</code>, <code>hostPath</code>, <code>hostPort</code>, and volume types outside the safe set;</li>
+<li><code>Unconfined</code> seccomp and AppArmor profiles, and unsafe sysctls;</li>
+<li>images outside the registry allowlist, when one is configured.</li>
+</ul>
+<p>The fields are still part of the schema, so when an operator enables a rule (for example <code>--allow-privileged</code> for a node agent), the typed tool can express the workload and there’s no need to fall back to <code>apply_manifest</code>. Every rejection names the flag that would allow it.</p>
+<h2 id="updates"><a class="header" href="#updates">Updates</a></h2>
+<p><code>update_deployment</code>, <code>update_statefulset</code>, <code>update_daemonset</code> and <code>update_cronjob</code> take the same fields. Only the fields you give change; the server applies a strategic merge patch:</p>
+<ul>
+<li>containers, <code>env</code>, <code>ports</code>, <code>volumes</code> and <code>volume_mounts</code> merge by name or key;</li>
+<li><code>tolerations</code> and similar lists are replaced.</li>
+</ul>
+<p>Container fields go to <code>container</code> (by default, the container named after the workload, or the only container). The top-level <code>security_context</code> splits as on create: pod fields to the pod, container fields to that container. No defaults are added on update.</p>
+<p>Before writing, the update is sent as a <strong>server-side dry run</strong> and the resulting object is checked against the guardrails. The real write carries the dry run’s <code>resourceVersion</code> as a precondition, so a concurrent change can’t slip in between the check and the write.</p>
+<p>Because the whole result is checked, an update also refuses to modify a workload that <strong>already</strong> breaks the policy, for example swapping the image of an existing privileged DaemonSet. <code>rollback_deployment</code>, <code>update_deployment_labels</code>, <code>update_deployment_annotations</code> and <code>update_deployment_affinity</code> use the same check.</p>
+<h2 id="example"><a class="header" href="#example">Example</a></h2>
+<pre><code class="language-json">{
+  "namespace": "shop",
+  "name": "api",
+  "replicas": 3,
+  "image": "ghcr.io/acme/api:1.4.2",
+  "args": ["--port", "8080"],
+  "ports": [{ "container_port": 8080, "name": "http" }],
+  "env": {
+    "LOG_LEVEL": "info",
+    "DB_PASSWORD": { "secret_key_ref": { "name": "db", "key": "password" } },
+    "POD_IP": { "field_ref": { "field_path": "status.podIP" } }
+  },
+  "env_from": [{ "config_map_ref": "api-settings" }],
+  "resources": {
+    "requests": { "cpu": "250m", "memory": "256Mi", "ephemeral-storage": "1Gi" },
+    "limits": { "memory": "512Mi" }
+  },
+  "readiness_probe": { "probe_type": "httpGet", "path": "/ready", "port": "http" },
+  "liveness_probe": { "probe_type": "httpGet", "path": "/healthz", "port": "http", "period_seconds": 20 },
+  "lifecycle": { "pre_stop": { "handler_type": "sleep", "seconds": 5 } },
+  "volume_mounts": [{ "name": "cache", "mount_path": "/cache" }],
+  "volumes": [{ "name": "cache", "empty_dir": { "size_limit": "1Gi" } }],
+  "init_containers": [
+    { "name": "migrate", "image": "ghcr.io/acme/api:1.4.2", "command": ["api", "migrate"] },
+    { "name": "proxy", "image": "ghcr.io/acme/proxy:2", "restart_policy": "Always" }
+  ],
+  "service_account_name": "api",
+  "topology_spread_constraints": [
+    { "maxSkew": 1, "topologyKey": "topology.kubernetes.io/zone", "whenUnsatisfiable": "ScheduleAnyway", "labelSelector": { "matchLabels": { "app": "api" } } }
+  ],
+  "security_context": { "run_as_user": 10001, "fs_group": 10001 },
+  "strategy": { "type": "RollingUpdate", "max_surge": "25%", "max_unavailable": 0 }
+}
+</code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="core-resources"><a class="header" href="#core-resources">Core Resources</a></h1>
 <p>This page documents tools for the most commonly used Kubernetes resources: Deployments, Pods, Services, Events, Namespaces, ConfigMaps, Secrets, Endpoints, ServiceAccounts, and ResourceQuotas.</p>
@@ -1225,7 +1451,8 @@ CACHE_TTL=60 mcp-k8s
 </table>
 </div>
 <h3 id="create_deployment"><a class="header" href="#create_deployment">create_deployment</a></h3>
-<p>Create a new deployment in the specified namespace.</p>
+<p>Create a Deployment whose pods are selected by <code>app=&lt;name&gt;</code> (or a custom <code>selector</code>). Preferred over <code>apply_manifest</code>.</p>
+<p>It takes every <a href="#pod-template-arguments">pod template argument</a>: the single-container shorthand (<code>image</code>, <code>command</code>, <code>args</code>, <code>env</code>, <code>env_from</code>, <code>ports</code>, <code>resources</code>, <code>volume_mounts</code>, probes, <code>lifecycle</code>) or <code>containers</code>; <code>init_containers</code> (native sidecars); volumes; scheduling; and <code>security_context</code>. Plus:</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -1234,13 +1461,21 @@ CACHE_TTL=60 mcp-k8s
 <tbody>
 <tr><td><code>namespace</code></td><td>string</td><td>Yes</td><td>Kubernetes namespace</td></tr>
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Deployment name</td></tr>
-<tr><td><code>image</code></td><td>string</td><td>Yes</td><td>Container image</td></tr>
+<tr><td><code>image</code></td><td>string</td><td>Yes*</td><td>Container image (*or <code>containers</code>)</td></tr>
 <tr><td><code>replicas</code></td><td>integer</td><td>No</td><td>Number of replicas (default: 1)</td></tr>
-<tr><td><code>port</code></td><td>integer</td><td>No</td><td>Container port to expose</td></tr>
-<tr><td><code>env</code></td><td>object</td><td>No</td><td>Environment variables as key-value string pairs</td></tr>
+<tr><td><code>port</code></td><td>integer</td><td>No</td><td>Container port to expose (shorthand for <code>ports</code>)</td></tr>
+<tr><td><code>env</code></td><td>object/array</td><td>No</td><td>Environment variables, including secret/configMap/field references</td></tr>
+<tr><td><code>env_from</code></td><td>array</td><td>No</td><td>Load all keys of Secrets/ConfigMaps</td></tr>
+<tr><td><code>strategy</code></td><td>object</td><td>No</td><td><code>{type: RollingUpdate, max_surge, max_unavailable}</code> or <code>{type: Recreate}</code></td></tr>
+<tr><td><code>min_ready_seconds</code></td><td>integer</td><td>No</td><td></td></tr>
+<tr><td><code>revision_history_limit</code></td><td>integer</td><td>No</td><td></td></tr>
+<tr><td><code>progress_deadline_seconds</code></td><td>integer</td><td>No</td><td></td></tr>
+<tr><td><code>selector</code></td><td>object</td><td>No</td><td>Pod selector labels (default <code>{app: &lt;name&gt;}</code>)</td></tr>
+<tr><td><code>pod_annotations</code></td><td>object</td><td>No</td><td>Pod template annotations</td></tr>
 </tbody>
 </table>
 </div>
+<p>Pods get the secure defaults (non-root, seccomp RuntimeDefault, no privilege escalation, drop ALL capabilities, no service account token). For images that must run as root, set <code>security_context: {"run_as_non_root": false}</code>. Privileged mode, host namespaces/paths/ports and extra capabilities are rejected unless the server allows them.</p>
 <p>Example:</p>
 <pre><code class="language-json">{
   "namespace": "default",
@@ -1250,12 +1485,15 @@ CACHE_TTL=60 mcp-k8s
   "port": 80,
   "env": {
     "ENV": "production",
-    "LOG_LEVEL": "info"
-  }
+    "API_KEY": { "secret_key_ref": { "name": "my-app", "key": "api-key" } }
+  },
+  "readiness_probe": { "probe_type": "httpGet", "path": "/", "port": 80 },
+  "resources": { "requests": { "cpu": "100m", "memory": "128Mi" } },
+  "security_context": { "run_as_non_root": false }
 }
 </code></pre>
 <h3 id="update_deployment"><a class="header" href="#update_deployment">update_deployment</a></h3>
-<p>Update (merge patch) an existing deployment. Supports changing image, replicas, and env vars.</p>
+<p>Update (strategic merge patch) an existing Deployment. Preferred over <code>apply_manifest</code>. It takes the same fields as <code>create_deployment</code>, all optional, plus <code>container</code> (which container the single-container fields change). Only the given fields change. See <a href="#updates">Updates</a>.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -1266,11 +1504,16 @@ CACHE_TTL=60 mcp-k8s
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Deployment name</td></tr>
 <tr><td><code>image</code></td><td>string</td><td>No</td><td>New container image</td></tr>
 <tr><td><code>replicas</code></td><td>integer</td><td>No</td><td>New replica count</td></tr>
-<tr><td><code>env</code></td><td>object</td><td>No</td><td>Environment variables (replaces all env vars)</td></tr>
+<tr><td><code>env</code></td><td>object/array</td><td>No</td><td>Environment variables (merged by name)</td></tr>
+<tr><td><code>env_from</code></td><td>array</td><td>No</td><td>envFrom sources</td></tr>
+<tr><td><code>liveness_probe</code> / <code>readiness_probe</code> / <code>startup_probe</code></td><td>object</td><td>No</td><td>Probes</td></tr>
+<tr><td><code>container</code></td><td>string</td><td>No</td><td>Target container (default: the one named after the Deployment, or the only one)</td></tr>
+<tr><td><em>any pod template field</em></td><td></td><td>No</td><td><code>resources</code>, <code>volumes</code>, <code>volume_mounts</code>, <code>security_context</code>, <code>tolerations</code>, <code>affinity</code>, <code>init_containers</code>, …</td></tr>
+<tr><td><code>strategy</code>, <code>min_ready_seconds</code>, <code>revision_history_limit</code>, <code>progress_deadline_seconds</code></td><td></td><td>No</td><td>Rollout settings</td></tr>
 </tbody>
 </table>
 </div>
-<p>At least one of <code>image</code>, <code>replicas</code>, or <code>env</code> must be provided.</p>
+<p>The patch is dry-run and its result checked against the guardrails before it is written. That means an update also can’t modify a Deployment that already breaks the policy.</p>
 <h3 id="delete_deployment"><a class="header" href="#delete_deployment">delete_deployment</a></h3>
 <p>Delete a deployment by name from a namespace.</p>
 <div class="table-wrapper">
@@ -1312,7 +1555,7 @@ CACHE_TTL=60 mcp-k8s
 </table>
 </div>
 <h3 id="rollback_deployment"><a class="header" href="#rollback_deployment">rollback_deployment</a></h3>
-<p>Rollback a deployment to a specific revision by restoring the pod template from the matching ReplicaSet.</p>
+<p>Rollback a deployment to a specific revision by restoring the pod template from the matching ReplicaSet. The restored template is checked against the guardrails like any update, so rolling back to a revision that predates them can be refused.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -1370,7 +1613,7 @@ CACHE_TTL=60 mcp-k8s
 </table>
 </div>
 <h3 id="create_pod"><a class="header" href="#create_pod">create_pod</a></h3>
-<p>Create a standalone pod. Useful for debugging, one-shot tasks, or running a quick container.</p>
+<p>Create a standalone pod: debugging, one-shot tasks, or a quick container. Preferred over <code>apply_manifest</code>. It takes every <a href="#pod-template-arguments">pod template argument</a>. <code>restart_policy</code> is <code>Never</code> (default), <code>OnFailure</code> or <code>Always</code>.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -1379,9 +1622,10 @@ CACHE_TTL=60 mcp-k8s
 <tbody>
 <tr><td><code>namespace</code></td><td>string</td><td>Yes</td><td>Kubernetes namespace</td></tr>
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Pod name</td></tr>
-<tr><td><code>image</code></td><td>string</td><td>Yes</td><td>Container image</td></tr>
+<tr><td><code>image</code></td><td>string</td><td>Yes*</td><td>Container image (*or <code>containers</code>)</td></tr>
 <tr><td><code>command</code></td><td>string[]</td><td>No</td><td>Command to run</td></tr>
 <tr><td><code>restart_policy</code></td><td>string</td><td>No</td><td>Restart policy: <code>Never</code> (default), <code>Always</code>, <code>OnFailure</code></td></tr>
+<tr><td><em>any pod template field</em></td><td></td><td>No</td><td><code>args</code>, <code>env</code>, <code>ports</code>, <code>resources</code>, probes, <code>volumes</code>, <code>service_account_name</code>, <code>security_context</code>, <code>init_containers</code>, …</td></tr>
 </tbody>
 </table>
 </div>
@@ -1429,6 +1673,7 @@ CACHE_TTL=60 mcp-k8s
 </table>
 </div>
 <p>Returns <code>stdout</code>, <code>stderr</code>, and <code>exit_code</code>.</p>
+<p><code>exec_pod</code> runs arbitrary commands, so it counts as an <strong>update</strong> (<code>pod-update</code>): read-only mode and <code>--disable-update</code> turn it off.</p>
 <hr>
 <h2 id="services"><a class="header" href="#services">Services</a></h2>
 <h3 id="list_services"><a class="header" href="#list_services">list_services</a></h3>
@@ -1459,7 +1704,7 @@ CACHE_TTL=60 mcp-k8s
 </table>
 </div>
 <h3 id="create_service"><a class="header" href="#create_service">create_service</a></h3>
-<p>Create a Kubernetes ClusterIP Service pointing to pods with a matching app label.</p>
+<p>Create a Service. Preferred over <code>apply_manifest</code>. ClusterIP by default, selecting pods labelled <code>app=&lt;name&gt;</code>.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -1467,14 +1712,26 @@ CACHE_TTL=60 mcp-k8s
 </thead>
 <tbody>
 <tr><td><code>namespace</code></td><td>string</td><td>Yes</td><td>Kubernetes namespace</td></tr>
-<tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Service name (also used as the app label selector)</td></tr>
-<tr><td><code>port</code></td><td>integer</td><td>No</td><td>Service port (default: 80)</td></tr>
-<tr><td><code>target_port</code></td><td>integer</td><td>No</td><td>Container port to forward to (defaults to same as port)</td></tr>
+<tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Service name (also the default <code>app</code> selector)</td></tr>
+<tr><td><code>port</code></td><td>integer</td><td>No</td><td>Shorthand for a single port (default: 80)</td></tr>
+<tr><td><code>target_port</code></td><td>integer/string</td><td>No</td><td>Target for the shorthand (default: <code>port</code>)</td></tr>
+<tr><td><code>ports</code></td><td>array</td><td>No</td><td><code>{port, target_port (number or container port name), name, protocol, app_protocol, node_port}</code></td></tr>
+<tr><td><code>selector</code></td><td>object</td><td>No</td><td>Pod selector (default <code>{app: &lt;name&gt;}</code>)</td></tr>
+<tr><td><code>type</code></td><td>string</td><td>No</td><td><code>ClusterIP</code> (default); <code>NodePort</code>, <code>LoadBalancer</code>, <code>ExternalName</code> are gated</td></tr>
+<tr><td><code>headless</code> / <code>cluster_ip</code></td><td>boolean / string</td><td>No</td><td><code>headless: true</code> = <code>clusterIP: None</code></td></tr>
+<tr><td><code>session_affinity</code>, <code>session_affinity_timeout_seconds</code></td><td></td><td>No</td><td><code>None</code> or <code>ClientIP</code></td></tr>
+<tr><td><code>external_traffic_policy</code>, <code>internal_traffic_policy</code></td><td>string</td><td>No</td><td><code>Cluster</code> or <code>Local</code></td></tr>
+<tr><td><code>traffic_distribution</code></td><td>string</td><td>No</td><td>e.g. <code>PreferClose</code></td></tr>
+<tr><td><code>ip_families</code>, <code>ip_family_policy</code></td><td></td><td>No</td><td>Dual-stack settings</td></tr>
+<tr><td><code>publish_not_ready_addresses</code></td><td>boolean</td><td>No</td><td></td></tr>
+<tr><td><code>load_balancer_source_ranges</code>, <code>load_balancer_class</code>, <code>allocate_load_balancer_node_ports</code></td><td></td><td>No</td><td>Need <code>--allow-loadbalancer</code></td></tr>
+<tr><td><code>external_name</code>, <code>external_ips</code></td><td></td><td>No</td><td>Need <code>--allow-external-services</code></td></tr>
+<tr><td><code>labels</code>, <code>annotations</code></td><td>object</td><td>No</td><td>Cloud load-balancer annotations need <code>--allow-loadbalancer</code></td></tr>
 </tbody>
 </table>
 </div>
 <h3 id="update_service"><a class="header" href="#update_service">update_service</a></h3>
-<p>Patch a service. Accepts optional fields: ports, selector, type.</p>
+<p>Patch a Service. Preferred over <code>apply_manifest</code>. It takes the same fields as <code>create_service</code> except the immutable ones (<code>headless</code>, <code>cluster_ip</code>, IP families). <code>ports</code> merge by port number. The result is dry-run and checked against the guardrails, so an update can’t switch a Service to a disallowed type.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -1483,9 +1740,10 @@ CACHE_TTL=60 mcp-k8s
 <tbody>
 <tr><td><code>namespace</code></td><td>string</td><td>Yes</td><td>Kubernetes namespace</td></tr>
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Service name</td></tr>
-<tr><td><code>ports</code></td><td>array</td><td>No</td><td>Array of port definitions (<code>{port, target_port, protocol}</code>)</td></tr>
+<tr><td><code>ports</code></td><td>array</td><td>No</td><td>Port definitions (<code>{port, target_port, name, protocol, app_protocol, node_port}</code>)</td></tr>
 <tr><td><code>selector</code></td><td>object</td><td>No</td><td>Label selector for pods</td></tr>
-<tr><td><code>type</code></td><td>string</td><td>No</td><td>Service type: <code>ClusterIP</code>, <code>NodePort</code>, <code>LoadBalancer</code>, <code>ExternalName</code></td></tr>
+<tr><td><code>type</code></td><td>string</td><td>No</td><td><code>ClusterIP</code>, <code>NodePort</code>, <code>LoadBalancer</code>, <code>ExternalName</code> (gated as on create)</td></tr>
+<tr><td><em>other create_service fields</em></td><td></td><td>No</td><td>Traffic policies, affinity, annotations, labels, …</td></tr>
 </tbody>
 </table>
 </div>
@@ -1536,7 +1794,7 @@ CACHE_TTL=60 mcp-k8s
 </table>
 </div>
 <h3 id="create_namespace"><a class="header" href="#create_namespace">create_namespace</a></h3>
-<p>Create a new Kubernetes namespace.</p>
+<p>Create a new Kubernetes namespace. Labelling it <code>pod-security.kubernetes.io/{enforce,audit,warn}=privileged</code> turns off Pod Security Admission for the namespace and needs <code>--allow-privileged</code>.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -1549,7 +1807,7 @@ CACHE_TTL=60 mcp-k8s
 </table>
 </div>
 <h3 id="update_namespace"><a class="header" href="#update_namespace">update_namespace</a></h3>
-<p>Update a namespace’s labels and/or annotations.</p>
+<p>Update a namespace’s labels and/or annotations. The result is dry-run and checked: the pod-security labels can’t be set to <code>privileged</code> without <code>--allow-privileged</code>.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -1614,6 +1872,10 @@ CACHE_TTL=60 mcp-k8s
 <tr><td><code>namespace</code></td><td>string</td><td>Yes</td><td>Kubernetes namespace</td></tr>
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>ConfigMap name</td></tr>
 <tr><td><code>data</code></td><td>object</td><td>Yes</td><td>Key-value string pairs for the configmap data</td></tr>
+<tr><td><code>labels</code></td><td>object</td><td>No</td><td>Labels (<code>app.kubernetes.io/managed-by: mcp-k8s</code> is added)</td></tr>
+<tr><td><code>annotations</code></td><td>object</td><td>No</td><td>Annotations</td></tr>
+<tr><td><code>binary_data</code></td><td>object</td><td>No</td><td>Base64-encoded binary values (<code>data</code> or <code>binary_data</code> is required)</td></tr>
+<tr><td><code>immutable</code></td><td>boolean</td><td>No</td><td>Make the ConfigMap immutable</td></tr>
 </tbody>
 </table>
 </div>
@@ -1678,7 +1940,7 @@ CACHE_TTL=60 mcp-k8s
 </table>
 </div>
 <h3 id="create_secret"><a class="header" href="#create_secret">create_secret</a></h3>
-<p>Create a Kubernetes Secret. Accepts string_data as key-value pairs.</p>
+<p>Create a Kubernetes Secret. Accepts string_data as key-value pairs. <code>type: kubernetes.io/service-account-token</code> mints a long-lived token for a service account and needs <code>--allow-rbac-escalation</code>.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -1689,6 +1951,10 @@ CACHE_TTL=60 mcp-k8s
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Secret name</td></tr>
 <tr><td><code>type</code></td><td>string</td><td>No</td><td>Secret type (default: <code>Opaque</code>)</td></tr>
 <tr><td><code>string_data</code></td><td>object</td><td>Yes</td><td>Key-value pairs of secret data</td></tr>
+<tr><td><code>labels</code></td><td>object</td><td>No</td><td>Labels (<code>app.kubernetes.io/managed-by: mcp-k8s</code> is added)</td></tr>
+<tr><td><code>annotations</code></td><td>object</td><td>No</td><td>Annotations</td></tr>
+<tr><td><code>data</code></td><td>object</td><td>No</td><td>Base64-encoded values (<code>string_data</code> or <code>data</code> is required)</td></tr>
+<tr><td><code>immutable</code></td><td>boolean</td><td>No</td><td>Make the Secret immutable</td></tr>
 </tbody>
 </table>
 </div>
@@ -1813,6 +2079,8 @@ CACHE_TTL=60 mcp-k8s
 <tbody>
 <tr><td><code>namespace</code></td><td>string</td><td>Yes</td><td>Kubernetes namespace</td></tr>
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>ServiceAccount name</td></tr>
+<tr><td><code>labels</code></td><td>object</td><td>No</td><td>Labels</td></tr>
+<tr><td><code>image_pull_secrets</code></td><td>string[]</td><td>No</td><td>Image pull Secrets for pods using this service account</td></tr>
 </tbody>
 </table>
 </div>
@@ -1899,7 +2167,8 @@ CACHE_TTL=60 mcp-k8s
 </div>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="workloads"><a class="header" href="#workloads">Workloads</a></h1>
-<p>This page documents tools for workload resources: StatefulSets, DaemonSets, CronJobs, Jobs, HorizontalPodAutoscalers, and ReplicaSets.</p>
+<p>This page documents tools for workload resources: StatefulSets, DaemonSets, CronJobs, Jobs, HorizontalPodAutoscalers, and ReplicaSets. Deployments and Pods are on <a href="#core-resources">Core Resources</a>.</p>
+<p>Every workload create/update tool takes the shared <a href="#pod-template-arguments">pod template arguments</a>: containers, init containers and native sidecars, env with secret/configMap/field references, probes, resources, volumes, scheduling and security settings. Each section below lists only the tool’s own fields. Prefer these tools over <code>apply_manifest</code>; both enforce the same <a href="#workload-guardrails-1">guardrails</a>.</p>
 <h2 id="statefulsets"><a class="header" href="#statefulsets">StatefulSets</a></h2>
 <h3 id="list_statefulsets"><a class="header" href="#list_statefulsets">list_statefulsets</a></h3>
 <p>List StatefulSets in a namespace with replica counts and status.</p>
@@ -1928,7 +2197,7 @@ CACHE_TTL=60 mcp-k8s
 </table>
 </div>
 <h3 id="create_statefulset"><a class="header" href="#create_statefulset">create_statefulset</a></h3>
-<p>Create a new StatefulSet in the specified namespace.</p>
+<p>Create a StatefulSet (pods selected by <code>app=&lt;name&gt;</code> or a custom <code>selector</code>). It takes the <a href="#pod-template-arguments">pod template arguments</a> plus:</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -1937,10 +2206,16 @@ CACHE_TTL=60 mcp-k8s
 <tbody>
 <tr><td><code>namespace</code></td><td>string</td><td>Yes</td><td>Kubernetes namespace</td></tr>
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>StatefulSet name</td></tr>
-<tr><td><code>image</code></td><td>string</td><td>Yes</td><td>Container image</td></tr>
+<tr><td><code>image</code></td><td>string</td><td>Yes*</td><td>Container image (*or <code>containers</code>)</td></tr>
 <tr><td><code>service_name</code></td><td>string</td><td>Yes</td><td>Governing headless service name</td></tr>
 <tr><td><code>replicas</code></td><td>integer</td><td>No</td><td>Number of replicas (default: 1)</td></tr>
 <tr><td><code>port</code></td><td>integer</td><td>No</td><td>Container port to expose</td></tr>
+<tr><td><code>volume_claim_templates</code></td><td>array</td><td>No</td><td>Per-pod PVCs: <code>{name, storage, storage_class_name, access_modes (default [ReadWriteOnce]), volume_mode, labels, annotations}</code>. Mount them by name in <code>volume_mounts</code>.</td></tr>
+<tr><td><code>pod_management_policy</code></td><td>string</td><td>No</td><td><code>OrderedReady</code> (default) or <code>Parallel</code></td></tr>
+<tr><td><code>update_strategy</code></td><td>object</td><td>No</td><td><code>{type: RollingUpdate, partition, max_unavailable}</code> or <code>{type: OnDelete}</code></td></tr>
+<tr><td><code>persistent_volume_claim_retention_policy</code></td><td>object</td><td>No</td><td><code>{when_deleted, when_scaled}</code>: <code>Retain</code> or <code>Delete</code></td></tr>
+<tr><td><code>min_ready_seconds</code>, <code>revision_history_limit</code></td><td>integer</td><td>No</td><td></td></tr>
+<tr><td><code>selector</code>, <code>pod_annotations</code></td><td>object</td><td>No</td><td></td></tr>
 </tbody>
 </table>
 </div>
@@ -1951,11 +2226,15 @@ CACHE_TTL=60 mcp-k8s
   "image": "postgres:16",
   "service_name": "postgres-headless",
   "replicas": 3,
-  "port": 5432
+  "port": 5432,
+  "env": { "POSTGRES_PASSWORD": { "secret_key_ref": { "name": "pg", "key": "password" } } },
+  "volume_claim_templates": [{ "name": "data", "storage": "10Gi" }],
+  "volume_mounts": [{ "name": "data", "mount_path": "/var/lib/postgresql/data" }],
+  "security_context": { "run_as_non_root": false, "fs_group": 999 }
 }
 </code></pre>
 <h3 id="update_statefulset"><a class="header" href="#update_statefulset">update_statefulset</a></h3>
-<p>Update (patch) an existing StatefulSet. Supports changing image and replica count.</p>
+<p>Update (patch) an existing StatefulSet: <code>replicas</code>, <code>update_strategy</code>, <code>persistent_volume_claim_retention_policy</code>, <code>min_ready_seconds</code>, <code>revision_history_limit</code>, and any pod template field (<code>image</code>, <code>env</code>, <code>resources</code>, probes, …). <code>container</code> picks the target container. The result is dry-run and checked against the guardrails before it is written (see <a href="#updates">Updates</a>).</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -1966,10 +2245,10 @@ CACHE_TTL=60 mcp-k8s
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>StatefulSet name</td></tr>
 <tr><td><code>image</code></td><td>string</td><td>No</td><td>New container image</td></tr>
 <tr><td><code>replicas</code></td><td>integer</td><td>No</td><td>New replica count</td></tr>
+<tr><td><em>other fields</em></td><td></td><td>No</td><td>As above</td></tr>
 </tbody>
 </table>
 </div>
-<p>At least one of <code>image</code> or <code>replicas</code> must be provided.</p>
 <h3 id="delete_statefulset"><a class="header" href="#delete_statefulset">delete_statefulset</a></h3>
 <p>Delete a StatefulSet by name.</p>
 <div class="table-wrapper">
@@ -2012,7 +2291,7 @@ CACHE_TTL=60 mcp-k8s
 </table>
 </div>
 <h3 id="create_daemonset"><a class="header" href="#create_daemonset">create_daemonset</a></h3>
-<p>Create a DaemonSet that runs a pod on all (or selected) nodes.</p>
+<p>Create a DaemonSet that runs a pod on all (or selected) nodes. It takes the <a href="#pod-template-arguments">pod template arguments</a>; use <code>node_selector</code>, <code>affinity</code> and <code>tolerations</code> to pick nodes. Plus:</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -2021,13 +2300,17 @@ CACHE_TTL=60 mcp-k8s
 <tbody>
 <tr><td><code>namespace</code></td><td>string</td><td>Yes</td><td>Kubernetes namespace</td></tr>
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>DaemonSet name</td></tr>
-<tr><td><code>image</code></td><td>string</td><td>Yes</td><td>Container image</td></tr>
+<tr><td><code>image</code></td><td>string</td><td>Yes*</td><td>Container image (*or <code>containers</code>)</td></tr>
 <tr><td><code>port</code></td><td>integer</td><td>No</td><td>Container port</td></tr>
+<tr><td><code>update_strategy</code></td><td>object</td><td>No</td><td><code>{type: RollingUpdate, max_unavailable, max_surge}</code> or <code>{type: OnDelete}</code></td></tr>
+<tr><td><code>min_ready_seconds</code>, <code>revision_history_limit</code></td><td>integer</td><td>No</td><td></td></tr>
+<tr><td><code>selector</code>, <code>pod_annotations</code></td><td>object</td><td>No</td><td></td></tr>
 </tbody>
 </table>
 </div>
+<p>Node agents often need <code>hostPath</code>, <code>hostNetwork</code> or privileged mode. Those are rejected unless the operator enables <code>--allow-host-path</code>, <code>--allow-host-namespaces</code> or <code>--allow-privileged</code>. With the flag set, this tool can express them.</p>
 <h3 id="update_daemonset"><a class="header" href="#update_daemonset">update_daemonset</a></h3>
-<p>Patch a DaemonSet. Supports updating the container image.</p>
+<p>Patch a DaemonSet: <code>update_strategy</code>, <code>min_ready_seconds</code>, <code>revision_history_limit</code>, and any pod template field. The result is dry-run and checked against the guardrails, so an image change on an existing privileged DaemonSet is refused unless the operator allows privileged workloads.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -2037,6 +2320,7 @@ CACHE_TTL=60 mcp-k8s
 <tr><td><code>namespace</code></td><td>string</td><td>Yes</td><td>Kubernetes namespace</td></tr>
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>DaemonSet name</td></tr>
 <tr><td><code>image</code></td><td>string</td><td>No</td><td>New container image</td></tr>
+<tr><td><em>other fields</em></td><td></td><td>No</td><td>As above</td></tr>
 </tbody>
 </table>
 </div>
@@ -2082,7 +2366,7 @@ CACHE_TTL=60 mcp-k8s
 </table>
 </div>
 <h3 id="create_cronjob"><a class="header" href="#create_cronjob">create_cronjob</a></h3>
-<p>Create a CronJob.</p>
+<p>Create a CronJob. It takes the <a href="#pod-template-arguments">pod template arguments</a> (<code>restart_policy</code> defaults to <code>OnFailure</code>), every Job setting from <a href="#create_job"><code>create_job</code></a> for the job template, plus:</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -2091,14 +2375,20 @@ CACHE_TTL=60 mcp-k8s
 <tbody>
 <tr><td><code>namespace</code></td><td>string</td><td>Yes</td><td>Kubernetes namespace</td></tr>
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>CronJob name</td></tr>
-<tr><td><code>image</code></td><td>string</td><td>Yes</td><td>Container image</td></tr>
 <tr><td><code>schedule</code></td><td>string</td><td>Yes</td><td>Cron schedule expression (e.g. <code>*/5 * * * *</code>)</td></tr>
+<tr><td><code>image</code></td><td>string</td><td>Yes*</td><td>Container image (*or <code>containers</code>)</td></tr>
 <tr><td><code>command</code></td><td>string[]</td><td>No</td><td>Command to run</td></tr>
+<tr><td><code>restart_policy</code></td><td>string</td><td>No</td><td><code>OnFailure</code> (default) or <code>Never</code></td></tr>
+<tr><td><code>time_zone</code></td><td>string</td><td>No</td><td>IANA time zone, e.g. <code>Europe/Berlin</code></td></tr>
+<tr><td><code>concurrency_policy</code></td><td>string</td><td>No</td><td><code>Allow</code> (default), <code>Forbid</code>, <code>Replace</code></td></tr>
+<tr><td><code>suspend</code></td><td>boolean</td><td>No</td><td>Suspend future runs</td></tr>
+<tr><td><code>starting_deadline_seconds</code></td><td>integer</td><td>No</td><td></td></tr>
+<tr><td><code>successful_jobs_history_limit</code>, <code>failed_jobs_history_limit</code></td><td>integer</td><td>No</td><td></td></tr>
 </tbody>
 </table>
 </div>
 <h3 id="update_cronjob"><a class="header" href="#update_cronjob">update_cronjob</a></h3>
-<p>Patch a CronJob. Supports updating image, schedule, and suspend state.</p>
+<p>Update (patch) an existing CronJob: <code>schedule</code>, <code>suspend</code>, <code>time_zone</code>, <code>concurrency_policy</code>, history limits, job settings, and any pod template field (<code>image</code>, <code>env</code>, …). The result is dry-run and checked against the guardrails before it is written.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -2107,9 +2397,10 @@ CACHE_TTL=60 mcp-k8s
 <tbody>
 <tr><td><code>namespace</code></td><td>string</td><td>Yes</td><td>Kubernetes namespace</td></tr>
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>CronJob name</td></tr>
+<tr><td><code>schedule</code></td><td>string</td><td>No</td><td>New cron schedule expression</td></tr>
+<tr><td><code>suspend</code></td><td>boolean</td><td>No</td><td>Whether to suspend the cronjob</td></tr>
 <tr><td><code>image</code></td><td>string</td><td>No</td><td>New container image</td></tr>
-<tr><td><code>schedule</code></td><td>string</td><td>No</td><td>New cron schedule</td></tr>
-<tr><td><code>suspend</code></td><td>boolean</td><td>No</td><td>Suspend or resume the CronJob</td></tr>
+<tr><td><em>other fields</em></td><td></td><td>No</td><td>As above</td></tr>
 </tbody>
 </table>
 </div>
@@ -2155,7 +2446,7 @@ CACHE_TTL=60 mcp-k8s
 </table>
 </div>
 <h3 id="create_job"><a class="header" href="#create_job">create_job</a></h3>
-<p>Create a Job.</p>
+<p>Create a Job. It takes the <a href="#pod-template-arguments">pod template arguments</a> (<code>restart_policy</code>: <code>Never</code> by default, or <code>OnFailure</code>) plus:</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -2164,8 +2455,33 @@ CACHE_TTL=60 mcp-k8s
 <tbody>
 <tr><td><code>namespace</code></td><td>string</td><td>Yes</td><td>Kubernetes namespace</td></tr>
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Job name</td></tr>
-<tr><td><code>image</code></td><td>string</td><td>Yes</td><td>Container image</td></tr>
+<tr><td><code>image</code></td><td>string</td><td>Yes*</td><td>Container image (*or <code>containers</code>)</td></tr>
 <tr><td><code>command</code></td><td>string[]</td><td>No</td><td>Command to run</td></tr>
+<tr><td><code>restart_policy</code></td><td>string</td><td>No</td><td><code>Never</code> (default) or <code>OnFailure</code></td></tr>
+<tr><td><code>backoff_limit</code></td><td>integer</td><td>No</td><td>Retries before failure (default: 6)</td></tr>
+<tr><td><code>ttl_seconds_after_finished</code></td><td>integer</td><td>No</td><td>Delete the Job this long after it finishes</td></tr>
+<tr><td><code>active_deadline_seconds</code></td><td>integer</td><td>No</td><td>Fail the Job after this long</td></tr>
+<tr><td><code>completions</code>, <code>parallelism</code></td><td>integer</td><td>No</td><td></td></tr>
+<tr><td><code>completion_mode</code></td><td>string</td><td>No</td><td><code>NonIndexed</code> or <code>Indexed</code></td></tr>
+<tr><td><code>backoff_limit_per_index</code>, <code>max_failed_indexes</code></td><td>integer</td><td>No</td><td>Indexed Jobs</td></tr>
+<tr><td><code>pod_failure_policy</code></td><td>object</td><td>No</td><td>Kubernetes PodFailurePolicy (<code>{rules: [{action, onExitCodes | onPodConditions}]}</code>)</td></tr>
+<tr><td><code>success_policy</code></td><td>object</td><td>No</td><td>Kubernetes SuccessPolicy for Indexed Jobs</td></tr>
+<tr><td><code>pod_replacement_policy</code></td><td>string</td><td>No</td><td><code>TerminatingOrFailed</code> or <code>Failed</code></td></tr>
+<tr><td><code>suspend</code></td><td>boolean</td><td>No</td><td>Create the Job suspended</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="create_job_from_cronjob"><a class="header" href="#create_job_from_cronjob">create_job_from_cronjob</a></h3>
+<p>Run a CronJob now: create a Job from its job template, like <code>kubectl create job --from=cronjob/NAME</code>. The Job is owned by the CronJob and annotated <code>cronjob.kubernetes.io/instantiate: manual</code>. The template is checked against the guardrails like any workload.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>namespace</code></td><td>string</td><td>Yes</td><td>Kubernetes namespace</td></tr>
+<tr><td><code>cronjob</code></td><td>string</td><td>Yes</td><td>CronJob name</td></tr>
+<tr><td><code>name</code></td><td>string</td><td>No</td><td>Job name (default: <code>&lt;cronjob&gt;-manual-&lt;timestamp&gt;</code>)</td></tr>
 </tbody>
 </table>
 </div>
@@ -2224,6 +2540,11 @@ CACHE_TTL=60 mcp-k8s
 <tr><td><code>min_replicas</code></td><td>integer</td><td>No</td><td>Minimum replicas (default: 1)</td></tr>
 <tr><td><code>max_replicas</code></td><td>integer</td><td>Yes</td><td>Maximum replicas</td></tr>
 <tr><td><code>cpu_target_percent</code></td><td>integer</td><td>No</td><td>Target CPU utilization percentage</td></tr>
+<tr><td><code>labels</code></td><td>object</td><td>No</td><td>Labels (<code>app.kubernetes.io/managed-by: mcp-k8s</code> is added)</td></tr>
+<tr><td><code>annotations</code></td><td>object</td><td>No</td><td>Annotations</td></tr>
+<tr><td><code>target_memory_utilization</code></td><td>integer</td><td>No</td><td>Target average memory utilization (%)</td></tr>
+<tr><td><code>metrics</code></td><td>array</td><td>No</td><td>Kubernetes autoscaling/v2 MetricSpec objects (Resource, Pods, Object, External, ContainerResource), added to the cpu/memory shorthands</td></tr>
+<tr><td><code>behavior</code></td><td>object</td><td>No</td><td>Scale-up/scale-down policies and stabilization windows</td></tr>
 </tbody>
 </table>
 </div>
@@ -2240,6 +2561,8 @@ CACHE_TTL=60 mcp-k8s
 <tr><td><code>min_replicas</code></td><td>integer</td><td>No</td><td>New minimum replicas</td></tr>
 <tr><td><code>max_replicas</code></td><td>integer</td><td>No</td><td>New maximum replicas</td></tr>
 <tr><td><code>cpu_target_percent</code></td><td>integer</td><td>No</td><td>New CPU target percentage</td></tr>
+<tr><td><code>target_cpu_utilization</code>, <code>target_memory_utilization</code>, <code>metrics</code></td><td></td><td>No</td><td>Replace the metrics</td></tr>
+<tr><td><code>behavior</code></td><td>object</td><td>No</td><td>Scaling behavior</td></tr>
 </tbody>
 </table>
 </div>
@@ -2316,7 +2639,8 @@ CACHE_TTL=60 mcp-k8s
 </table>
 </div>
 <h3 id="create_ingress"><a class="header" href="#create_ingress">create_ingress</a></h3>
-<p>Create a Kubernetes Ingress resource. Automatically creates a backing ClusterIP Service if one does not already exist.</p>
+<p>Create an Ingress. Preferred over <code>apply_manifest</code>. It takes several rules, TLS, a default backend and the ingress class. The original single-rule arguments (<code>host</code>, <code>service_name</code>, <code>service_port</code>, <code>path</code>, <code>path_type</code>) still work as a shorthand.</p>
+<p>By default, a ClusterIP Service selecting <code>app=&lt;service_name&gt;</code> is created for each numbered backend that doesn’t exist yet (<code>create_missing_services</code>).</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -2325,32 +2649,46 @@ CACHE_TTL=60 mcp-k8s
 <tbody>
 <tr><td><code>namespace</code></td><td>string</td><td>Yes</td><td>Kubernetes namespace</td></tr>
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Ingress name</td></tr>
-<tr><td><code>service_name</code></td><td>string</td><td>Yes</td><td>Backend service name</td></tr>
-<tr><td><code>host</code></td><td>string</td><td>No</td><td>Hostname for the ingress rule (e.g. <code>myapp.example.com</code>)</td></tr>
-<tr><td><code>service_port</code></td><td>integer</td><td>No</td><td>Backend service port (default: 80)</td></tr>
-<tr><td><code>path</code></td><td>string</td><td>No</td><td>URL path (default: <code>/</code>)</td></tr>
-<tr><td><code>path_type</code></td><td>string</td><td>No</td><td>Path matching type: <code>Prefix</code> (default), <code>Exact</code>, <code>ImplementationSpecific</code></td></tr>
-<tr><td><code>ingress_class</code></td><td>string</td><td>No</td><td>IngressClass name (e.g. <code>alb</code>, <code>nginx</code>)</td></tr>
-<tr><td><code>annotations</code></td><td>object</td><td>No</td><td>Ingress annotations as key-value pairs</td></tr>
+<tr><td><code>rules</code></td><td>array</td><td>No*</td><td><code>{host, paths: [{path (default /), path_type (default Prefix), service_name, service_port | service_port_name}]}</code></td></tr>
+<tr><td><code>tls</code></td><td>array</td><td>No</td><td><code>{hosts, secret_name}</code></td></tr>
+<tr><td><code>default_backend</code></td><td>object</td><td>No*</td><td><code>{service_name, service_port | service_port_name}</code></td></tr>
+<tr><td><code>service_name</code></td><td>string</td><td>No*</td><td>Single-rule shorthand: backend service</td></tr>
+<tr><td><code>host</code></td><td>string</td><td>No</td><td>Single-rule shorthand: hostname (e.g. <code>myapp.example.com</code>)</td></tr>
+<tr><td><code>service_port</code></td><td>integer</td><td>No</td><td>Single-rule shorthand: backend port (default: 80)</td></tr>
+<tr><td><code>path</code></td><td>string</td><td>No</td><td>Single-rule shorthand: URL path (default: <code>/</code>)</td></tr>
+<tr><td><code>path_type</code></td><td>string</td><td>No</td><td><code>Prefix</code> (default), <code>Exact</code>, <code>ImplementationSpecific</code></td></tr>
+<tr><td><code>ingress_class</code></td><td>string</td><td>No</td><td>IngressClass name (e.g. <code>alb</code>, <code>nginx</code>, <code>traefik</code>)</td></tr>
+<tr><td><code>annotations</code></td><td>object</td><td>No</td><td>Ingress annotations (checked, see below)</td></tr>
+<tr><td><code>labels</code></td><td>object</td><td>No</td><td></td></tr>
+<tr><td><code>create_missing_services</code></td><td>boolean</td><td>No</td><td>Default: true</td></tr>
 </tbody>
 </table>
 </div>
+<p>*One of <code>rules</code>, <code>default_backend</code> or <code>service_name</code> is required.</p>
+<p><strong>Annotation guardrails.</strong> These are rejected unless the operator sets <code>--allow-ingress-snippets</code>:</p>
+<ul>
+<li><code>*-snippet(s)</code> annotations, for any controller;</li>
+<li>characters and words that inject nginx configuration in <code>nginx.ingress.kubernetes.io/*</code> values (<code>;</code>, <code>{</code>, <code>}</code>, quotes, backslashes, newlines, <code>_by_lua</code>, <code>load_module</code>, …);</li>
+<li><code>auth-url</code>/<code>auth-signin</code>/<code>mirror-target</code>/redirect values that aren’t plain http(s) URLs.</li>
+</ul>
+<p>This is the IngressNightmare class of attacks (CVE-2025-1097, CVE-2025-1098, CVE-2025-24514). Operators can also set an annotation allowlist or denylist (<code>--ingress-annotation-allowlist</code>, <code>--ingress-annotation-denylist</code>).</p>
 <p>Example:</p>
 <pre><code class="language-json">{
   "namespace": "default",
-  "name": "my-app-ingress",
-  "service_name": "my-app",
-  "host": "my-app.example.com",
-  "service_port": 8080,
-  "path": "/",
+  "name": "shop",
   "ingress_class": "nginx",
-  "annotations": {
-    "cert-manager.io/cluster-issuer": "letsencrypt-prod"
-  }
+  "rules": [
+    { "host": "shop.example.com", "paths": [
+      { "path": "/api", "service_name": "api", "service_port_name": "http" },
+      { "path": "/", "service_name": "web", "service_port": 80 }
+    ] }
+  ],
+  "tls": [{ "hosts": ["shop.example.com"], "secret_name": "shop-tls" }],
+  "annotations": { "cert-manager.io/cluster-issuer": "letsencrypt-prod" }
 }
 </code></pre>
 <h3 id="update_ingress"><a class="header" href="#update_ingress">update_ingress</a></h3>
-<p>Update an existing Kubernetes Ingress resource (host, paths, annotations, TLS).</p>
+<p>Update an existing Ingress. Preferred over <code>apply_manifest</code>. <code>rules</code>, <code>tls</code> and <code>default_backend</code> replace the current values; <code>annotations</code> and <code>labels</code> merge. The single-rule shorthand replaces all rules with one. The result is dry-run and checked against the guardrails before it is written.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -2359,13 +2697,10 @@ CACHE_TTL=60 mcp-k8s
 <tbody>
 <tr><td><code>namespace</code></td><td>string</td><td>Yes</td><td>Kubernetes namespace</td></tr>
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Ingress name</td></tr>
-<tr><td><code>service_name</code></td><td>string</td><td>Yes</td><td>Backend service name</td></tr>
-<tr><td><code>host</code></td><td>string</td><td>No</td><td>Hostname for the ingress rule</td></tr>
-<tr><td><code>service_port</code></td><td>integer</td><td>No</td><td>Backend service port (default: 80)</td></tr>
-<tr><td><code>path</code></td><td>string</td><td>No</td><td>URL path (default: <code>/</code>)</td></tr>
-<tr><td><code>path_type</code></td><td>string</td><td>No</td><td>Path matching type (default: <code>Prefix</code>)</td></tr>
+<tr><td><code>rules</code>, <code>tls</code>, <code>default_backend</code></td><td>array/object</td><td>No</td><td>As in <code>create_ingress</code></td></tr>
+<tr><td><code>service_name</code>, <code>host</code>, <code>service_port</code>, <code>path</code>, <code>path_type</code></td><td></td><td>No</td><td>Single-rule shorthand</td></tr>
 <tr><td><code>ingress_class</code></td><td>string</td><td>No</td><td>IngressClass name</td></tr>
-<tr><td><code>annotations</code></td><td>object</td><td>No</td><td>Ingress annotations as key-value pairs</td></tr>
+<tr><td><code>annotations</code>, <code>labels</code></td><td>object</td><td>No</td><td>Merged into the existing ones</td></tr>
 </tbody>
 </table>
 </div>
@@ -2441,6 +2776,8 @@ CACHE_TTL=60 mcp-k8s
 <tr><td><code>ingress_rules</code></td><td>array</td><td>No</td><td>Ingress rules</td></tr>
 <tr><td><code>egress_rules</code></td><td>array</td><td>No</td><td>Egress rules</td></tr>
 <tr><td><code>policy_types</code></td><td>string[]</td><td>No</td><td>Policy types: <code>Ingress</code>, <code>Egress</code></td></tr>
+<tr><td><code>labels</code></td><td>object</td><td>No</td><td>Labels (<code>app.kubernetes.io/managed-by: mcp-k8s</code> is added)</td></tr>
+<tr><td><code>annotations</code></td><td>object</td><td>No</td><td>Annotations</td></tr>
 </tbody>
 </table>
 </div>
@@ -2610,6 +2947,12 @@ CACHE_TTL=60 mcp-k8s
 <tr><td><code>storage_class</code></td><td>string</td><td>No</td><td>StorageClass name</td></tr>
 <tr><td><code>access_modes</code></td><td>string[]</td><td>No</td><td>Access modes (default: <code>["ReadWriteOnce"]</code>)</td></tr>
 <tr><td><code>storage</code></td><td>string</td><td>Yes</td><td>Storage size (e.g. <code>10Gi</code>)</td></tr>
+<tr><td><code>labels</code></td><td>object</td><td>No</td><td>Labels (<code>app.kubernetes.io/managed-by: mcp-k8s</code> is added)</td></tr>
+<tr><td><code>annotations</code></td><td>object</td><td>No</td><td>Annotations</td></tr>
+<tr><td><code>volume_mode</code></td><td>string</td><td>No</td><td><code>Filesystem</code> (default) or <code>Block</code></td></tr>
+<tr><td><code>data_source</code></td><td>object</td><td>No</td><td><code>{kind: VolumeSnapshot | PersistentVolumeClaim, name, api_group}</code>: restore a snapshot or clone a PVC</td></tr>
+<tr><td><code>selector</code></td><td>object</td><td>No</td><td>Bind only to PVs with these labels</td></tr>
+<tr><td><code>volume_name</code></td><td>string</td><td>No</td><td>Bind to this PersistentVolume</td></tr>
 </tbody>
 </table>
 </div>
@@ -2790,6 +3133,14 @@ CACHE_TTL=60 mcp-k8s
 </table>
 </div>
 <hr>
+<h2 id="escalation-guardrails"><a class="header" href="#escalation-guardrails">Escalation guardrails</a></h2>
+<p>The RBAC write tools reject privilege escalation primitives unless the operator sets <code>--allow-rbac-escalation</code>:</p>
+<ul>
+<li><strong>Rules:</strong> verbs <code>escalate</code>, <code>bind</code>, <code>impersonate</code>, and wildcard (<code>*</code>) verbs, resources (also <code>pods/*</code>), apiGroups or nonResourceURLs.</li>
+<li><strong>ClusterRoles:</strong> <code>aggregationRule</code>, and the <code>rbac.authorization.k8s.io/aggregate-to-*</code> labels, which push a role’s rules into the built-in admin/edit/view roles.</li>
+<li><strong>Bindings:</strong> binding <code>cluster-admin</code>; binding <code>system:anonymous</code> or <code>system:unauthenticated</code>; and binding a role whose rules contain any of the above. The bound role is fetched and checked, so the built-in <code>edit</code> and <code>admin</code> roles, which can impersonate service accounts, count.</li>
+</ul>
+<p>Rules accept <code>resource_names</code>; ClusterRole rules also accept <code>non_resource_urls</code>. <code>apply_manifest</code>, if the operator enables it, applies RBAC objects without these rules.</p>
 <h2 id="roles"><a class="header" href="#roles">Roles</a></h2>
 <h3 id="list_roles"><a class="header" href="#list_roles">list_roles</a></h3>
 <p>List Roles in a namespace.</p>
@@ -2827,7 +3178,9 @@ CACHE_TTL=60 mcp-k8s
 <tbody>
 <tr><td><code>namespace</code></td><td>string</td><td>Yes</td><td>Kubernetes namespace</td></tr>
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Role name</td></tr>
-<tr><td><code>rules</code></td><td>array</td><td>Yes</td><td>Policy rules (array of <code>{apiGroups, resources, verbs}</code>)</td></tr>
+<tr><td><code>rules</code></td><td>array</td><td>Yes</td><td>Policy rules: <code>{api_groups, resources, verbs, resource_names}</code>; escalation primitives are rejected (see above)</td></tr>
+<tr><td><code>labels</code></td><td>object</td><td>No</td><td>Labels (<code>app.kubernetes.io/managed-by: mcp-k8s</code> is added)</td></tr>
+<tr><td><code>annotations</code></td><td>object</td><td>No</td><td>Annotations</td></tr>
 </tbody>
 </table>
 </div>
@@ -2898,6 +3251,8 @@ CACHE_TTL=60 mcp-k8s
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>RoleBinding name</td></tr>
 <tr><td><code>role_name</code></td><td>string</td><td>Yes</td><td>Name of the Role to bind</td></tr>
 <tr><td><code>subjects</code></td><td>array</td><td>Yes</td><td>Subjects (users, groups, or service accounts)</td></tr>
+<tr><td><code>labels</code></td><td>object</td><td>No</td><td>Labels (<code>app.kubernetes.io/managed-by: mcp-k8s</code> is added)</td></tr>
+<tr><td><code>annotations</code></td><td>object</td><td>No</td><td>Annotations</td></tr>
 </tbody>
 </table>
 </div>
@@ -2949,7 +3304,9 @@ CACHE_TTL=60 mcp-k8s
 </thead>
 <tbody>
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>ClusterRole name</td></tr>
-<tr><td><code>rules</code></td><td>array</td><td>Yes</td><td>Policy rules (array of <code>{apiGroups, resources, verbs}</code>)</td></tr>
+<tr><td><code>rules</code></td><td>array</td><td>Yes</td><td>Policy rules: <code>{api_groups, resources, verbs, resource_names}</code>; escalation primitives are rejected (see above)</td></tr>
+<tr><td><code>labels</code></td><td>object</td><td>No</td><td>Labels (<code>app.kubernetes.io/managed-by: mcp-k8s</code> is added)</td></tr>
+<tr><td><code>annotations</code></td><td>object</td><td>No</td><td>Annotations</td></tr>
 </tbody>
 </table>
 </div>
@@ -3015,6 +3372,8 @@ CACHE_TTL=60 mcp-k8s
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>ClusterRoleBinding name</td></tr>
 <tr><td><code>role_name</code></td><td>string</td><td>Yes</td><td>Name of the ClusterRole to bind</td></tr>
 <tr><td><code>subjects</code></td><td>array</td><td>Yes</td><td>Subjects (users, groups, or service accounts)</td></tr>
+<tr><td><code>labels</code></td><td>object</td><td>No</td><td>Labels (<code>app.kubernetes.io/managed-by: mcp-k8s</code> is added)</td></tr>
+<tr><td><code>annotations</code></td><td>object</td><td>No</td><td>Annotations</td></tr>
 </tbody>
 </table>
 </div>
@@ -3176,6 +3535,9 @@ CACHE_TTL=60 mcp-k8s
 <tr><td><code>selector</code></td><td>object</td><td>Yes</td><td>Label selector for target pods</td></tr>
 <tr><td><code>min_available</code></td><td>string</td><td>No</td><td>Minimum available pods (number or percentage)</td></tr>
 <tr><td><code>max_unavailable</code></td><td>string</td><td>No</td><td>Maximum unavailable pods (number or percentage)</td></tr>
+<tr><td><code>labels</code></td><td>object</td><td>No</td><td>Labels (<code>app.kubernetes.io/managed-by: mcp-k8s</code> is added)</td></tr>
+<tr><td><code>annotations</code></td><td>object</td><td>No</td><td>Annotations</td></tr>
+<tr><td><code>unhealthy_pod_eviction_policy</code></td><td>string</td><td>No</td><td><code>IfHealthyBudget</code> or <code>AlwaysAllow</code></td></tr>
 </tbody>
 </table>
 </div>
@@ -3191,6 +3553,7 @@ CACHE_TTL=60 mcp-k8s
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>PDB name</td></tr>
 <tr><td><code>min_available</code></td><td>string</td><td>No</td><td>Updated minimum available</td></tr>
 <tr><td><code>max_unavailable</code></td><td>string</td><td>No</td><td>Updated maximum unavailable</td></tr>
+<tr><td><code>unhealthy_pod_eviction_policy</code></td><td>string</td><td>No</td><td><code>IfHealthyBudget</code> or <code>AlwaysAllow</code></td></tr>
 </tbody>
 </table>
 </div>
@@ -3615,12 +3978,18 @@ CACHE_TTL=60 mcp-k8s
 <h1 id="generic-tools"><a class="header" href="#generic-tools">Generic Tools</a></h1>
 <p>mcp-k8s provides generic tools that work with any Kubernetes resource type, including Custom Resource Definitions (CRDs). These tools use Kubernetes API discovery to resolve resource types at runtime.</p>
 <h2 id="apply_manifest"><a class="header" href="#apply_manifest">apply_manifest</a></h2>
-<p><strong>Last resort.</strong> Apply an arbitrary Kubernetes manifest, given as <strong>JSON</strong>, using server-side apply. Accepts any resource type.</p>
+<p><strong>Off by default; unrestricted when enabled.</strong> Apply an arbitrary Kubernetes manifest, given as <strong>JSON</strong>, using server-side apply. Accepts any resource type.</p>
 <blockquote>
-<p>Prefer the typed tools (<code>create_deployment</code>, <code>create_job</code>, <code>create_pod</code>, <code>update_*</code>, …). They validate their input and enforce mcp-k8s’s guardrails, whereas <code>apply_manifest</code> sends the raw object to the API server. Use it only for resource types that have no typed tool, and consider disabling it with <code>--disable-apply-manifest</code> (see <a href="#permissions">Permissions</a>).</p>
+<p>This tool is for people who know exactly what they’re applying. It’s only listed once the operator starts mcp-k8s with <code>--enable-apply-manifest</code>, and when it is, it <strong>skips the <a href="#workload-guardrails-1">workload guardrails</a></strong>: it can create privileged pods, <code>hostPath</code> mounts, RBAC bindings, webhooks, CRDs or anything else. Agents should use the typed tools (<code>create_deployment</code>, <code>create_job</code>, <code>create_pod</code>, <code>create_service</code>, <code>create_ingress</code>, <code>update_*</code>, …) and call <code>apply_manifest</code> only when the user explicitly asks for a manifest to be applied, after showing them the full manifest.</p>
 </blockquote>
+<p>What still applies when it’s enabled:</p>
+<ul>
+<li>the namespace allowlist, on the manifest’s namespace;</li>
+<li>the per-resource create/update switches. It looks the object up first: creating needs <code>&lt;resource&gt;-create</code>, updating needs <code>&lt;resource&gt;-update</code>.</li>
+</ul>
+<p>Its tool definition carries the MCP annotation <code>destructiveHint: true</code>, so MCP clients (Claude Code, for example) ask the user before each call. A manifest without a managed-by label gets <code>app.kubernetes.io/managed-by: mcp-k8s</code>. See <a href="#apply_manifest-1">Permissions: apply_manifest</a> for the reasoning.</p>
 <p>It returns the applied object’s metadata (name, namespace, kind, resource_version).</p>
-<p>YAML is <strong>not</strong> accepted: convert it to JSON first (for example <code>yq -o=json manifest.yaml</code>). The output of <a href="#get_resource_json"><code>get_resource_json</code></a> can be edited and passed straight back.</p>
+<p>YAML is <strong>not</strong> accepted: convert it to JSON first (for example <code>yq -o=json manifest.yaml</code>).</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -3643,13 +4012,14 @@ CACHE_TTL=60 mcp-k8s
 }
 </code></pre>
 <h3 id="example-apply-a-crd-instance"><a class="header" href="#example-apply-a-crd-instance">Example: Apply a CRD Instance</a></h3>
+<p>Needs <code>--allow-custom-resource-groups monitoring.coreos.com</code>.</p>
 <pre><code class="language-json">{
   "manifest": "{\"apiVersion\":\"monitoring.coreos.com/v1\",\"kind\":\"ServiceMonitor\",\"metadata\":{\"name\":\"my-app\",\"namespace\":\"monitoring\"},\"spec\":{\"selector\":{\"matchLabels\":{\"app\":\"my-app\"}},\"endpoints\":[{\"port\":\"metrics\",\"interval\":\"30s\"}]}}"
 }
 </code></pre>
 <h3 id="notes"><a class="header" href="#notes">Notes</a></h3>
 <ul>
-<li><code>apply_manifest</code> is classified as a <strong>create</strong> action. It is disabled when <code>--disable-create</code> is set.</li>
+<li><code>apply_manifest</code> is off unless <code>--enable-apply-manifest</code> is set. It’s classified as a <strong>create</strong> action, so <code>--disable-create</code> also removes it. Updating an existing object additionally needs update permission for its kind.</li>
 <li>The manifest must be a single JSON object. YAML (including multi-document <code>---</code> files) is rejected with a parse error; convert it to JSON and apply one resource per call.</li>
 <li>If the resource already exists, it is updated (server-side apply merges fields).</li>
 <li>For CRDs, the API group must be installed in the cluster for discovery to succeed.</li>
@@ -3657,7 +4027,7 @@ CACHE_TTL=60 mcp-k8s
 </ul>
 <hr>
 <h2 id="get_resource_json"><a class="header" href="#get_resource_json">get_resource_json</a></h2>
-<p>Get any Kubernetes resource as JSON, the object as the API server returns it. Accepts apiVersion, kind, name, and optional namespace. Uses API discovery to resolve the resource type. The output can be edited and passed back to <code>apply_manifest</code>; if a person needs YAML, convert it client-side (for example <code>yq -P</code>).</p>
+<p>Get any Kubernetes resource as JSON, the object as the API server returns it. Accepts apiVersion, kind, name, and optional namespace. Uses API discovery to resolve the resource type. Use it to inspect an object before changing it with a typed <code>update_*</code> tool; if a person needs YAML, convert it client-side (for example <code>yq -P</code>).</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -3721,12 +4091,13 @@ CACHE_TTL=60 mcp-k8s
 <tbody>
 <tr><td><strong>Read</strong></td><td><code>list_</code>, <code>get_</code>, <code>*_logs</code>, <code>*_metrics</code>, <code>can_i</code>, <code>whoami</code>, <code>list_my_permissions</code>, <code>get_resource_json</code> (and its deprecated alias <code>get_resource_yaml</code>)</td><td><code>list_deployments</code>, <code>get_pod_logs</code>, <code>get_metrics</code></td></tr>
 <tr><td><strong>Create</strong></td><td><code>create_</code>, <code>apply_manifest</code></td><td><code>create_deployment</code>, <code>create_pod</code>, <code>apply_manifest</code></td></tr>
-<tr><td><strong>Update</strong></td><td><code>update_</code>, <code>scale_</code>, <code>restart_</code>, <code>rollback_</code>, <code>approve_</code>, <code>deny_</code>, <code>cordon_</code>, <code>uncordon_</code>, <code>drain_</code></td><td><code>update_deployment</code>, <code>scale_deployment</code>, <code>cordon_node</code></td></tr>
+<tr><td><strong>Update</strong></td><td><code>update_</code>, <code>exec_</code>, <code>scale_</code>, <code>restart_</code>, <code>rollback_</code>, <code>approve_</code>, <code>deny_</code>, <code>cordon_</code>, <code>uncordon_</code>, <code>drain_</code></td><td><code>update_deployment</code>, <code>exec_pod</code>, <code>scale_deployment</code>, <code>cordon_node</code></td></tr>
 <tr><td><strong>Delete</strong></td><td><code>delete_</code>, <code>evict_</code></td><td><code>delete_pod</code>, <code>evict_pod</code></td></tr>
 </tbody>
 </table>
 </div>
 <p>Unknown tool names default to <strong>Read</strong> as a safe fallback.</p>
+<p><code>exec_pod</code> runs arbitrary commands inside a container, so it counts as an <strong>Update</strong> on <code>pod</code>: read-only mode, <code>--disable-update</code> and <code>--disable pod-update</code> all turn it off. Before this change it fell through to Read and stayed available even in read-only mode.</p>
 <h2 id="resolution-logic"><a class="header" href="#resolution-logic">Resolution Logic</a></h2>
 <p>When checking whether a tool is allowed, mcp-k8s follows this resolution order:</p>
 <ol>
@@ -3784,30 +4155,98 @@ CACHE_TTL=60 mcp-k8s
   clusterrolebinding-create,\
   clusterrolebinding-delete
 </code></pre>
-<h2 id="apply_manifest-guardrails"><a class="header" href="#apply_manifest-guardrails"><code>apply_manifest</code> Guardrails</a></h2>
-<p><code>apply_manifest</code> is the most powerful tool in mcp-k8s. It uses Kubernetes server-side apply to create or update <strong>any</strong> resource from a raw JSON manifest, making it capable of both create and update operations in a single tool. Because of this dual nature, it requires special consideration:</p>
+<h2 id="workload-guardrails-1"><a class="header" href="#workload-guardrails-1">Workload Guardrails</a></h2>
+<p>The permission switches above decide <strong>which tools</strong> run. The workload policy decides <strong>what those tools may create</strong>. The typed tools and the custom resource tools enforce it, with the same code:</p>
 <ul>
-<li><strong><code>--disable-create</code></strong> removes <code>apply_manifest</code> (since it is classified as a Create action), but this also disables all other create tools.</li>
-<li><strong><code>--disable-apply-manifest</code></strong> / <code>DISABLE_APPLY_MANIFEST</code> is a dedicated kill-switch that blocks <code>apply_manifest</code> without affecting other create tools like <code>create_deployment</code> or <code>create_service</code>.</li>
+<li>the typed <code>create_*</code> tools check the object they built;</li>
+<li>the typed <code>update_*</code> tools check the server’s dry-run result of the patch;</li>
+<li><code>create_custom_resource</code> and <code>update_custom_resource</code> check the raw manifest (or, for updates, the dry-run result).</li>
 </ul>
-<p>For production environments, consider blocking <code>apply_manifest</code> entirely:</p>
-<pre><code class="language-bash"># Block apply_manifest but keep typed create tools available
-mcp-k8s --disable-apply-manifest
+<p><code>apply_manifest</code> is the one exception, on purpose: it’s off by default, and when an operator enables it it’s an unrestricted raw apply (see <a href="#apply_manifest-1"><code>apply_manifest</code></a>). The defaults are restrictive. Each relaxation is an explicit opt-in, and every rejection names the flag that allows it, for example:</p>
+<pre><code class="language-text">rejected by the mcp-k8s workload policy (1 violation):
+- spec.template.spec.containers[0] (agent).securityContext: privileged: true gives the container full access to the node; an operator can allow this with --allow-privileged (env MCP_K8S_ALLOW_PRIVILEGED=true; library: WorkloadPolicy.allow_privileged)
+These guardrails apply to every typed tool and the custom resource tools. Don't work around a rejection with another tool (including apply_manifest): report it to the user.
 </code></pre>
-<p>Or via environment variable:</p>
-<pre><code class="language-bash">DISABLE_APPLY_MANIFEST=true mcp-k8s
-</code></pre>
-<p>This is the recommended approach for production because:</p>
-<ol>
-<li><code>apply_manifest</code> can create any resource type, including ClusterRoles, Namespaces, and other privileged objects</li>
-<li>It can also update existing resources, bypassing the <code>--disable-update</code> flag since it is classified as a Create action</li>
-<li>The typed create tools (e.g. <code>create_deployment</code>) are safer because they only operate on their specific resource type</li>
-</ol>
+<h3 id="rules-and-flags"><a class="header" href="#rules-and-flags">Rules and flags</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Rule (default: rejected)</th><th>Applies to</th><th>Flag / env var</th><th><code>WorkloadPolicy</code> field</th></tr>
+</thead>
+<tbody>
+<tr><td><code>securityContext.privileged: true</code>, Windows <code>hostProcess</code>, namespaces labelled <code>pod-security.kubernetes.io/*=privileged</code></td><td>every container (incl. init and ephemeral), Namespaces</td><td><code>--allow-privileged</code> / <code>MCP_K8S_ALLOW_PRIVILEGED</code></td><td><code>allow_privileged</code></td></tr>
+<tr><td><code>allowPrivilegeEscalation: true</code></td><td>containers</td><td><code>--allow-privilege-escalation</code> / <code>MCP_K8S_ALLOW_PRIVILEGE_ESCALATION</code></td><td><code>allow_privilege_escalation</code></td></tr>
+<tr><td><code>capabilities.add</code> beyond the runtime’s default set (AUDIT_WRITE, CHOWN, DAC_OVERRIDE, FOWNER, FSETID, KILL, MKNOD, NET_BIND_SERVICE, SETFCAP, SETGID, SETPCAP, SETUID, SYS_CHROOT)</td><td>containers</td><td><code>--allow-capabilities NET_ADMIN,…</code> (<code>ALL</code> = any) / <code>MCP_K8S_ALLOW_CAPABILITIES</code></td><td><code>allowed_capabilities</code></td></tr>
+<tr><td><code>hostNetwork</code>, <code>hostPID</code>, <code>hostIPC</code></td><td>pods</td><td><code>--allow-host-namespaces</code> / <code>MCP_K8S_ALLOW_HOST_NAMESPACES</code></td><td><code>allow_host_namespaces</code></td></tr>
+<tr><td><code>hostPath</code> volumes</td><td>pods</td><td><code>--allow-host-path</code> / <code>MCP_K8S_ALLOW_HOST_PATH</code></td><td><code>allow_host_path</code></td></tr>
+<tr><td><code>hostPort</code></td><td>container ports</td><td><code>--allow-host-ports</code> / <code>MCP_K8S_ALLOW_HOST_PORTS</code></td><td><code>allow_host_ports</code></td></tr>
+<tr><td>Volume types other than configMap, secret, emptyDir, persistentVolumeClaim, projected, downwardAPI, ephemeral (e.g. <code>nfs</code>, inline <code>csi</code>, <code>gitRepo</code>, <code>iscsi</code>)</td><td>pods</td><td><code>--allow-volume-types nfs,csi</code> (<code>*</code> = any but hostPath) / <code>MCP_K8S_ALLOW_VOLUME_TYPES</code></td><td><code>allowed_volume_types</code></td></tr>
+<tr><td>seccomp/AppArmor <code>Unconfined</code> (fields or legacy annotations), custom SELinux type/user/role, <code>procMount: Unmasked</code>, sysctls outside the safe set, probe/lifecycle <code>host</code> other than localhost</td><td>pods, containers</td><td><code>--allow-unconfined</code> / <code>MCP_K8S_ALLOW_UNCONFINED</code></td><td><code>allow_unconfined</code></td></tr>
+<tr><td>Images outside the registry allowlist (only when one is set)</td><td>containers</td><td><code>--allowed-registries ghcr.io/myorg,docker.io/library</code> / <code>MCP_K8S_ALLOWED_REGISTRIES</code></td><td><code>allowed_registries</code></td></tr>
+<tr><td><code>type: NodePort</code>, explicit <code>nodePort</code></td><td>Services</td><td><code>--allow-nodeport</code> / <code>MCP_K8S_ALLOW_NODEPORT</code></td><td><code>allow_node_port</code></td></tr>
+<tr><td><code>type: LoadBalancer</code>, <code>loadBalancerSourceRanges</code>/<code>Class</code>/<code>IP</code>, <code>allocateLoadBalancerNodePorts</code>, cloud load-balancer annotations (<code>service.beta.kubernetes.io/*</code>, GKE, MetalLB, kube-vip, Cilium LB-IPAM)</td><td>Services</td><td><code>--allow-loadbalancer</code> / <code>MCP_K8S_ALLOW_LOADBALANCER</code></td><td><code>allow_load_balancer</code></td></tr>
+<tr><td><code>type: ExternalName</code>, <code>spec.externalIPs</code> (CVE-2020-8554)</td><td>Services</td><td><code>--allow-external-services</code> / <code>MCP_K8S_ALLOW_EXTERNAL_SERVICES</code></td><td><code>allow_external_services</code></td></tr>
+<tr><td><code>*-snippet(s)</code> annotations (any controller); characters and words that inject nginx config (<code>;</code>, <code>{</code>, <code>}</code>, quotes, <code>\</code>, newlines, <code>_by_lua</code>, <code>load_module</code>, …) in ingress-nginx annotation values; <code>auth-url</code>/<code>auth-signin</code>/<code>mirror-target</code>/redirect values that aren’t plain http(s) URLs; paths with injection characters (the IngressNightmare class: CVE-2025-1097, CVE-2025-1098, CVE-2025-24514)</td><td>Ingresses</td><td><code>--allow-ingress-snippets</code> / <code>MCP_K8S_ALLOW_INGRESS_SNIPPETS</code></td><td><code>allow_ingress_snippets</code></td></tr>
+<tr><td>Annotations not in the allowlist (when set) / in the denylist; trailing <code>*</code> matches a prefix</td><td>Ingresses</td><td><code>--ingress-annotation-allowlist</code>, <code>--ingress-annotation-denylist</code> / <code>MCP_K8S_INGRESS_ANNOTATION_ALLOWLIST</code>, <code>MCP_K8S_INGRESS_ANNOTATION_DENYLIST</code></td><td><code>ingress_annotation_allowlist</code>, <code>ingress_annotation_denylist</code></td></tr>
+<tr><td>RBAC escalation primitives: verbs <code>escalate</code>, <code>bind</code>, <code>impersonate</code>; wildcard verbs, resources (<code>*</code>, <code>x/*</code>), apiGroups or nonResourceURLs; aggregated ClusterRoles and <code>aggregate-to-*</code> labels; binding <code>cluster-admin</code>, or a role whose rules contain any of the above (fetched live); binding <code>system:anonymous</code>/<code>system:unauthenticated</code>; <code>kubernetes.io/service-account-token</code> Secrets</td><td>Roles, ClusterRoles, bindings, Secrets</td><td><code>--allow-rbac-escalation</code> / <code>MCP_K8S_ALLOW_RBAC_ESCALATION</code></td><td><code>allow_rbac_escalation</code></td></tr>
+<tr><td>Cluster-scoped custom resource kinds</td><td>custom resource tools</td><td><code>--allow-manifest-kinds ClusterRole,rbac.authorization.k8s.io/RoleBinding</code> (<code>*</code> = all) / <code>MCP_K8S_ALLOW_MANIFEST_KINDS</code></td><td><code>allowed_manifest_kinds</code></td></tr>
+<tr><td>Custom resources (any non-built-in API group). Operators can turn them into pods or RBAC objects; pod specs, containers and manifests embedded in an allowlisted custom resource still get the rules above.</td><td>custom resource tools</td><td><code>--allow-custom-resource-groups cert-manager.io</code> (<code>*</code> = any) / <code>MCP_K8S_ALLOW_CUSTOM_RESOURCE_GROUPS</code></td><td><code>allowed_custom_resource_groups</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>The namespace allowlist (<code>--namespaces</code>) applies to every tool, including the object’s namespace in <code>apply_manifest</code> manifests (even when the workload policy doesn’t).</p>
+<h3 id="secure-defaults"><a class="header" href="#secure-defaults">Secure defaults</a></h3>
+<p>The typed create tools also fill in a restricted securityContext when the caller leaves it unset:</p>
+<ul>
+<li><code>runAsNonRoot: true</code>;</li>
+<li>seccomp <code>RuntimeDefault</code>;</li>
+<li><code>allowPrivilegeEscalation: false</code>;</li>
+<li><code>capabilities.drop: [ALL]</code> for non-root containers;</li>
+<li><code>automountServiceAccountToken: false</code> unless <code>service_account_name</code> is set.</li>
+</ul>
+<p>They add the label <code>app.kubernetes.io/managed-by: mcp-k8s</code>; <code>apply_manifest</code> adds it too when the manifest has no managed-by label. These are defaults, not rules: <code>security_context.run_as_non_root: false</code> runs root images. <code>--no-secure-defaults</code> (<code>MCP_K8S_NO_SECURE_DEFAULTS</code>, <code>WorkloadPolicy.secure_defaults = false</code>) turns them off. See <a href="#security-context-and-secure-defaults">Pod Template Arguments</a>.</p>
+<h3 id="updates-1"><a class="header" href="#updates-1">Updates</a></h3>
+<p>Update tools patch with a server-side <strong>dry run</strong> first, check the resulting object, then write with the dry run’s <code>resourceVersion</code> as a precondition. An update therefore can’t add a disallowed setting. It also can’t modify a workload that already breaks the policy, for example swapping the image of an existing privileged DaemonSet. That block is deliberate; allow the relevant rule to manage such workloads through mcp-k8s. <code>scale_deployment</code> and <code>restart_deployment</code> don’t change pod content and aren’t checked.</p>
+<h3 id="library-users"><a class="header" href="#library-users">Library users</a></h3>
+<p><code>WorkloadPolicy</code> lives on <code>ActionPermissions</code>. <code>ActionPermissions::default()</code> and <code>ActionPermissions::new(...)</code> use the restrictive <code>WorkloadPolicy::default()</code>; replace it with <code>with_workload_policy</code>:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>use mcp_k8s::permissions::ActionPermissions;
+use mcp_k8s::policy::WorkloadPolicy;
+
+let mut policy = WorkloadPolicy::default();
+policy.allow_load_balancer = true;
+policy.allowed_custom_resource_groups = vec!["cert-manager.io".into()];
+let permissions = ActionPermissions::default().with_workload_policy(policy);
+// WorkloadPolicy::permissive() restores the pre-0.5 behaviour (no guardrails).
+<span class="boring">}</span></code></pre>
+<p><code>mcp_k8s::policy::check_object</code> is public, so an embedding application can run the same checks on objects it writes itself.</p>
+<h3 id="limits"><a class="header" href="#limits">Limits</a></h3>
+<p>The policy decides what mcp-k8s writes. It is not an admission controller:</p>
+<ul>
+<li>it doesn’t stop other clients;</li>
+<li>it doesn’t follow what an allowlisted operator does with a custom resource (for example a GitOps controller pulling from a repository);</li>
+<li>it can’t see the user an image runs as.</li>
+</ul>
+<p>Use Pod Security Admission, an admission policy engine and Kubernetes RBAC for cluster-wide enforcement; the guardrails keep the AI-facing tools inside those lines.</p>
+<h2 id="apply_manifest-1"><a class="header" href="#apply_manifest-1"><code>apply_manifest</code></a></h2>
+<p><code>apply_manifest</code> uses server-side apply to create <strong>or</strong> update an object from a raw JSON manifest. It’s for users who know exactly what they’re applying, and it’s built so that the decision stays with them rather than with the agent:</p>
+<ul>
+<li><strong>Off by default.</strong> It isn’t listed in <code>tools/list</code> and calls are refused until the operator starts mcp-k8s with <code>--enable-apply-manifest</code> (<code>ENABLE_APPLY_MANIFEST=true</code>; Helm <code>permissions.enableApplyManifest</code>; library <code>ActionPermissions::with_apply_manifest(true)</code>). An agent can’t turn it on. The old <code>--disable-apply-manifest</code> still works and wins over <code>--enable-apply-manifest</code>.</li>
+<li><strong>Unrestricted when enabled.</strong> It skips the workload policy entirely: no pod rules, no Service/Ingress/RBAC rules, no kind gates, no custom resource group allowlist. It can create privileged pods, <code>hostPath</code> mounts, RBAC bindings, webhooks and CRDs.</li>
+<li><strong>Still scoped by the operator.</strong> The namespace allowlist applies to the manifest’s namespace, and the per-resource switches apply: it looks the object up first, so creating it needs <code>&lt;resource&gt;-create</code> and updating an existing one needs <code>&lt;resource&gt;-update</code>, with the typed tools’ keys (e.g. <code>deployment-update</code>). <code>--disable-create</code> removes it.</li>
+<li><strong>The human confirms each call.</strong> Its tool definition carries the MCP annotation <code>destructiveHint: true</code>, so clients such as Claude Code ask the user before running it. Its description and the server instructions tell agents to use it only when the user explicitly asks for a manifest to be applied, to show the user the full manifest first, and never to use it to get around a rejection or a missing typed-tool field.</li>
+<li>A manifest without a managed-by label gets <code>app.kubernetes.io/managed-by: mcp-k8s</code>.</li>
+</ul>
+<p><strong>Why not guard it like the other tools?</strong> A guarded <code>apply_manifest</code> (as in early v0.6.0 drafts) is just a worse typed tool, and the risky case is an agent that’s confident while the person behind it doesn’t know what the manifest does. An operator opt-in plus per-call human confirmation addresses that directly; a policy only an operator can relax doesn’t help a user who really does need a raw manifest.</p>
+<p><strong>Recommendation.</strong> Leave it off for shared or agent-driven deployments; agents get everything they need from the typed tools (see <a href="#typed-tool-coverage">Typed Tool Coverage</a>). Enable it for a person who manages the cluster and wants a raw escape hatch, ideally with a narrow <code>--namespaces</code> list.</p>
 <h2 id="how-it-works-internally"><a class="header" href="#how-it-works-internally">How It Works Internally</a></h2>
 <p>The <code>ActionPermissions</code> struct maintains:</p>
 <ul>
 <li>Three global flags: <code>global_create_enabled</code>, <code>global_update_enabled</code>, <code>global_delete_enabled</code></li>
 <li>A <code>resource_overrides</code> map of <code>"&lt;resource&gt;-&lt;action&gt;"</code> -&gt; <code>false</code> entries</li>
+<li><code>secret_decode_enabled</code> and <code>apply_manifest_enabled</code></li>
+<li>The <code>WorkloadPolicy</code> (see <a href="#workload-guardrails-1">Workload Guardrails</a>)</li>
 </ul>
 <p>When <code>tool_definitions()</code> is called (in response to <code>tools/list</code>), each tool definition is passed through <code>permissions.is_tool_allowed(name)</code>. Tools that are not allowed are filtered out of the response.</p>
 <p>The resource name is extracted from the tool name by stripping the action prefix:</p>
@@ -3823,11 +4262,12 @@ mcp-k8s --disable-apply-manifest
 <tr><td><code>rollback_deployment</code></td><td><code>deployment</code></td><td>Update</td></tr>
 <tr><td><code>evict_pod</code></td><td><code>pod</code></td><td>Delete</td></tr>
 <tr><td><code>cordon_node</code></td><td><code>node</code></td><td>Update</td></tr>
+<tr><td><code>exec_pod</code></td><td><code>pod</code></td><td>Update</td></tr>
 <tr><td><code>apply_manifest</code></td><td><code>apply_manifest</code></td><td>Create</td></tr>
 </tbody>
 </table>
 </div>
-<p>The override key format is <code>&lt;resource&gt;-&lt;action&gt;</code>, all lowercase. So to disable <code>apply_manifest</code>, you would use <code>--disable apply_manifest-create</code>.</p>
+<p>The override key format is <code>&lt;resource&gt;-&lt;action&gt;</code>, all lowercase. <code>apply_manifest</code> is off unless <code>--enable-apply-manifest</code> is set; when it’s enabled, <code>--disable apply_manifest-create</code> also removes it. Inside <code>apply_manifest</code>, the object’s own kind is checked against the same keys, e.g. <code>deployment-create</code> or <code>deployment-update</code>.</p>
 <h2 id="relationship-to-kubernetes-rbac"><a class="header" href="#relationship-to-kubernetes-rbac">Relationship to Kubernetes RBAC</a></h2>
 <p>The mcp-k8s permission system and Kubernetes RBAC serve complementary purposes:</p>
 <div class="table-wrapper">
@@ -4384,6 +4824,9 @@ cd mcp-k8s
 <tr><td><code>permissions.disableUpdate</code></td><td><code>false</code></td><td>Globally disable update operations</td></tr>
 <tr><td><code>permissions.disableDelete</code></td><td><code>false</code></td><td>Globally disable delete operations</td></tr>
 <tr><td><code>permissions.disableActions</code></td><td><code>[]</code></td><td>List of resource-action strings to disable (e.g. <code>["pods-delete", "secrets-create"]</code>)</td></tr>
+<tr><td><code>permissions.enableApplyManifest</code></td><td><code>false</code></td><td>Enable <code>apply_manifest</code>, an unrestricted raw apply that skips the workload guardrails (see <a href="#apply_manifest-1">Permissions</a>)</td></tr>
+<tr><td><code>permissions.disableApplyManifest</code></td><td><code>false</code></td><td>Deprecated (it’s off by default); still honoured and wins over <code>enableApplyManifest</code></td></tr>
+<tr><td><code>extraEnv</code></td><td><code>[]</code></td><td>Extra container environment variables, e.g. <code>MCP_K8S_ALLOW_LOADBALANCER=true</code> to relax a <a href="#workload-guardrails-1">workload guardrail</a>. Quote values in a values file, or use <code>--set-string</code> on the command line</td></tr>
 </tbody>
 </table>
 </div>
@@ -5759,7 +6202,7 @@ pub mod widget;  // &lt;-- add this
 <li><strong><code>tools/call</code></strong> – if a tool is disabled, the call is rejected with an error before your <code>handle_tool</code> function is reached.</li>
 </ol>
 <p>Per-resource overrides use the <code>"&lt;resource&gt;-&lt;action&gt;"</code> format (e.g., <code>--disable widget-delete</code>), where <code>&lt;resource&gt;</code> is the part of the tool name after the prefix.</p>
-<h2 id="conventions"><a class="header" href="#conventions">Conventions</a></h2>
+<h2 id="conventions-1"><a class="header" href="#conventions-1">Conventions</a></h2>
 <p>Follow these conventions for consistency across modules:</p>
 <ol>
 <li><strong><code>label_selector</code></strong> – all list tools should accept an optional <code>label_selector</code> parameter for filtering by labels.</li>
