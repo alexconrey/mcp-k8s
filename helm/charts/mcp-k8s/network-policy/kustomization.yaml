@@ -1,0 +1,8 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Adds a NetworkPolicy to the base. To combine with read-only mode, point
+# `resources` at ../read-only instead of ../base.
+resources:
+  - ../base
+  - networkpolicy.yaml

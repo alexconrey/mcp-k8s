@@ -1,10 +1,14 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
+# Read-only mode, the recommended starting point: the ClusterRole grants only
+# get/list/watch (plus the self-review creates whoami/can_i need), and the
+# server hides every write tool from tools/list.
 resources:
-  - ../
+  - ../base
 
 patches:
+  - path: clusterrole-patch.yaml
   - target:
       kind: Deployment
       name: mcp-k8s

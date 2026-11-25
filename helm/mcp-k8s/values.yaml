@@ -29,6 +29,9 @@ permissions:
   # Deprecated: apply_manifest is off by default. Still honoured, and wins
   # over enableApplyManifest.
   disableApplyManifest: false
+  # Secret value decoding (get_secret with decode: true) is becoming opt-in
+  # (--enable-secret-decode); its chart value arrives with that change. See
+  # rbac.secrets for the matching RBAC.
 
 # Extra environment variables for the mcp-k8s container, e.g. to relax a
 # workload guardrail (see docs/src/permissions.md):
@@ -39,6 +42,10 @@ permissions:
 #       value: "cert-manager.io"
 extraEnv: []
 
+# Requests and limits for the mcp-k8s container. The server is a small static
+# Rust binary: it idles at a few MiB and uses CPU only while serving requests.
+# Raise memory if you list very large collections (e.g. every pod in a big
+# cluster) or enable the response cache.
 resources:
   requests:
     cpu: 50m
@@ -47,10 +54,62 @@ resources:
     cpu: 200m
     memory: 256Mi
 
+# Pod-level securityContext. The image is a scratch image holding one static
+# binary that runs as 65534 (nobody) and never writes to disk.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65534
+  runAsGroup: 65534
+  seccompProfile:
+    type: RuntimeDefault
+
+# Container-level securityContext.
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 65534
+  runAsGroup: 65534
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+  seccompProfile:
+    type: RuntimeDefault
+
 rbac:
   create: true
-  # If true, creates ClusterRole/ClusterRoleBinding. If false, creates namespaced Role/RoleBinding.
+  # true: a ClusterRole and ClusterRoleBinding. false: a Role and RoleBinding
+  # in each namespace of `namespaces` (or the release namespace when
+  # `namespaces` is empty), without the cluster-scoped resources.
   clusterWide: true
+  # Recommended starting point. Grants only get/list/watch (plus the
+  # self-review creates whoami, can_i and list_my_permissions need) and turns
+  # on DISABLE_CREATE/DISABLE_UPDATE/DISABLE_DELETE, so tools/list shows only
+  # read tools and the ServiceAccount can't change anything even if asked to.
+  # port_forward_check needs pods/portforward and is refused (403) here.
+  readOnly: false
+  # Grant access to Secrets (get/list/watch; plus create/update/patch/delete
+  # unless readOnly). Kubernetes RBAC can't grant "keys only": a token that can
+  # get or list Secrets can read their values, even though the server redacts
+  # values unless secret decoding is enabled. Set false to keep Secret values
+  # out of the pod's reach entirely; the secret tools then fail with 403.
+  # Keep this in line with secret decoding: if decoding stays off, ask
+  # whether the secret tools are needed at all.
+  secrets: true
+  # Signer names approve_csr/deny_csr may act for (verb `approve` on
+  # certificates.k8s.io/signers), e.g. ["example.com/my-signer"]. Kubernetes
+  # refuses approvals without it. Empty grants none. Only used when
+  # clusterWide and not readOnly.
+  csrSigners: []
+  # Extra rules appended to the generated ones, e.g. for custom resources the
+  # custom resource tools or watch_resource should reach:
+  #   extraRules:
+  #     - apiGroups: ["cert-manager.io"]
+  #       resources: ["certificates"]
+  #       verbs: ["get", "list", "watch"]
+  extraRules: []
+  # extraRules may not contain "*" in apiGroups, resources or verbs unless
+  # this is true.
+  allowWildcards: false
 
 serviceAccount:
   create: true
@@ -76,10 +135,45 @@ autoscaling:
 
 networkPolicy:
   enabled: false
-  # Restrict ingress to specific CIDRs
+  # Ingress: only the MCP port (service.port), and only from these sources.
+  # With none set, the port is open to any source (other ports stay closed).
+  # CIDR blocks allowed to reach the MCP port.
   allowedCIDRs: []
-  # Restrict ingress to pods in specific namespaces
+  # Namespaces (by name) whose pods may reach the MCP port.
   allowedNamespaces: []
+  # More NetworkPolicy peers (podSelector/namespaceSelector/ipBlock).
+  extraIngressFrom: []
+  egress:
+    # Restrict egress to the Kubernetes API, DNS and the OTLP collector.
+    enabled: true
+    apiServer:
+      # The API server's endpoint addresses (`kubectl get endpointslices -n
+      # default -l kubernetes.io/service-name=kubernetes`), e.g.
+      # ["10.0.0.10/32"]. Most CNIs match NetworkPolicy after the kubernetes
+      # Service's DNAT, so use the endpoint IPs, not the Service ClusterIP.
+      # Empty allows the ports below to any address.
+      cidrs: []
+      # Endpoint ports of the API server (443 on most managed clusters, 6443
+      # on kubeadm/k3s).
+      ports: [443, 6443]
+    dns:
+      enabled: true
+      # Where cluster DNS runs. Adjust for NodeLocal DNSCache (add an ipBlock
+      # for its link-local address) or a differently labelled DNS.
+      to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+    otlp:
+      # Peers for the OTLP collector when otel.endpoint is set; the port comes
+      # from otel.endpoint (default 4318). Empty allows that port to any
+      # address.
+      to: []
+    # More egress rules (NetworkPolicyEgressRule objects).
+    extra: []
 
 # OpenTelemetry export of traces, the mcp.server.operation.duration metric and
 # logs, over OTLP http/protobuf. Off while `endpoint` is empty. Each value sets

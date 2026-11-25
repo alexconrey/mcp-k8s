@@ -18,9 +18,29 @@ spec:
         app.kubernetes.io/part-of: mcp-k8s
     spec:
       serviceAccountName: mcp-k8s
+      # The server talks to the API server with its ServiceAccount token.
+      automountServiceAccountToken: true
+      # Scratch image, one static binary running as 65534 (nobody) that never
+      # writes to disk.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: mcp-k8s
           image: ghcr.io/alexconrey/mcp-k8s:latest
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
           command: ["/mcp-k8s", "--http"]
           ports:
             - name: http
@@ -29,7 +49,8 @@ spec:
           env:
             - name: MCP_K8S_LISTEN
               value: "0.0.0.0:8080"
-            # Uncomment to disable mutating operations (read-only mode):
+            # Uncomment to disable mutating operations (or use the read-only/
+            # overlay, which also narrows the ClusterRole):
             # - name: DISABLE_CREATE
             #   value: "true"
             # - name: DISABLE_UPDATE

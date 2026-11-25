@@ -15,10 +15,20 @@ spec:
         {{- include "mcp-k8s.selectorLabels" . | nindent 8 }}
     spec:
       serviceAccountName: {{ include "mcp-k8s.serviceAccountName" . }}
+      # The server talks to the API server with its ServiceAccount token.
+      automountServiceAccountToken: true
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: mcp-k8s
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default (printf "v%s" .Chart.AppVersion) }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           command:
             - /mcp-k8s
             - --http
@@ -27,21 +37,26 @@ spec:
             - name: MCP_K8S_NAMESPACES
               value: {{ join "," .Values.namespaces | quote }}
             {{- end }}
-            {{- if .Values.permissions.disableCreate }}
+            {{- $readOnly := .Values.rbac.readOnly }}
+            {{- if or $readOnly .Values.permissions.disableCreate }}
             - name: DISABLE_CREATE
               value: "true"
             {{- end }}
-            {{- if .Values.permissions.disableUpdate }}
+            {{- if or $readOnly .Values.permissions.disableUpdate }}
             - name: DISABLE_UPDATE
               value: "true"
             {{- end }}
-            {{- if .Values.permissions.disableDelete }}
+            {{- if or $readOnly .Values.permissions.disableDelete }}
             - name: DISABLE_DELETE
               value: "true"
             {{- end }}
-            {{- if .Values.permissions.disableActions }}
+            {{- $disable := .Values.permissions.disableActions | default list }}
+            {{- if and .Values.rbac.create (not .Values.rbac.secrets) (not $readOnly) }}
+            {{- $disable = concat $disable (list "secret-create" "secret-update" "secret-delete") | uniq }}
+            {{- end }}
+            {{- if $disable }}
             - name: MCP_K8S_DISABLE
-              value: {{ join "," .Values.permissions.disableActions | quote }}
+              value: {{ join "," $disable | quote }}
             {{- end }}
             {{- if .Values.permissions.enableApplyManifest }}
             - name: ENABLE_APPLY_MANIFEST

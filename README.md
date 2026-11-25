@@ -240,28 +240,42 @@ Uses `gcr.io/distroless/cc-debian12:nonroot` as the runtime base. Runs
 ### Helm
 
 ```bash
+# Read-only: the recommended starting point
+helm install mcp-k8s ./helm/mcp-k8s --set rbac.readOnly=true
+
+# Writes allowed, limited to two namespaces, no deletes
 helm install mcp-k8s ./helm/mcp-k8s \
   --set namespaces="{staging,production}" \
   --set permissions.disableDelete=true
 ```
 
-See [helm/mcp-k8s/values.yaml](helm/mcp-k8s/values.yaml) for all configuration options.
+The chart runs the pod under the Pod Security "restricted" profile (non-root,
+read-only root filesystem, no capabilities, seccomp `RuntimeDefault`), grants
+RBAC scoped to what the tools use (no wildcards), and has an optional
+NetworkPolicy (`networkPolicy.enabled`) that limits ingress to the MCP port
+and egress to the API server, DNS and the OTLP collector. See
+[helm/mcp-k8s/values.yaml](helm/mcp-k8s/values.yaml) and the
+[Helm docs](docs/src/deployment/helm.md) for all configuration options.
 
 ### Kustomize
 
 ```bash
+# Read-only mode (recommended starting point)
+kubectl apply -k helm/charts/mcp-k8s/read-only/
+
 # Full access
 kubectl apply -k helm/charts/mcp-k8s/
 
-# Read-only mode
-kubectl apply -k helm/charts/mcp-k8s/read-only/
+# Full access plus a NetworkPolicy (edit network-policy/networkpolicy.yaml first)
+kubectl apply -k helm/charts/mcp-k8s/network-policy/
 ```
 
 ### RBAC
 
 The server needs a ServiceAccount with appropriate K8s RBAC permissions.
-See [docs/RBAC.md](docs/src/deployment/rbac.md) for full-access, read-only,
-and per-namespace ClusterRole examples.
+See [RBAC Setup](docs/src/deployment/rbac.md) for the full-access, read-only
+and per-namespace rules, the tool behind each rule, and why Secrets access is
+worth leaving out if you don't need the secret tools.
 
 ## Library Usage
 
