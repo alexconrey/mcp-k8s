@@ -12,6 +12,32 @@ release workflow refuses a tag that doesn't match `Cargo.toml`,
 
 ## [Unreleased]
 
+### Breaking changes
+- **Tool errors are MCP tool results, not JSON-RPC errors.** A tool that ran
+  and failed, or was refused (permissions, workload policy), now returns a
+  successful JSON-RPC response with `isError: true` and the message in
+  `content`, as the MCP spec requires, so the model sees why. It used to be a
+  JSON-RPC error `-32000`. An unknown tool, or an unknown prompt in
+  `prompts/get`, is now `-32602` (invalid params).
+
+### Added
+- **Audit events:** every tool call that writes, deletes or execs, and every
+  denied call, emits an `audit` event on the `tracing` target
+  `mcp_k8s::audit` with the tool, action, decision and denied rule, outcome,
+  target and argument keys. Argument values are never included. Route the
+  target to its own sink for an audit trail.
+
+### Deprecated
+- The Prometheus metrics `mcp_k8s_tool_calls_total`,
+  `mcp_k8s_tool_call_duration_seconds` and `mcp_requests_total` are
+  deprecated and will be removed in v0.8.0. Use the OpenTelemetry metric
+  `mcp.server.operation.duration`. Their `# HELP` text says so.
+
+### Internal
+- The aws-lc-rs TLS provider (and its cmake build) is no longer compiled.
+  ring was already the provider in use: `rustls` is built without default
+  features and `axum-server` with `tls-rustls-no-provider`.
+
 ## [0.6.0] - 2026-11-24
 
 Typed workload tools that cover the pod template, workload guardrails on every

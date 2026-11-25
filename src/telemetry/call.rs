@@ -269,6 +269,30 @@ impl ToolCall {
                 },
                 "tool call finished"
             );
+            // Audit trail: everything that changes the cluster, or was
+            // refused. Arguments only as redacted keys (see summarize).
+            if action != "read" || decision == "denied" {
+                let argument_keys = summary.argument_keys_string();
+                tracing::event!(
+                    target: semconv::AUDIT_TARGET,
+                    tracing::Level::INFO,
+                    {
+                        { semconv::GEN_AI_TOOL_NAME } = state.tool.as_str(),
+                        { semconv::MCP_K8S_ACTION } = action,
+                        { semconv::MCP_K8S_DECISION } = decision,
+                        { semconv::MCP_K8S_DENIED_RULE } = denied_by.as_deref(),
+                        { semconv::MCP_K8S_OUTCOME } = outcome,
+                        { semconv::ERROR_TYPE } = error_type,
+                        { semconv::K8S_CLUSTER_NAME } = target.cluster.as_deref(),
+                        { semconv::K8S_NAMESPACE_NAME } = target.namespace.as_deref(),
+                        { semconv::MCP_K8S_RESOURCE_KIND } = target.kind.as_deref(),
+                        { semconv::MCP_K8S_RESOURCE_NAME } = target.name.as_deref(),
+                        { semconv::MCP_K8S_RESOURCE_API_VERSION } = target.api_version.as_deref(),
+                        { semconv::MCP_K8S_TOOL_ARGUMENT_KEYS } = argument_keys.as_str(),
+                    },
+                    "audit"
+                );
+            }
         });
     }
 }

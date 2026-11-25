@@ -280,6 +280,21 @@ async fn main() {
     let prometheus_handle = metrics_exporter_prometheus::PrometheusBuilder::new()
         .install_recorder()
         .expect("Failed to install Prometheus recorder");
+    // Deprecated since v0.7.0 and removed in v0.8.0: the OpenTelemetry
+    // histogram mcp.server.operation.duration carries the same data.
+    metrics::describe_counter!(
+        "mcp_k8s_tool_calls_total",
+        "DEPRECATED (removed in v0.8.0; use the OpenTelemetry metric mcp.server.operation.duration). Tool calls by tool and status."
+    );
+    metrics::describe_histogram!(
+        "mcp_k8s_tool_call_duration_seconds",
+        metrics::Unit::Seconds,
+        "DEPRECATED (removed in v0.8.0; use the OpenTelemetry metric mcp.server.operation.duration). Tool call duration."
+    );
+    metrics::describe_counter!(
+        "mcp_requests_total",
+        "DEPRECATED (removed in v0.8.0; use the OpenTelemetry metric mcp.server.operation.duration). MCP requests by method."
+    );
 
     let policy = workload_policy(&cli);
     let namespaces: Vec<String> = cli
@@ -1014,6 +1029,9 @@ async fn handle_tool_call(
         (body.await, false)
     };
 
+    // MCP: a tool that ran and failed (including a refusal) is a successful
+    // JSON-RPC response with `isError: true`, so the model sees the message.
+    // An unknown tool is a protocol error: invalid params (-32602).
     let response = match result {
         Some(Ok(text)) => success_response(
             request,
@@ -1021,8 +1039,14 @@ async fn handle_tool_call(
                 "content": [{ "type": "text", "text": text }]
             }),
         ),
-        Some(Err(e)) => error_response(request, -32000, &e),
-        None => error_response(request, -32000, &format!("Unknown tool: {tool_name}")),
+        Some(Err(e)) => success_response(
+            request,
+            serde_json::json!({
+                "content": [{ "type": "text", "text": e }],
+                "isError": true
+            }),
+        ),
+        None => error_response(request, -32602, &format!("Unknown tool: {tool_name}")),
     };
     (response, reported)
 }
@@ -1230,7 +1254,7 @@ fn handle_prompts_get(request: &JsonRpcRequest) -> JsonRpcResponse {
             })]
         }
         _ => {
-            return error_response(request, -32000, &format!("unknown prompt: {prompt_name}"));
+            return error_response(request, -32602, &format!("unknown prompt: {prompt_name}"));
         }
     };
 
@@ -1553,7 +1577,14 @@ mod telemetry_tests {
             &RequestContext::default(),
         )
         .await;
-        assert_eq!(response.error.as_ref().map(|e| e.code), Some(-32000));
+        // A refused tool call is a tool error (isError), not a JSON-RPC error.
+        assert!(response.error.is_none());
+        let result = response.result.as_ref().unwrap();
+        assert_eq!(result["isError"], true);
+        assert!(result["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("not allowed"));
 
         let spans = server_spans(&h);
         assert_eq!(spans.len(), 1);
@@ -1561,7 +1592,7 @@ mod telemetry_tests {
         assert_eq!(a[semconv::MCP_K8S_DECISION], s("denied"));
         assert_eq!(a[semconv::MCP_K8S_DENIED_RULE], s("global:create"));
         assert_eq!(a[semconv::ERROR_TYPE], s("permission_denied"));
-        assert_eq!(a[semconv::RPC_STATUS_CODE], s("-32000"));
+        assert!(!a.contains_key(semconv::RPC_STATUS_CODE));
         assert_eq!(a[semconv::MCP_K8S_ACTION], s("write"));
         assert_eq!(a[semconv::K8S_NAMESPACE_NAME], s("prod"));
         assert!(matches!(spans[0].status, Status::Error { .. }));
@@ -1718,5 +1749,20 @@ mod telemetry_tests {
         let rendered = format!("{points:?}");
         assert!(!rendered.contains("no-such-tool-1234") && !rendered.contains("bogus"));
         assert!(rendered.contains("unknown_tool") && rendered.contains("_OTHER"));
+    }
+
+    #[tokio::test]
+    async fn unknown_tools_are_invalid_params() {
+        let h = harness();
+        let manager = manager(ActionPermissions::default()).await;
+        let response = run(
+            &h,
+            &manager,
+            request(json!({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                           "params": {"name": "no_such_tool", "arguments": {}}})),
+            &RequestContext::default(),
+        )
+        .await;
+        assert_eq!(response.error.as_ref().map(|e| e.code), Some(-32602));
     }
 }

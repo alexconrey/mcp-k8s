@@ -169,8 +169,14 @@ uses `Api::watch()` with timeout for event streaming (30s hard cap).
 `mcp_k8s_tool_calls_total{tool,status}` (`status` is `ok`, `error` or
 `denied`) and `mcp_k8s_tool_call_duration_seconds{tool}`, both emitted by the
 library's `mcp::handle_tool()`, plus `mcp_requests_total{method}` from the
-server. There is no separate errors counter. These stay unchanged until a
-release deprecates them in favour of the OTel metric.
+server. There is no separate errors counter. **Deprecated since v0.7.0,
+removed in v0.8.0** in favour of the OTel metric; their `# HELP` says so.
+Every write/delete/exec and every denied call also emits an `audit` event on
+the `mcp_k8s::audit` target (redacted, like the `tool call finished` event).
+
+**MCP errors:** a tool that ran and failed, or was refused, returns a result
+with `isError: true` (the model sees the message). An unknown tool or prompt
+is JSON-RPC `-32602`.
 
 **Telemetry** (`telemetry/`, `otel.rs`): one SERVER span per MCP request
 (`telemetry::server_span`, created by `dispatch` in `main.rs`), the

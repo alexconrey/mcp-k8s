@@ -716,6 +716,68 @@ async fn handle_tool_records_into_the_request_span() {
     assert!(logs[0].fields.contains_key(semconv::DURATION_MS));
 }
 
+async fn audit_events_for(perms: ActionPermissions, tool: &str, args: Value) -> Vec<Captured> {
+    let cap = Capture::default();
+    let dispatch = cap.dispatch();
+    let client = mock_client(perms);
+    let span =
+        tracing::dispatcher::with_default(&dispatch, || server_span("tools/call", Some(tool)));
+    let _ = crate::mcp::handle_tool(&client, tool, &args)
+        .instrument(span)
+        .with_subscriber(dispatch)
+        .await;
+    cap.events(semconv::AUDIT_TARGET)
+}
+
+#[tokio::test]
+async fn writes_and_denials_are_audited_reads_are_not() {
+    // A write that reached the API (the mock answers 404): audited.
+    let events = audit_events_for(
+        ActionPermissions::default(),
+        "delete_pod",
+        json!({"namespace": "prod", "name": "web-1"}),
+    )
+    .await;
+    assert_eq!(events.len(), 1, "{events:?}");
+    let f = &events[0].fields;
+    assert_eq!(events[0].name, "audit");
+    assert_eq!(field(f, semconv::GEN_AI_TOOL_NAME), Some("delete_pod"));
+    assert_eq!(field(f, semconv::MCP_K8S_ACTION), Some("delete"));
+    assert_eq!(field(f, semconv::MCP_K8S_DECISION), Some("allowed"));
+    assert_eq!(field(f, semconv::K8S_NAMESPACE_NAME), Some("prod"));
+    assert_eq!(field(f, semconv::MCP_K8S_RESOURCE_NAME), Some("web-1"));
+    assert_eq!(
+        field(f, semconv::MCP_K8S_TOOL_ARGUMENT_KEYS),
+        Some("name,namespace")
+    );
+
+    // A denied write: audited with the rule.
+    let events = audit_events_for(
+        ActionPermissions::new(false, false, true, vec![], false, false),
+        "delete_pod",
+        json!({"namespace": "prod", "name": "web-1"}),
+    )
+    .await;
+    assert_eq!(events.len(), 1, "{events:?}");
+    assert_eq!(
+        field(&events[0].fields, semconv::MCP_K8S_DECISION),
+        Some("denied")
+    );
+    assert_eq!(
+        field(&events[0].fields, semconv::MCP_K8S_DENIED_RULE),
+        Some("global:delete")
+    );
+
+    // A read: not audited.
+    let events = audit_events_for(
+        ActionPermissions::default(),
+        "get_pod",
+        json!({"namespace": "prod", "name": "web-1"}),
+    )
+    .await;
+    assert!(events.is_empty(), "{events:?}");
+}
+
 #[tokio::test]
 async fn handle_tool_without_a_request_span_creates_one() {
     let cap = Capture::default();
