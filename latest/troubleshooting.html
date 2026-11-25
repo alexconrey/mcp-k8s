@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-37af0f99.js";
+            window.path_to_searchindex_js = "searchindex-bea0b7c6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-5b34cd39.js"></script>
@@ -247,6 +247,9 @@ mcp-k8s --disable pod-delete,service-delete  # Only block pod and service delete
 <li>Verify the token matches exactly what was passed to <code>--auth-token</code>.</li>
 <li>If you do not need authentication, remove the <code>--auth-token</code> flag.</li>
 </ul>
+<h2 id="403-forbidden-host-not-allowed-or-cross-site-request-blocked"><a class="header" href="#403-forbidden-host-not-allowed-or-cross-site-request-blocked">403 Forbidden (“host not allowed” or “cross-site request blocked”)</a></h2>
+<p><strong>host not allowed</strong>: the request’s <code>Host</code> isn’t in <code>--allowed-hosts</code>. On a loopback <code>--listen</code> only <code>localhost</code>, <code>127.0.0.1</code> and <code>[::1]</code> are accepted by default. Add the name clients use to <code>--allowed-hosts</code> (<code>MCP_K8S_ALLOWED_HOSTS</code>).</p>
+<p><strong>cross-site request blocked</strong>: a browser sent the request from another origin. Add that origin to <code>--cors-allowed-origins</code> if it’s a legitimate browser-based MCP client.</p>
 <h2 id="tls-errors"><a class="header" href="#tls-errors">TLS errors</a></h2>
 <p><strong>Symptom</strong>: HTTPS connections fail with certificate errors, or the server fails to start with <code>"Failed to load TLS cert/key"</code>.</p>
 <p><strong>Causes and fixes</strong>:</p>

@@ -36,7 +36,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-37af0f99.js";
+            window.path_to_searchindex_js = "../searchindex-bea0b7c6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-5b34cd39.js"></script>
@@ -253,7 +253,7 @@ docker build -t mcp-k8s .
   -e AUTH_TOKEN=my-secret-token \
   ghcr.io/alexconrey/mcp-k8s:latest
 </code></pre>
-<p>When <code>AUTH_TOKEN</code> is set, all requests to <code>/mcp</code> and <code>/mcp/sse</code> must include an <code>Authorization: Bearer my-secret-token</code> header. The <code>/healthz</code>, <code>/metrics</code>, <code>/swagger-ui</code>, and <code>/openapi.json</code> endpoints remain unauthenticated.</p>
+<p>When <code>AUTH_TOKEN</code> is set, all requests to <code>/mcp</code> and <code>/mcp/sse</code> must include an <code>Authorization: Bearer my-secret-token</code> header. The <code>/healthz</code>, <code>/metrics</code>, <code>/swagger-ui</code>, and <code>/openapi.json</code> endpoints remain unauthenticated. To keep the token out of the container’s environment, mount it as a file and pass <code>AUTH_TOKEN_FILE=/path/to/token</code>. Set <code>MCP_K8S_ALLOWED_HOSTS</code> to the host names clients use (see <a href="../getting-started/configuration.html#browser-and-dns-rebinding-protection">Configuration</a>).</p>
 <h3 id="tls--https"><a class="header" href="#tls--https">TLS / HTTPS</a></h3>
 <pre><code class="language-bash">docker run --rm \
   -v ~/.kube/config:/home/nonroot/.kube/config:ro \
@@ -304,6 +304,11 @@ http/protobuf. See <a href="../telemetry.html">Telemetry</a>.</p>
 <tr><td><code>DISABLE_DELETE</code></td><td>Disable all delete operations</td><td><code>false</code></td></tr>
 <tr><td><code>MCP_K8S_DISABLE</code></td><td>Comma-separated resource-action overrides</td><td><em>(none)</em></td></tr>
 <tr><td><code>AUTH_TOKEN</code></td><td>Bearer token for HTTP endpoint authentication</td><td><em>(none)</em></td></tr>
+<tr><td><code>AUTH_TOKEN_FILE</code></td><td>Read the bearer token from this file</td><td><em>(none)</em></td></tr>
+<tr><td><code>MCP_K8S_ALLOWED_HOSTS</code></td><td>Host names the server answers to (DNS-rebinding protection)</td><td>loopback names on a loopback listen address, otherwise any</td></tr>
+<tr><td><code>MCP_K8S_CORS_ALLOWED_ORIGINS</code></td><td>Origins browser-based clients may call from (CORS)</td><td><em>(none)</em></td></tr>
+<tr><td><code>MCP_K8S_MAX_REQUEST_BYTES</code></td><td>Maximum request body size</td><td><code>4194304</code></td></tr>
+<tr><td><code>MCP_K8S_REQUEST_TIMEOUT_SECS</code></td><td>Request timeout</td><td><code>360</code></td></tr>
 <tr><td><code>TLS_CERT</code></td><td>Path to TLS certificate PEM file</td><td><em>(none)</em></td></tr>
 <tr><td><code>TLS_KEY</code></td><td>Path to TLS private key PEM file</td><td><em>(none)</em></td></tr>
 <tr><td><code>DISABLE_SECRET_DECODE</code></td><td>Prevent secret value decoding</td><td><code>false</code></td></tr>

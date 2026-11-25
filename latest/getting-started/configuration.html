@@ -36,7 +36,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-37af0f99.js";
+            window.path_to_searchindex_js = "../searchindex-bea0b7c6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-5b34cd39.js"></script>
@@ -357,7 +357,33 @@ mcp-k8s --http \
 <tr><th>Flag</th><th>Env Var</th><th>Default</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>--auth-token</code></td><td><code>AUTH_TOKEN</code></td><td><em>(none)</em></td><td>When set, all HTTP requests (except <code>/healthz</code>, <code>/metrics</code>, <code>/swagger-ui</code>, and <code>/openapi.json</code>) must include an <code>Authorization: Bearer &lt;token&gt;</code> header. Unauthorized requests receive a 401 response.</td></tr>
+<tr><td><code>--auth-token</code></td><td><code>AUTH_TOKEN</code></td><td><em>(none)</em></td><td>When set, all HTTP requests (except <code>/healthz</code>, <code>/metrics</code>, <code>/swagger-ui</code>, and <code>/openapi.json</code>) must include an <code>Authorization: Bearer &lt;token&gt;</code> header. Unauthorized requests receive a 401 response. Prefer <code>AUTH_TOKEN</code> or <code>--auth-token-file</code>: command-line arguments are visible through <code>ps</code>.</td></tr>
+<tr><td><code>--auth-token-file</code></td><td><code>AUTH_TOKEN_FILE</code></td><td><em>(none)</em></td><td>Read the token from a file (trailing newline stripped), e.g. a mounted Kubernetes Secret. An empty file is a startup error.</td></tr>
+</tbody>
+</table>
+</div>
+<p>Without a token, the server logs a warning at startup when <code>--listen</code> isn’t a loopback address: anyone who can reach it can use every enabled tool.</p>
+<h3 id="browser-and-dns-rebinding-protection"><a class="header" href="#browser-and-dns-rebinding-protection">Browser and DNS-rebinding protection</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Env Var</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--allowed-hosts</code></td><td><code>MCP_K8S_ALLOWED_HOSTS</code></td><td>loopback names on a loopback <code>--listen</code>, otherwise any</td><td>Comma-separated host names the server answers to (<code>mcp-k8s.mcp.svc,mcp.example.com</code>). Requests with another <code>Host</code> get 403, which stops DNS-rebinding pages from reaching the server through a browser, as the MCP Streamable HTTP spec requires. <code>/healthz</code> is exempt for kubelet probes. On a loopback <code>--listen</code> the default is <code>localhost</code>, <code>127.0.0.1</code> and <code>[::1]</code>; otherwise any host is accepted and a warning is logged.</td></tr>
+<tr><td><code>--cors-allowed-origins</code></td><td><code>MCP_K8S_CORS_ALLOWED_ORIGINS</code></td><td><em>(none)</em></td><td>Origins (<code>scheme://host[:port]</code>) browser-based MCP clients may call from. They get CORS headers and pass the cross-site check. By default there are no CORS headers, and cross-site browser requests that could change state (<code>Origin</code>/<code>Sec-Fetch-Site</code> from another site) get 403. MCP clients and curl send neither header and aren’t affected.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="request-limits"><a class="header" href="#request-limits">Request limits</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Flag</th><th>Env Var</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>--max-request-bytes</code></td><td><code>MCP_K8S_MAX_REQUEST_BYTES</code></td><td><code>4194304</code> (4 MiB)</td><td>Larger request bodies get 413.</td></tr>
+<tr><td><code>--request-timeout-secs</code></td><td><code>MCP_K8S_REQUEST_TIMEOUT_SECS</code></td><td><code>360</code></td><td>Requests that take longer get 408. It must exceed the longest tool call (<code>watch_resource</code> caps at 30 s, <code>exec_pod</code> at 300 s).</td></tr>
 </tbody>
 </table>
 </div>
@@ -480,7 +506,8 @@ CACHE_TTL=60 mcp-k8s
   --namespaces default,production \
   --disable-delete \
   --disable deployment-create,secret-create \
-  --auth-token my-secret-token \
+  --auth-token-file /etc/mcp-k8s/token \
+  --allowed-hosts mcp.example.com \
   --tls-cert /etc/certs/tls.crt \
   --tls-key /etc/certs/tls.key \
   --disable-secret-decode \
@@ -488,7 +515,7 @@ CACHE_TTL=60 mcp-k8s
   --cache-ttl 30 \
   --contexts staging,production
 </code></pre>
-<p>This starts mcp-k8s as an HTTPS server on port 9090 with bearer token authentication, restricted to the <code>default</code> and <code>production</code> namespaces, with all delete operations disabled globally (<code>apply_manifest</code> stays off, its default), deployment/secret creation disabled individually, secret decoding disabled, structured JSON logging enabled, a 30-second response cache, and two cluster contexts loaded (<code>staging</code> active by default).</p>
+<p>This starts mcp-k8s as an HTTPS server on port 9090 with bearer token authentication (read from a file), answering only to <code>mcp.example.com</code>, restricted to the <code>default</code> and <code>production</code> namespaces, with all delete operations disabled globally (<code>apply_manifest</code> stays off, its default), deployment/secret creation disabled individually, secret decoding disabled, structured JSON logging enabled, a 30-second response cache, and two cluster contexts loaded (<code>staging</code> active by default).</p>
 
                     </main>
 
