@@ -12,9 +12,20 @@ release workflow refuses a tag that doesn't match `Cargo.toml`,
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-24
+
 Typed workload tools that cover the pod template, workload guardrails on every
 typed write tool, and `apply_manifest` turned into an opt-in, unrestricted
 escape hatch for users who know what they're applying.
+
+**Upgrading.** This release changes defaults, not the library API (cargo
+semver-checks finds no API break against 0.5.2), so it's a minor bump:
+- **Server operators:** writes the guardrails reject now fail with an error
+  naming the flag that allows them (`--allow-*`). `apply_manifest` is gone
+  from `tools/list` unless you pass `--enable-apply-manifest`.
+- **Library users** (deckwatch): `ActionPermissions::default()` now carries the
+  restrictive `WorkloadPolicy` and has `apply_manifest_enabled: false`. Expose
+  the policy and `with_apply_manifest(bool)` as settings before upgrading.
 
 ### Breaking changes
 - **Workload guardrails, restrictive by default.** The typed create tools, the
