@@ -36,7 +36,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-bea0b7c6.js";
+            window.path_to_searchindex_js = "../searchindex-41aa9c8b.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-5b34cd39.js"></script>
@@ -534,7 +534,7 @@
 <p>List CertificateSigningRequests in the cluster.</p>
 <p>No required parameters.</p>
 <h3 id="get_csr"><a class="header" href="#get_csr">get_csr</a></h3>
-<p>Get detailed info for a single CSR.</p>
+<p>Get detailed info for a single CSR, including the identity it requests: <code>subject.common_names</code> (the user) and <code>subject.organizations</code> (the groups), parsed from <code>spec.request</code>, plus the requester’s own groups (<code>requestor_groups</code>).</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -546,7 +546,7 @@
 </table>
 </div>
 <h3 id="approve_csr"><a class="header" href="#approve_csr">approve_csr</a></h3>
-<p>Approve a CertificateSigningRequest.</p>
+<p>Approve a pending CertificateSigningRequest.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -554,9 +554,11 @@
 </thead>
 <tbody>
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>CSR name</td></tr>
+<tr><td><code>message</code></td><td>string</td><td>No</td><td>Approval message</td></tr>
 </tbody>
 </table>
 </div>
+<p>Before approving, mcp-k8s parses the request’s subject and refuses privileged identities unless the operator sets <code>--allow-privileged-csr</code>: group <code>system:masters</code> (a cluster-admin certificate), any other <code>system:</code> user or group (nodes, control-plane components, service accounts, <code>system:anonymous</code>, <code>system:unauthenticated</code>), and requests it can’t parse. A node’s request for its own serving certificate (signer <code>kubernetes.io/kubelet-serving</code>) is allowed. See <a href="../permissions.html#csr-approval">CSR approval</a>.</p>
 <h3 id="deny_csr"><a class="header" href="#deny_csr">deny_csr</a></h3>
 <p>Deny a CertificateSigningRequest.</p>
 <div class="table-wrapper">

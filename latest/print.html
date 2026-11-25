@@ -37,7 +37,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-bea0b7c6.js";
+            window.path_to_searchindex_js = "searchindex-41aa9c8b.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-5b34cd39.js"></script>
@@ -507,6 +507,7 @@ MCP_K8S_DISABLE=deployment-delete,pod-create mcp-k8s
 <tr><td><code>--allow-manifest-kinds</code></td><td><code>MCP_K8S_ALLOW_MANIFEST_KINDS</code></td><td><em>(none)</em></td><td>Cluster-scoped custom resource kinds the custom resource tools may write; <code>Kind</code> or <code>group/Kind</code>, <code>*</code> for all</td></tr>
 <tr><td><code>--allow-custom-resource-groups</code></td><td><code>MCP_K8S_ALLOW_CUSTOM_RESOURCE_GROUPS</code></td><td><em>(none)</em></td><td>Custom resource API groups that may be written (<code>*</code> for any)</td></tr>
 <tr><td><code>--allow-rbac-escalation</code></td><td><code>MCP_K8S_ALLOW_RBAC_ESCALATION</code></td><td><code>false</code></td><td>escalate/bind/impersonate verbs, wildcards, aggregation, binding cluster-admin or anonymous subjects, service-account token Secrets</td></tr>
+<tr><td><code>--allow-privileged-csr</code></td><td><code>MCP_K8S_ALLOW_PRIVILEGED_CSR</code></td><td><code>false</code></td><td><code>approve_csr</code> for privileged identities (<code>system:masters</code>, other <code>system:</code> users and groups) and unparseable requests</td></tr>
 <tr><td><code>--no-secure-defaults</code></td><td><code>MCP_K8S_NO_SECURE_DEFAULTS</code></td><td><code>false</code></td><td>Don’t fill in the restricted securityContext and <code>automountServiceAccountToken: false</code> defaults</td></tr>
 </tbody>
 </table>
@@ -3770,7 +3771,7 @@ CACHE_TTL=60 mcp-k8s
 <p>List CertificateSigningRequests in the cluster.</p>
 <p>No required parameters.</p>
 <h3 id="get_csr"><a class="header" href="#get_csr">get_csr</a></h3>
-<p>Get detailed info for a single CSR.</p>
+<p>Get detailed info for a single CSR, including the identity it requests: <code>subject.common_names</code> (the user) and <code>subject.organizations</code> (the groups), parsed from <code>spec.request</code>, plus the requester’s own groups (<code>requestor_groups</code>).</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -3782,7 +3783,7 @@ CACHE_TTL=60 mcp-k8s
 </table>
 </div>
 <h3 id="approve_csr"><a class="header" href="#approve_csr">approve_csr</a></h3>
-<p>Approve a CertificateSigningRequest.</p>
+<p>Approve a pending CertificateSigningRequest.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -3790,9 +3791,11 @@ CACHE_TTL=60 mcp-k8s
 </thead>
 <tbody>
 <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>CSR name</td></tr>
+<tr><td><code>message</code></td><td>string</td><td>No</td><td>Approval message</td></tr>
 </tbody>
 </table>
 </div>
+<p>Before approving, mcp-k8s parses the request’s subject and refuses privileged identities unless the operator sets <code>--allow-privileged-csr</code>: group <code>system:masters</code> (a cluster-admin certificate), any other <code>system:</code> user or group (nodes, control-plane components, service accounts, <code>system:anonymous</code>, <code>system:unauthenticated</code>), and requests it can’t parse. A node’s request for its own serving certificate (signer <code>kubernetes.io/kubelet-serving</code>) is allowed. See <a href="#csr-approval">CSR approval</a>.</p>
 <h3 id="deny_csr"><a class="header" href="#deny_csr">deny_csr</a></h3>
 <p>Deny a CertificateSigningRequest.</p>
 <div class="table-wrapper">
@@ -4216,12 +4219,22 @@ These guardrails apply to every typed tool and the custom resource tools. Don't 
 <tr><td><code>*-snippet(s)</code> annotations (any controller); characters and words that inject nginx config (<code>;</code>, <code>{</code>, <code>}</code>, quotes, <code>\</code>, newlines, <code>_by_lua</code>, <code>load_module</code>, …) in ingress-nginx annotation values; <code>auth-url</code>/<code>auth-signin</code>/<code>mirror-target</code>/redirect values that aren’t plain http(s) URLs; paths with injection characters (the IngressNightmare class: CVE-2025-1097, CVE-2025-1098, CVE-2025-24514)</td><td>Ingresses</td><td><code>--allow-ingress-snippets</code> / <code>MCP_K8S_ALLOW_INGRESS_SNIPPETS</code></td><td><code>allow_ingress_snippets</code></td></tr>
 <tr><td>Annotations not in the allowlist (when set) / in the denylist; trailing <code>*</code> matches a prefix</td><td>Ingresses</td><td><code>--ingress-annotation-allowlist</code>, <code>--ingress-annotation-denylist</code> / <code>MCP_K8S_INGRESS_ANNOTATION_ALLOWLIST</code>, <code>MCP_K8S_INGRESS_ANNOTATION_DENYLIST</code></td><td><code>ingress_annotation_allowlist</code>, <code>ingress_annotation_denylist</code></td></tr>
 <tr><td>RBAC escalation primitives: verbs <code>escalate</code>, <code>bind</code>, <code>impersonate</code>; wildcard verbs, resources (<code>*</code>, <code>x/*</code>), apiGroups or nonResourceURLs; aggregated ClusterRoles and <code>aggregate-to-*</code> labels; binding <code>cluster-admin</code>, or a role whose rules contain any of the above (fetched live); binding <code>system:anonymous</code>/<code>system:unauthenticated</code>; <code>kubernetes.io/service-account-token</code> Secrets</td><td>Roles, ClusterRoles, bindings, Secrets</td><td><code>--allow-rbac-escalation</code> / <code>MCP_K8S_ALLOW_RBAC_ESCALATION</code></td><td><code>allow_rbac_escalation</code></td></tr>
+<tr><td>Approving a CSR for a privileged identity: subject group <code>system:masters</code> (any signer); any other <code>system:</code> user (CN) or group (O), such as <code>system:node:*</code>/<code>system:nodes</code>, <code>system:kube-*</code>, <code>system:serviceaccount:*</code>, <code>system:anonymous</code>, <code>system:unauthenticated</code>; requests whose PEM/PKCS#10 subject can’t be parsed. Exception: a node’s own serving certificate (signer <code>kubernetes.io/kubelet-serving</code>, <code>CN=system:node:&lt;name&gt;</code>, <code>O=system:nodes</code>, requested by that node; SANs aren’t checked). See <a href="#csr-approval">CSR approval</a>.</td><td><code>approve_csr</code></td><td><code>--allow-privileged-csr</code> / <code>MCP_K8S_ALLOW_PRIVILEGED_CSR</code></td><td><code>allow_privileged_csr</code></td></tr>
 <tr><td>Cluster-scoped custom resource kinds</td><td>custom resource tools</td><td><code>--allow-manifest-kinds ClusterRole,rbac.authorization.k8s.io/RoleBinding</code> (<code>*</code> = all) / <code>MCP_K8S_ALLOW_MANIFEST_KINDS</code></td><td><code>allowed_manifest_kinds</code></td></tr>
 <tr><td>Custom resources (any non-built-in API group). Operators can turn them into pods or RBAC objects; pod specs, containers and manifests embedded in an allowlisted custom resource still get the rules above.</td><td>custom resource tools</td><td><code>--allow-custom-resource-groups cert-manager.io</code> (<code>*</code> = any) / <code>MCP_K8S_ALLOW_CUSTOM_RESOURCE_GROUPS</code></td><td><code>allowed_custom_resource_groups</code></td></tr>
 </tbody>
 </table>
 </div>
 <p>The namespace allowlist (<code>--namespaces</code>) applies to every tool, including the object’s namespace in <code>apply_manifest</code> manifests (even when the workload policy doesn’t).</p>
+<h3 id="csr-approval"><a class="header" href="#csr-approval">CSR approval</a></h3>
+<p>Approving a CertificateSigningRequest lets its signer issue a certificate for the identity the request names: the subject’s CN becomes the user and every O a group. A request for <code>O=system:masters</code> signed by <code>kubernetes.io/kube-apiserver-client</code> is a cluster-admin credential that RBAC can’t take away, and <code>system:</code> names impersonate nodes, control-plane components or service accounts. So <code>approve_csr</code> parses <code>spec.request</code> and, by default, refuses:</p>
+<ul>
+<li>group <code>system:masters</code>, whatever the signer;</li>
+<li>any other user or group starting with <code>system:</code>, whatever the signer. This includes kubelet client certificates (<code>kubernetes.io/kube-apiserver-client-kubelet</code>): kube-controller-manager approves the legitimate ones itself, so a pending one that needs a human is suspect;</li>
+<li>requests that aren’t exactly one parseable <code>CERTIFICATE REQUEST</code> PEM block.</li>
+</ul>
+<p>A node’s request for its own serving certificate is allowed: signer <code>kubernetes.io/kubelet-serving</code>, subject <code>CN=system:node:&lt;name&gt;, O=system:nodes</code>, and <code>spec.username</code> <code>system:node:&lt;name&gt;</code>. kube-controller-manager doesn’t approve these, so clusters with <code>serverTLSBootstrap</code> approve them by hand. mcp-k8s doesn’t check their SANs against the node’s addresses; use a dedicated approver (such as kubelet-csr-approver) if you need that.</p>
+<p><code>get_csr</code> shows the parsed subject (<code>subject.common_names</code>, <code>subject.organizations</code>). <code>--allow-privileged-csr</code> (<code>MCP_K8S_ALLOW_PRIVILEGED_CSR</code>, <code>WorkloadPolicy.allow_privileged_csr</code>) turns the check off. <code>deny_csr</code> is never restricted.</p>
 <h3 id="secure-defaults"><a class="header" href="#secure-defaults">Secure defaults</a></h3>
 <p>The typed create tools also fill in a restricted securityContext when the caller leaves it unset:</p>
 <ul>

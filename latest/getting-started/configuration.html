@@ -36,7 +36,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-bea0b7c6.js";
+            window.path_to_searchindex_js = "../searchindex-41aa9c8b.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-5b34cd39.js"></script>
@@ -321,6 +321,7 @@ MCP_K8S_DISABLE=deployment-delete,pod-create mcp-k8s
 <tr><td><code>--allow-manifest-kinds</code></td><td><code>MCP_K8S_ALLOW_MANIFEST_KINDS</code></td><td><em>(none)</em></td><td>Cluster-scoped custom resource kinds the custom resource tools may write; <code>Kind</code> or <code>group/Kind</code>, <code>*</code> for all</td></tr>
 <tr><td><code>--allow-custom-resource-groups</code></td><td><code>MCP_K8S_ALLOW_CUSTOM_RESOURCE_GROUPS</code></td><td><em>(none)</em></td><td>Custom resource API groups that may be written (<code>*</code> for any)</td></tr>
 <tr><td><code>--allow-rbac-escalation</code></td><td><code>MCP_K8S_ALLOW_RBAC_ESCALATION</code></td><td><code>false</code></td><td>escalate/bind/impersonate verbs, wildcards, aggregation, binding cluster-admin or anonymous subjects, service-account token Secrets</td></tr>
+<tr><td><code>--allow-privileged-csr</code></td><td><code>MCP_K8S_ALLOW_PRIVILEGED_CSR</code></td><td><code>false</code></td><td><code>approve_csr</code> for privileged identities (<code>system:masters</code>, other <code>system:</code> users and groups) and unparseable requests</td></tr>
 <tr><td><code>--no-secure-defaults</code></td><td><code>MCP_K8S_NO_SECURE_DEFAULTS</code></td><td><code>false</code></td><td>Don’t fill in the restricted securityContext and <code>automountServiceAccountToken: false</code> defaults</td></tr>
 </tbody>
 </table>
