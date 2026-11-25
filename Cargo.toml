@@ -1,6 +1,6 @@
 [package]
 name = "mcp-k8s"
-version = "0.5.2"
+version = "0.6.0"
 edition = "2021"
 # MSRV for library consumers (kube 5 needs 1.95). CI checks the library build
 # on it; the binary is built with rust-toolchain.toml.

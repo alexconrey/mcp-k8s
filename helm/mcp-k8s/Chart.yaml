@@ -2,8 +2,8 @@ apiVersion: v2
 name: mcp-k8s
 description: Kubernetes MCP server
 type: application
-version: 0.5.2
-appVersion: "0.5.2"
+version: 0.6.0
+appVersion: "0.6.0"
 # Built against k8s-openapi v1_33. The "-0" lets pre-release server versions
 # such as EKS's "v1.35.9-eks-..." satisfy the constraint.
 kubeVersion: ">=1.33.0-0"
