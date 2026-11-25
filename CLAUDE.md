@@ -21,6 +21,7 @@ Rust project with a library crate (`mcp_k8s`) and a binary crate (`mcp-k8s`).
 src/
 ├── lib.rs              # Public API re-exports
 ├── main.rs             # Binary: stdio/HTTP/HTTPS modes, auth middleware, metrics, request spans
+├── http_security.rs    # Binary: Host allowlist (DNS rebinding), cross-site blocking, optional CORS
 ├── otel.rs             # Binary only (`mod otel` in main.rs): OTLP pipeline, W3C trace context
 ├── cache.rs            # Optional in-memory response cache with TTL
 ├── client.rs           # K8sClient — kube::Client wrapper with namespace allowlist + permissions
@@ -32,6 +33,8 @@ src/
 │   ├── pod.rs          # Pod spec rules (privileged, escalation, capabilities, host namespaces/paths/ports, volumes, profiles, registries)
 │   ├── network.rs      # Service rules (NodePort/LoadBalancer/ExternalName/externalIPs) and Ingress rules (snippets, nginx injection)
 │   ├── rbac.rs         # RBAC escalation rules, service-account token Secrets, pod-security namespace labels
+│   ├── csr.rs          # approve_csr: parse the PKCS#10 subject, refuse system:masters/system: identities
+│   ├── csr_fixtures.rs # (test only) openssl-generated CSR PEMs
 │   ├── manifest.rs     # check_object: kind dispatch, raw-manifest kind gates, custom resource group allowlist + deep scan
 │   ├── admission.rs    # admit_manifest (custom resources: full policy; apply_manifest: scoping only), patch_checked (dry-run updates), check_typed, bound role lookup
 │   └── tests.rs        # One test per rule: rejection and opt-in acceptance
@@ -62,7 +65,7 @@ src/
     ├── configmap.rs     # ConfigMap CRUD
     ├── crd.rs           # CRD discovery + custom resource CRUD (7 tools); writes go through admit_manifest/patch_checked
     ├── cronjob.rs       # CronJob CRUD (pod template + CronJob/Job settings)
-    ├── csr.rs           # CertificateSigningRequest (list, get, approve, deny)
+    ├── csr.rs           # CertificateSigningRequest (list, get, approve, deny); approve runs policy::check_csr
     ├── daemonset.rs     # DaemonSet CRUD (pod template + update strategy)
     ├── deployment.rs    # Deployment create/update/delete/restart/scale/rollback (+ labels/annotations/affinity)
     ├── device_resources.rs # ResourceClaim, ResourceSlice, DeviceClass (v1beta2)
@@ -108,7 +111,7 @@ src/
 **K8sClient** (`client.rs`): Wraps `kube::Client` with a namespace allowlist
 and `ActionPermissions`. Provides namespace-checked API factory methods.
 The `permissions()` getter exposes permission controls including
-`secret_decode_enabled` for gating secret value access.
+`secret_decode_enabled` (off by default) for gating secret value access.
 
 **ClusterManager** (`cluster.rs`): Holds multiple named `K8sClient` instances
 behind `Arc<RwLock<HashMap>>` with an active cluster tracker. Supports
@@ -283,6 +286,11 @@ mcp-k8s --http --tls-cert /path/cert.pem --tls-key /path/key.pem
 | `--disable-delete` | `DISABLE_DELETE` | `false` | Disable all delete ops |
 | `--disable` | `MCP_K8S_DISABLE` | (none) | Per-resource disables (e.g. `deployment-delete`) |
 | `--auth-token` | `AUTH_TOKEN` | (none) | Bearer token for HTTP auth |
+| `--auth-token-file` | `AUTH_TOKEN_FILE` | (none) | Read the bearer token from a file |
+| `--allowed-hosts` | `MCP_K8S_ALLOWED_HOSTS` | loopback names on a loopback `--listen`, else any | `Host` allowlist (DNS rebinding); `/healthz` exempt |
+| `--cors-allowed-origins` | `MCP_K8S_CORS_ALLOWED_ORIGINS` | (none) | CORS + cross-site allowlist for browser clients |
+| `--max-request-bytes` | `MCP_K8S_MAX_REQUEST_BYTES` | `4194304` | Request body limit (413) |
+| `--request-timeout-secs` | `MCP_K8S_REQUEST_TIMEOUT_SECS` | `360` | Request timeout (408) |
 | `--tls-cert` | `TLS_CERT` | (none) | TLS certificate PEM path |
 | `--tls-key` | `TLS_KEY` | (none) | TLS private key PEM path |
 | `--enable-apply-manifest` | `ENABLE_APPLY_MANIFEST` | `false` | Enable `apply_manifest`: unrestricted raw server-side apply, no workload policy (namespace allowlist and disable switches still apply) |
@@ -304,8 +312,10 @@ mcp-k8s --http --tls-cert /path/cert.pem --tls-key /path/key.pem
 | `--allow-manifest-kinds` | `MCP_K8S_ALLOW_MANIFEST_KINDS` | (none) | Cluster-scoped custom resource kinds the custom resource tools may write |
 | `--allow-custom-resource-groups` | `MCP_K8S_ALLOW_CUSTOM_RESOURCE_GROUPS` | (none) | Custom resource groups that may be written |
 | `--allow-rbac-escalation` | `MCP_K8S_ALLOW_RBAC_ESCALATION` | `false` | RBAC escalation primitives, SA token Secrets |
+| `--allow-privileged-csr` | `MCP_K8S_ALLOW_PRIVILEGED_CSR` | `false` | `approve_csr` for `system:masters`/other `system:` identities and unparseable requests |
 | `--no-secure-defaults` | `MCP_K8S_NO_SECURE_DEFAULTS` | `false` | Skip the restricted securityContext defaults |
-| `--disable-secret-decode` | `DISABLE_SECRET_DECODE` | `false` | Prevent secret value decoding |
+| `--enable-secret-decode` | `ENABLE_SECRET_DECODE` | `false` | Let tools return Secret values (redacted everywhere otherwise) |
+| `--disable-secret-decode` | `DISABLE_SECRET_DECODE` | `false` | Deprecated (off by default); still wins |
 | `--cache-ttl` | `CACHE_TTL` | `0` | Response cache TTL in seconds (0 = disabled) |
 | `--log-format` | `LOG_FORMAT` | `text` | Log format: `text` or `json` (stderr in stdio mode) |
 | — | `KUBECONFIG` | in-cluster | K8s config path |
@@ -316,14 +326,26 @@ mcp-k8s --http --tls-cert /path/cert.pem --tls-key /path/key.pem
 ## Security posture
 
 mcp-k8s is a standalone server with broad cluster powers, so treat server
-weaknesses as security issues. The current defaults are permissive:
+weaknesses as security issues. Current defaults:
 
-- `--listen` defaults to `0.0.0.0:8080`, and `--auth-token` is optional.
-  Without a token the HTTP API is unauthenticated.
-- The router uses `CorsLayer::permissive()` and doesn't validate `Origin`.
+- `--listen` defaults to `0.0.0.0:8080`, and the auth token is optional
+  (maintainer's call: warn, don't refuse). Without one the HTTP API is
+  unauthenticated, and the server logs a warning at startup on a
+  non-loopback address.
+- Browser protections live in `src/http_security.rs`: no CORS headers unless
+  `--cors-allowed-origins`, browser-initiated cross-site writes get 403, and a
+  `Host` allowlist (`--allowed-hosts`; loopback names by default on a
+  loopback listener) stops DNS rebinding. Keep the guard layer outside the
+  auth layer, and keep `/healthz` exempt from the Host check.
 - Secret decoding is on by default (`ActionPermissions::default()`, which
   deckwatch also uses). The workload guardrails are restrictive by default
   (`WorkloadPolicy::default()`).
+- **Secret values are off by default** (`--enable-secret-decode`,
+  `with_secret_decode(true)`). Every path that can return a Secret must
+  redact it when decoding is off: `get_secret` refuses `decode`, and the
+  generic object tools call `resources::secret::redact_secret_json` (values
+  and the `last-applied-configuration` annotation). A new tool that returns
+  raw objects must do the same.
 - `apply_manifest` is **off by default**. Enabled (`--enable-apply-manifest`),
   it's an unrestricted raw server-side apply that skips the workload policy.
   That's deliberate, the maintainer's call: it's for users who know exactly
@@ -417,7 +439,7 @@ mcp-k8s/
 ├── src/                    # Rust source (lib + bin)
 ├── tests/
 │   ├── integration.rs      # Tower-test mock integration tests (8 tests)
-│   ├── guardrails.rs       # Mock-API guardrail tests for the typed tools; apply_manifest off by default / raw when enabled; exec_pod node-access check (34 tests)
+│   ├── guardrails.rs       # Mock-API guardrail tests for the typed tools; apply_manifest off by default / raw when enabled; approve_csr identity check; exec_pod node-access check (36 tests)
 │   ├── namespace_allowlist.rs # Every namespaced tool refuses a namespace outside the allowlist offline; omitted-namespace, namespace-object and drain_node cases (15 tests)
 │   ├── typed_tools.rs      # Mock-API request-body tests for ConfigMap/Secret/PVC/PDB/SA/HPA/RBAC tools (9 tests)
 │   ├── k3s_integration.rs  # Testcontainers k3s tests (13 tests, #[ignore]; k3s v1.35, MCP_K8S_K3S_TAG overrides)
@@ -480,7 +502,7 @@ CI workflow (build, test, clippy, fmt) runs against them before merge.
 
 ```bash
 cargo build --release       # Build
-cargo test                  # 557 unit + 11 binary (router, telemetry) + 8 integration + 34 guardrail + 15 namespace-allowlist + 9 typed-tool tests
+cargo test                  # 567 unit + 25 binary (router, telemetry, HTTP) + 11 integration + 36 guardrail + 15 namespace-allowlist + 9 typed-tool tests
 cargo test --no-default-features  # Same tests without `server` (what deckwatch compiles)
 cargo test --test k3s_integration -- --ignored --test-threads=2  # 13 k3s tests (needs Docker), as CI runs them
 cargo test --test k3s_workloads -- --ignored --test-threads=1  # k3s typed-tool and guardrail tests, as CI runs them

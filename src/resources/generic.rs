@@ -190,7 +190,13 @@ async fn get_resource_json(client: &K8sClient, args: &serde_json::Value) -> Resu
         .await
         .map_err(|e| format!("Failed to get {kind}/{name}: {e}"))?;
 
-    serde_json::to_string_pretty(&obj).map_err(|e| e.to_string())
+    let mut value = serde_json::to_value(&obj).map_err(|e| e.to_string())?;
+    if !client.permissions().secret_decode_enabled {
+        // Base64 isn't protection: without --enable-secret-decode a Secret's
+        // values never leave the server, whichever tool asks.
+        crate::resources::secret::redact_secret_json(&mut value);
+    }
+    serde_json::to_string_pretty(&value).map_err(|e| e.to_string())
 }
 
 #[cfg(test)]

@@ -146,10 +146,23 @@ These guardrails apply to every typed tool and the custom resource tools. Don't 
 | `*-snippet(s)` annotations (any controller); characters and words that inject nginx config (`;`, `{`, `}`, quotes, `\`, newlines, `_by_lua`, `load_module`, …) in ingress-nginx annotation values; `auth-url`/`auth-signin`/`mirror-target`/redirect values that aren't plain http(s) URLs; paths with injection characters (the IngressNightmare class: CVE-2025-1097, CVE-2025-1098, CVE-2025-24514) | Ingresses | `--allow-ingress-snippets` / `MCP_K8S_ALLOW_INGRESS_SNIPPETS` | `allow_ingress_snippets` |
 | Annotations not in the allowlist (when set) / in the denylist; trailing `*` matches a prefix | Ingresses | `--ingress-annotation-allowlist`, `--ingress-annotation-denylist` / `MCP_K8S_INGRESS_ANNOTATION_ALLOWLIST`, `MCP_K8S_INGRESS_ANNOTATION_DENYLIST` | `ingress_annotation_allowlist`, `ingress_annotation_denylist` |
 | RBAC escalation primitives: verbs `escalate`, `bind`, `impersonate`; wildcard verbs, resources (`*`, `x/*`), apiGroups or nonResourceURLs; aggregated ClusterRoles and `aggregate-to-*` labels; binding `cluster-admin`, or a role whose rules contain any of the above (fetched live); binding `system:anonymous`/`system:unauthenticated`; `kubernetes.io/service-account-token` Secrets | Roles, ClusterRoles, bindings, Secrets | `--allow-rbac-escalation` / `MCP_K8S_ALLOW_RBAC_ESCALATION` | `allow_rbac_escalation` |
+| Approving a CSR for a privileged identity: subject group `system:masters` (any signer); any other `system:` user (CN) or group (O), such as `system:node:*`/`system:nodes`, `system:kube-*`, `system:serviceaccount:*`, `system:anonymous`, `system:unauthenticated`; requests whose PEM/PKCS#10 subject can't be parsed. Exception: a node's own serving certificate (signer `kubernetes.io/kubelet-serving`, `CN=system:node:<name>`, `O=system:nodes`, requested by that node; SANs aren't checked). See [CSR approval](#csr-approval). | `approve_csr` | `--allow-privileged-csr` / `MCP_K8S_ALLOW_PRIVILEGED_CSR` | `allow_privileged_csr` |
 | Cluster-scoped custom resource kinds | custom resource tools | `--allow-manifest-kinds ClusterRole,rbac.authorization.k8s.io/RoleBinding` (`*` = all) / `MCP_K8S_ALLOW_MANIFEST_KINDS` | `allowed_manifest_kinds` |
 | Custom resources (any non-built-in API group). Operators can turn them into pods or RBAC objects; pod specs, containers and manifests embedded in an allowlisted custom resource still get the rules above. | custom resource tools | `--allow-custom-resource-groups cert-manager.io` (`*` = any) / `MCP_K8S_ALLOW_CUSTOM_RESOURCE_GROUPS` | `allowed_custom_resource_groups` |
 
 The namespace allowlist (`--namespaces`) applies to every tool, including `apply_manifest` (its `namespace` argument and the manifest's `metadata.namespace`), even though the workload policy doesn't. See [Namespace allowlist](#namespace-allowlist).
+
+### CSR approval
+
+Approving a CertificateSigningRequest lets its signer issue a certificate for the identity the request names: the subject's CN becomes the user and every O a group. A request for `O=system:masters` signed by `kubernetes.io/kube-apiserver-client` is a cluster-admin credential that RBAC can't take away, and `system:` names impersonate nodes, control-plane components or service accounts. So `approve_csr` parses `spec.request` and, by default, refuses:
+
+- group `system:masters`, whatever the signer;
+- any other user or group starting with `system:`, whatever the signer. This includes kubelet client certificates (`kubernetes.io/kube-apiserver-client-kubelet`): kube-controller-manager approves the legitimate ones itself, so a pending one that needs a human is suspect;
+- requests that aren't exactly one parseable `CERTIFICATE REQUEST` PEM block.
+
+A node's request for its own serving certificate is allowed: signer `kubernetes.io/kubelet-serving`, subject `CN=system:node:<name>, O=system:nodes`, and `spec.username` `system:node:<name>`. kube-controller-manager doesn't approve these, so clusters with `serverTLSBootstrap` approve them by hand. mcp-k8s doesn't check their SANs against the node's addresses; use a dedicated approver (such as kubelet-csr-approver) if you need that.
+
+`get_csr` shows the parsed subject (`subject.common_names`, `subject.organizations`). `--allow-privileged-csr` (`MCP_K8S_ALLOW_PRIVILEGED_CSR`, `WorkloadPolicy.allow_privileged_csr`) turns the check off. `deny_csr` is never restricted.
 
 ### Secure defaults
 

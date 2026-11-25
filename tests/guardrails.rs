@@ -1069,3 +1069,87 @@ async fn create_job_from_cronjob_checks_the_template() {
         "no Job may be created"
     );
 }
+
+/// `openssl req -new -subj "/CN=mallory/O=system:masters"`: a cluster-admin
+/// client certificate request.
+const MASTERS_CSR_PEM: &str = "-----BEGIN CERTIFICATE REQUEST-----
+MIHlMIGNAgEAMCsxEDAOBgNVBAMMB21hbGxvcnkxFzAVBgNVBAoMDnN5c3RlbTpt
+YXN0ZXJzMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEZYwjcLOvBBYNFb1UwJoe
+OXK1ni6WKdLieX716XuP1uuFy5kWoDJVYnIXm6nVsRDssOogvbHRHWMsxdmGhMp8
+KaAAMAoGCCqGSM49BAMCA0cAMEQCIGHFtUfqC9chXD4xopDjC/u5mNM4JoP6IbdU
+VpiV2dmxAiB6JOsjfZkqVST19VCnIlPP/Mo0sCJdVPIajfeNRpAl/g==
+-----END CERTIFICATE REQUEST-----
+";
+
+fn masters_csr(approved: bool) -> Value {
+    use k8s_openapi::api::certificates::v1::{
+        CertificateSigningRequest, CertificateSigningRequestCondition,
+        CertificateSigningRequestSpec, CertificateSigningRequestStatus,
+    };
+    let csr = CertificateSigningRequest {
+        metadata: kube::api::ObjectMeta {
+            name: Some("admin-cert".into()),
+            resource_version: Some("42".into()),
+            ..Default::default()
+        },
+        spec: CertificateSigningRequestSpec {
+            request: k8s_openapi::ByteString(MASTERS_CSR_PEM.as_bytes().to_vec()),
+            signer_name: "kubernetes.io/kube-apiserver-client".into(),
+            username: Some("mallory".into()),
+            usages: Some(vec!["client auth".into()]),
+            ..Default::default()
+        },
+        status: approved.then(|| CertificateSigningRequestStatus {
+            conditions: Some(vec![CertificateSigningRequestCondition {
+                type_: "Approved".into(),
+                status: "True".into(),
+                ..Default::default()
+            }]),
+            certificate: None,
+        }),
+    };
+    let mut value = serde_json::to_value(csr).unwrap();
+    value["apiVersion"] = json!("certificates.k8s.io/v1");
+    value["kind"] = json!("CertificateSigningRequest");
+    value
+}
+
+#[tokio::test]
+async fn approve_csr_refuses_a_system_masters_request() {
+    let (client, handle) = strict_client();
+    let server = serve(handle, vec![(200, masters_csr(false))]);
+    let err = handle_tool(&client, "approve_csr", &json!({ "name": "admin-cert" }))
+        .await
+        .unwrap()
+        .expect_err("a system:masters CSR must not be approved");
+    let seen = finish(client, server).await;
+    assert_eq!(seen.len(), 1, "only the GET may reach the API: {seen:#?}");
+    assert_eq!(seen[0].method, http::Method::GET);
+    assert!(err.contains("system:masters"), "{err}");
+    assert!(err.contains("--allow-privileged-csr"), "{err}");
+}
+
+#[tokio::test]
+async fn approve_csr_with_the_opt_in_approves_a_privileged_request() {
+    let mut policy = WorkloadPolicy::default();
+    policy.allow_privileged_csr = true;
+    let (client, handle) = client_with_policy(policy);
+    let server = serve(
+        handle,
+        vec![
+            (200, masters_csr(false)),
+            (200, masters_csr(true)),
+            (200, masters_csr(true)),
+        ],
+    );
+    let out = handle_tool(&client, "approve_csr", &json!({ "name": "admin-cert" }))
+        .await
+        .unwrap()
+        .expect("the operator allowed privileged CSRs");
+    let seen = finish(client, server).await;
+    assert_eq!(seen[1].method, http::Method::PATCH);
+    assert!(seen[1].path.ends_with("/admin-cert/approval"), "{seen:#?}");
+    assert_eq!(seen[1].body["metadata"]["resourceVersion"], "42");
+    assert_eq!(seen[1].body["status"]["conditions"][0]["type"], "Approved");
+    assert!(out.contains("Approved"), "{out}");
+}
