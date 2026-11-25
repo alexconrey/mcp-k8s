@@ -15,14 +15,24 @@ fn crd_api(client: &K8sClient) -> Api<CustomResourceDefinition> {
     Api::all(client.inner().clone())
 }
 
+/// What a custom resource tool does with the API handle: listing may span
+/// every namespace (unless the server has a namespace allowlist), but a single
+/// namespaced object needs its namespace.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Access {
+    List,
+    Object,
+}
+
 async fn get_dynamic_api(
     client: &K8sClient,
     group: &str,
     version: &str,
     kind: &str,
     namespace: Option<&str>,
+    access: Access,
 ) -> Result<Api<DynamicObject>, String> {
-    get_dynamic_api_with_scope(client, group, version, kind, namespace)
+    get_dynamic_api_with_scope(client, group, version, kind, namespace, access)
         .await
         .map(|(api, _)| api)
 }
@@ -33,20 +43,36 @@ async fn get_dynamic_api_with_scope(
     version: &str,
     kind: &str,
     namespace: Option<&str>,
+    access: Access,
 ) -> Result<(Api<DynamicObject>, Scope), String> {
+    // Refuse a namespace outside the allowlist before any request (even
+    // discovery) reaches the API server.
+    if let Some(ns) = namespace {
+        if !client.is_namespace_allowed(ns) {
+            return Err(format!("Namespace '{ns}' is not in the allowed list"));
+        }
+    }
     let gvk = GroupVersionKind::gvk(group, version, kind);
     let (ar, caps) = discovery::pinned_kind(client.inner(), &gvk)
         .await
         .map_err(|e| format!("Failed to discover {kind}: {e}"))?;
     let scope = caps.scope;
 
-    if let Some(ns) = namespace {
-        if !client.is_namespace_allowed(ns) {
-            return Err(format!("Namespace '{ns}' is not in the allowed list"));
+    match (&scope, namespace) {
+        (Scope::Namespaced, Some(ns)) => {
+            Ok((Api::namespaced_with(client.inner().clone(), ns, &ar), scope))
         }
-        Ok((Api::namespaced_with(client.inner().clone(), ns, &ar), scope))
-    } else {
-        Ok((Api::all_with(client.inner().clone(), &ar), scope))
+        // An omitted namespace on a namespaced kind means "every namespace",
+        // which an allowlist forbids.
+        (Scope::Namespaced, None) if access == Access::List && client.has_namespace_allowlist() => {
+            Err(client.namespace_required_error())
+        }
+        (Scope::Namespaced, None) if access == Access::Object => Err(format!(
+            "{kind} is namespaced: the namespace argument is required"
+        )),
+        (Scope::Namespaced, None) | (Scope::Cluster, _) => {
+            Ok((Api::all_with(client.inner().clone(), &ar), scope))
+        }
     }
 }
 
@@ -132,7 +158,7 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
                     },
                     "namespace": {
                         "type": "string",
-                        "description": "Kubernetes namespace (omit for cluster-scoped custom resources)"
+                        "description": "Kubernetes namespace (omit for cluster-scoped custom resources, or to list a namespaced kind across all namespaces; required for that when the server has a namespace allowlist)"
                     }
                 },
                 "required": ["group", "version", "kind"],
@@ -346,7 +372,7 @@ async fn list_custom_resources(
     let kind = args["kind"].as_str().ok_or("kind is required")?;
     let namespace = args["namespace"].as_str();
 
-    let api = get_dynamic_api(client, group, version, kind, namespace).await?;
+    let api = get_dynamic_api(client, group, version, kind, namespace, Access::List).await?;
     let list = api
         .list(&ListParams::default())
         .await
@@ -365,7 +391,7 @@ async fn get_custom_resource(
     let name = args["name"].as_str().ok_or("name is required")?;
     let namespace = args["namespace"].as_str();
 
-    let api = get_dynamic_api(client, group, version, kind, namespace).await?;
+    let api = get_dynamic_api(client, group, version, kind, namespace, Access::Object).await?;
     let obj = api
         .get(name)
         .await
@@ -401,14 +427,7 @@ async fn create_custom_resource(
             }
         }
     }
-    if let (Some(ns), Some(found)) = (namespace, manifest["metadata"]["namespace"].as_str()) {
-        if ns != found {
-            return Err(format!(
-                "manifest metadata.namespace {found:?} does not match the namespace argument {ns:?}"
-            ));
-        }
-    }
-
+    // admit_manifest checks that metadata.namespace matches the argument.
     let target = crate::policy::admit_manifest(
         client,
         &mut manifest,
@@ -446,7 +465,8 @@ async fn update_custom_resource(
     let patch = args.get("patch").ok_or("patch is required")?.clone();
     reject_builtin(group, kind, "update_custom_resource")?;
 
-    let (api, scope) = get_dynamic_api_with_scope(client, group, version, kind, namespace).await?;
+    let (api, scope) =
+        get_dynamic_api_with_scope(client, group, version, kind, namespace, Access::Object).await?;
     if matches!(scope, Scope::Cluster) && !client.policy().manifest_kind_allowed(group, kind) {
         let error = crate::policy::PolicyError {
             violations: vec![crate::policy::kind_not_allowed(
@@ -490,7 +510,7 @@ async fn delete_custom_resource(
     let name = args["name"].as_str().ok_or("name is required")?;
     let namespace = args["namespace"].as_str();
 
-    let api = get_dynamic_api(client, group, version, kind, namespace).await?;
+    let api = get_dynamic_api(client, group, version, kind, namespace, Access::Object).await?;
     api.delete(name, &DeleteParams::default())
         .await
         .map_err(|e| format!("Failed to delete {kind}/{name}: {e}"))?;

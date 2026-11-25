@@ -139,6 +139,10 @@ async fn get_namespace(client: &K8sClient, args: &serde_json::Value) -> Result<S
 async fn create_namespace(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let name = args["name"].as_str().ok_or("name is required")?;
 
+    if !client.is_namespace_allowed(name) {
+        return Err(format!("Namespace '{name}' is not in the allowed list"));
+    }
+
     let mut labels: BTreeMap<String, String> = args
         .get("labels")
         .and_then(|v| serde_json::from_value(v.clone()).ok())
@@ -170,6 +174,10 @@ async fn create_namespace(client: &K8sClient, args: &serde_json::Value) -> Resul
 
 async fn update_namespace(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let name = args["name"].as_str().ok_or("name is required")?;
+
+    if !client.is_namespace_allowed(name) {
+        return Err(format!("Namespace '{name}' is not in the allowed list"));
+    }
 
     let labels: Option<BTreeMap<String, String>> = args
         .get("labels")
@@ -204,6 +212,10 @@ async fn update_namespace(client: &K8sClient, args: &serde_json::Value) -> Resul
 
 async fn delete_namespace(client: &K8sClient, args: &serde_json::Value) -> Result<String, String> {
     let name = args["name"].as_str().ok_or("name is required")?;
+
+    if !client.is_namespace_allowed(name) {
+        return Err(format!("Namespace '{name}' is not in the allowed list"));
+    }
 
     let ns_api = api(client);
     ns_api

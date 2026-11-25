@@ -209,10 +209,25 @@ Execute a command in a pod container and return the output.
 | `name` | string | Yes | Pod name |
 | `command` | string[] | Yes | Command to execute (e.g. `["ls", "-la"]`) |
 | `container` | string | No | Container name (defaults to first) |
+| `timeout_secs` | integer | No | Seconds to wait for the command (default 60, max 300; larger values are capped) |
 
-Returns `stdout`, `stderr`, and `exit_code`.
+Returns `stdout`, `stderr`, `exit_code` and `timed_out`.
+
+- **Timeout.** A command that hasn't finished after `timeout_secs` (for example `tail -f` or `sleep infinity`) returns the output collected so far with `timed_out: true` and a `note` saying so, and mcp-k8s closes the exec session. Without a TTY, whether the container runtime then kills the command is up to the runtime, so avoid commands that never end.
+- **Output cap.** Each of `stdout` and `stderr` is capped at 1 MiB; anything beyond is discarded and the text ends with `[output truncated at 1 MiB]`.
+- **Node-level access.** `exec_pod` first reads the pod and refuses if the [workload policy](../permissions.md#workload-guardrails) would reject it for a setting that gives node-level access: privileged containers (`--allow-privileged`), `hostNetwork`/`hostPID`/`hostIPC` (`--allow-host-namespaces`), `hostPath` volumes (`--allow-host-path`), added capabilities (`--allow-capabilities`), or Unconfined seccomp/AppArmor, custom SELinux options and `procMount: Unmasked` (`--allow-unconfined`). A command in such a pod runs with node-level access. The error names the flag(s); when the operator has set them, exec is allowed. Creation-only rules (registries, other volume types, host ports, `allowPrivilegeEscalation`) don't block exec. See [Permissions: exec_pod](../permissions.md#exec_pod-and-node-level-access).
 
 `exec_pod` runs arbitrary commands, so it counts as an **update** (`pod-update`): read-only mode and `--disable-update` turn it off.
+
+### port_forward_check
+
+Check whether a pod port can be reached by opening a port-forward tunnel and closing it straight away. Gives up after 10 seconds.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `namespace` | string | Yes | Kubernetes namespace |
+| `name` | string | Yes | Pod name |
+| `port` | integer | Yes | Container port |
 
 ---
 
@@ -400,7 +415,7 @@ Delete a configmap by name from a namespace.
 
 ## Secrets
 
-> **Note:** Secret values are never returned by default. The `list_secrets` tool only returns metadata and key counts. The `get_secret` tool returns key names by default; pass `decode: true` to include decoded values.
+> **Note:** Secret values are never returned unless the server operator enables secret decoding (`--enable-secret-decode`). The `list_secrets` tool only returns metadata and key counts. The `get_secret` tool returns key names; with decoding enabled, pass `decode: true` to include decoded values (without it, `decode: true` is refused). The `kubectl.kubernetes.io/last-applied-configuration` annotation, which contains the applied manifest, is redacted unless values may be shown. `get_resource_json` redacts Secret values the same way.
 
 ### list_secrets
 
@@ -420,7 +435,7 @@ Get a secret by name. Returns metadata and data keys only by default.
 |-----------|------|----------|-------------|
 | `namespace` | string | Yes | Kubernetes namespace |
 | `name` | string | Yes | Secret name |
-| `decode` | boolean | No | If true, include decoded secret values. Defaults to false. |
+| `decode` | boolean | No | If true, include decoded secret values. Defaults to false. Refused unless the operator enabled `--enable-secret-decode`. |
 
 ### create_secret
 

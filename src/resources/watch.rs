@@ -33,7 +33,7 @@ pub fn tool_definitions() -> Vec<serde_json::Value> {
                 },
                 "namespace": {
                     "type": "string",
-                    "description": "Kubernetes namespace (omit for cluster-scoped resources or to watch across all namespaces)"
+                    "description": "Kubernetes namespace (omit for cluster-scoped resources or to watch across all namespaces; required for namespaced kinds when the server has a namespace allowlist)"
                 },
                 "label_selector": {
                     "type": "string",
@@ -96,6 +96,11 @@ async fn watch_resource(client: &K8sClient, args: &serde_json::Value) -> Result<
     // Build the API handle based on scope
     let api: Api<DynamicObject> = match (caps.scope, namespace) {
         (Scope::Namespaced, Some(ns)) => Api::namespaced_with(client.inner().clone(), ns, &ar),
+        // Omitted namespace on a namespaced kind watches every namespace,
+        // which a namespace allowlist forbids.
+        (Scope::Namespaced, None) if client.has_namespace_allowlist() => {
+            return Err(client.namespace_required_error());
+        }
         (Scope::Namespaced, None) => Api::all_with(client.inner().clone(), &ar),
         (Scope::Cluster, _) => Api::all_with(client.inner().clone(), &ar),
     };
