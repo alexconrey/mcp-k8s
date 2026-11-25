@@ -36,10 +36,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-8fbf85c4.js";
+            window.path_to_searchindex_js = "../searchindex-97e332c2.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-5b34cd39.js"></script>
+        <script src="../toc-e31c14e3.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -459,8 +459,9 @@ deliberately has no <code>escalate</code> or <code>bind</code> verbs.</li>
 <code>--disable-create --disable-update --disable-delete</code> (Helm <code>rbac.readOnly: true</code>
 does both). The self-review <code>create</code> rules keep <code>whoami</code>, <code>can_i</code> and
 <code>list_my_permissions</code> working; every authenticated user has those already.</p>
-<p><code>port_forward_check</code> is a read tool but needs <code>pods/portforward</code>, which this
-role leaves out (it opens a connection into any pod), so it returns 403.</p>
+<p><code>port_forward_check</code> needs <code>pods/portforward</code> (it opens a connection into
+the pod), which this role leaves out. Since v0.7.0 it counts as an update,
+so read-only mode removes it from the tool list rather than letting it fail.</p>
 <pre><code class="language-yaml">apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:

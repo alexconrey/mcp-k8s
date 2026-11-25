@@ -36,10 +36,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-8fbf85c4.js";
+            window.path_to_searchindex_js = "../searchindex-97e332c2.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-5b34cd39.js"></script>
+        <script src="../toc-e31c14e3.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -182,7 +182,7 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="tools-overview"><a class="header" href="#tools-overview">Tools Overview</a></h1>
-<p>mcp-k8s exposes 211 tools (including one deprecated alias) covering every GA Kubernetes resource type plus CRDs, multi-cluster management, and resource watching. Each tool corresponds to a specific Kubernetes API operation. The typed create/update tools are preferred over <code>apply_manifest</code>; see <a href="./coverage.html">Typed Tool Coverage</a>. Every write tool enforces the <a href="../permissions.html#workload-guardrails">workload guardrails</a>. Tools are categorized by action type:</p>
+<p>mcp-k8s exposes 210 tools covering every GA Kubernetes resource type plus CRDs, multi-cluster management, and resource watching. Each tool corresponds to a specific Kubernetes API operation. The typed create/update tools are preferred over <code>apply_manifest</code>; see <a href="./coverage.html">Typed Tool Coverage</a>. Every write tool enforces the <a href="../permissions.html#workload-guardrails">workload guardrails</a>. Tools are categorized by action type:</p>
 <ul>
 <li><strong>Read</strong> – List, get, and inspect resources. Always available regardless of permission configuration.</li>
 <li><strong>Create</strong> – Create new resources. Disabled by <code>--disable-create</code>.</li>
@@ -503,7 +503,6 @@
 <tbody>
 <tr><td><code>apply_manifest</code></td><td>Create</td><td>Raw server-side apply of a JSON manifest, without the workload guardrails. Off unless <code>--enable-apply-manifest</code>; clients confirm each call with the user</td></tr>
 <tr><td><code>get_resource_json</code></td><td>Read</td><td>Get any resource as JSON via API discovery</td></tr>
-<tr><td><code>get_resource_yaml</code></td><td>Read</td><td>Deprecated alias for <code>get_resource_json</code> (returns JSON)</td></tr>
 </tbody>
 </table>
 </div>

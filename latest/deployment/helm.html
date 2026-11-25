@@ -36,10 +36,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-8fbf85c4.js";
+            window.path_to_searchindex_js = "../searchindex-97e332c2.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-5b34cd39.js"></script>
+        <script src="../toc-e31c14e3.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -317,7 +317,7 @@ the tool behind each one, are on the <a href="rbac.html">RBAC Setup</a> page.</p
 <tbody>
 <tr><td><code>rbac.create</code></td><td><code>true</code></td><td>Create RBAC resources</td></tr>
 <tr><td><code>rbac.clusterWide</code></td><td><code>true</code></td><td><code>true</code>: a ClusterRole and ClusterRoleBinding. <code>false</code>: a Role and RoleBinding in each namespace of <code>namespaces</code> (the release namespace when empty), without cluster-scoped resources</td></tr>
-<tr><td><code>rbac.readOnly</code></td><td><code>false</code></td><td><strong>Recommended starting point.</strong> Grant only get/list/watch (plus the self-review creates <code>whoami</code>/<code>can_i</code> use) and set <code>DISABLE_CREATE</code>/<code>DISABLE_UPDATE</code>/<code>DISABLE_DELETE</code>, so <code>tools/list</code> matches. <code>port_forward_check</code> returns 403</td></tr>
+<tr><td><code>rbac.readOnly</code></td><td><code>false</code></td><td><strong>Recommended starting point.</strong> Grant only get/list/watch (plus the self-review creates <code>whoami</code>/<code>can_i</code> use) and set <code>DISABLE_CREATE</code>/<code>DISABLE_UPDATE</code>/<code>DISABLE_DELETE</code>, so <code>tools/list</code> matches.</td></tr>
 <tr><td><code>rbac.secrets</code></td><td><code>true</code></td><td>Grant access to Secrets. RBAC can’t grant “keys only”, so any read access lets the pod’s token read secret values even while the server redacts them. <code>false</code> leaves Secrets out and hides the secret write tools</td></tr>
 <tr><td><code>rbac.csrSigners</code></td><td><code>[]</code></td><td>Signer names <code>approve_csr</code>/<code>deny_csr</code> may act for (<code>approve</code> on <code>certificates.k8s.io/signers</code>). Kubernetes refuses approvals without it</td></tr>
 <tr><td><code>rbac.extraRules</code></td><td><code>[]</code></td><td>More rules, e.g. for custom resources the custom resource tools or <code>watch_resource</code> should reach</td></tr>

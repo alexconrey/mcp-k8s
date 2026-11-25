@@ -37,10 +37,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-8fbf85c4.js";
+            window.path_to_searchindex_js = "searchindex-97e332c2.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-5b34cd39.js"></script>
+        <script src="toc-e31c14e3.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -185,7 +185,7 @@
 <p>mcp-k8s bridges the gap between AI assistants and Kubernetes clusters. It translates natural-language requests from an MCP client into Kubernetes API calls, returning structured, token-efficient responses. Instead of raw Kubernetes JSON objects (which can be hundreds of lines), mcp-k8s returns focused summaries containing only the fields relevant to the caller.</p>
 <h2 id="key-features"><a class="header" href="#key-features">Key Features</a></h2>
 <ul>
-<li><strong>211 tools</strong> across 49 resource modules covering every GA Kubernetes resource type – Deployments, Pods, Services, Ingresses, ConfigMaps, Secrets, StatefulSets, DaemonSets, CronJobs, Jobs, RBAC resources, Nodes, PVs, PVCs, HPAs, PDBs, NetworkPolicies, admission controllers, CSI resources, and more.</li>
+<li><strong>210 tools</strong> across 50 resource modules covering every GA Kubernetes resource type – Deployments, Pods, Services, Ingresses, ConfigMaps, Secrets, StatefulSets, DaemonSets, CronJobs, Jobs, RBAC resources, Nodes, PVs, PVCs, HPAs, PDBs, NetworkPolicies, admission controllers, CSI resources, and more.</li>
 <li><strong>Two runtime modes</strong> – stdio for local use with Claude Code, and HTTP for in-cluster deployment as a Kubernetes pod.</li>
 <li><strong>SSE transport</strong> – <code>POST /mcp/sse</code> endpoint for Server-Sent Events streaming alongside the standard <code>POST /mcp</code> JSON-RPC endpoint.</li>
 <li><strong>MCP resources</strong> – <code>resources/list</code> and <code>resources/read</code> support for direct resource access via <code>k8s://</code> URIs (pods, deployments, services, configmaps, secrets, statefulsets, daemonsets, jobs, cronjobs, ingresses, nodes, namespaces).</li>
@@ -275,7 +275,7 @@
 <li><a href="#installation">Installation</a> – Build from source or pull the Docker image</li>
 <li><a href="#configuration">Configuration</a> – CLI args, environment variables, and permission flags</li>
 <li><a href="#quick-start">Quick Start</a> – Get up and running in minutes</li>
-<li><a href="#tools-overview">Tools Reference</a> – Complete reference for all 211 tools</li>
+<li><a href="#tools-overview">Tools Reference</a> – Complete reference for all 210 tools</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="installation"><a class="header" href="#installation">Installation</a></h1>
@@ -920,7 +920,7 @@ CACHE_TTL=60 mcp-k8s
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="tools-overview"><a class="header" href="#tools-overview">Tools Overview</a></h1>
-<p>mcp-k8s exposes 211 tools (including one deprecated alias) covering every GA Kubernetes resource type plus CRDs, multi-cluster management, and resource watching. Each tool corresponds to a specific Kubernetes API operation. The typed create/update tools are preferred over <code>apply_manifest</code>; see <a href="#typed-tool-coverage">Typed Tool Coverage</a>. Every write tool enforces the <a href="#workload-guardrails-1">workload guardrails</a>. Tools are categorized by action type:</p>
+<p>mcp-k8s exposes 210 tools covering every GA Kubernetes resource type plus CRDs, multi-cluster management, and resource watching. Each tool corresponds to a specific Kubernetes API operation. The typed create/update tools are preferred over <code>apply_manifest</code>; see <a href="#typed-tool-coverage">Typed Tool Coverage</a>. Every write tool enforces the <a href="#workload-guardrails-1">workload guardrails</a>. Tools are categorized by action type:</p>
 <ul>
 <li><strong>Read</strong> – List, get, and inspect resources. Always available regardless of permission configuration.</li>
 <li><strong>Create</strong> – Create new resources. Disabled by <code>--disable-create</code>.</li>
@@ -1241,7 +1241,6 @@ CACHE_TTL=60 mcp-k8s
 <tbody>
 <tr><td><code>apply_manifest</code></td><td>Create</td><td>Raw server-side apply of a JSON manifest, without the workload guardrails. Off unless <code>--enable-apply-manifest</code>; clients confirm each call with the user</td></tr>
 <tr><td><code>get_resource_json</code></td><td>Read</td><td>Get any resource as JSON via API discovery</td></tr>
-<tr><td><code>get_resource_yaml</code></td><td>Read</td><td>Deprecated alias for <code>get_resource_json</code> (returns JSON)</td></tr>
 </tbody>
 </table>
 </div>
@@ -4121,8 +4120,96 @@ CACHE_TTL=60 mcp-k8s
 <li><code>get_resource_json</code> is classified as a <strong>read</strong> action and is always available regardless of permission configuration.</li>
 <li>This tool returns the full Kubernetes object, unlike the typed tools which return focused summaries. Use it when you need complete object details or when working with resource types that do not have dedicated tools.</li>
 </ul>
-<h3 id="get_resource_yaml-deprecated"><a class="header" href="#get_resource_yaml-deprecated"><code>get_resource_yaml</code> (deprecated)</a></h3>
-<p><code>get_resource_yaml</code> is a <strong>deprecated alias</strong> for <code>get_resource_json</code>. It takes the same arguments and returns the same <strong>JSON</strong>; despite its name it never returned YAML. It remains for compatibility in 0.4.x and will be removed in the next minor release. Switch to <code>get_resource_json</code>.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="security-1"><a class="header" href="#security-1">Security</a></h1>
+<p>mcp-k8s hands an AI agent broad powers over a Kubernetes cluster, so its defaults lean towards refusing. This page collects the protections and the settings that relax them. Everything here applies from <strong>v0.7.0</strong>.</p>
+<h2 id="defaults-at-a-glance"><a class="header" href="#defaults-at-a-glance">Defaults at a glance</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Area</th><th>Default</th><th>Relax with</th></tr>
+</thead>
+<tbody>
+<tr><td>Workload guardrails (privileged pods, host namespaces, <code>hostPath</code>, host ports, extra capabilities, NodePort/LoadBalancer Services, ingress snippets, RBAC escalation, custom resource groups)</td><td>Rejected on every typed write tool and the custom resource tools</td><td>One <code>--allow-*</code> flag per rule (<a href="#workload-guardrails-1">Permissions</a>)</td></tr>
+<tr><td><code>apply_manifest</code> (raw, unrestricted server-side apply)</td><td><strong>Off</strong>, and hidden from <code>tools/list</code></td><td><code>--enable-apply-manifest</code></td></tr>
+<tr><td>Secret values</td><td><strong>Redacted everywhere</strong>: <code>get_secret</code> refuses <code>decode</code>, and <code>get_resource_json</code> and <code>k8s://…/secrets/…</code> resources redact <code>data</code>, <code>stringData</code> and the <code>last-applied-configuration</code> annotation</td><td><code>--enable-secret-decode</code></td></tr>
+<tr><td>CSR approval for privileged identities (<code>system:masters</code>, any <code>system:</code> user or group)</td><td>Refused</td><td><code>--allow-privileged-csr</code></td></tr>
+<tr><td><code>exec_pod</code> into pods with node-level access (privileged, host namespaces, <code>hostPath</code>, …)</td><td>Refused; exec has a 60 s default and 300 s maximum timeout, and a 1 MiB output cap per stream</td><td>The matching <code>--allow-*</code> flag</td></tr>
+<tr><td>Namespace allowlist (<code>--namespaces</code>)</td><td>Off (all namespaces). When set, every namespaced tool refuses other namespaces, and tools that would act across all namespaces (an omitted <code>namespace</code>, <code>drain_node</code>, namespace objects) refuse too</td><td>—</td></tr>
+<tr><td>HTTP authentication</td><td>Optional, with a <strong>startup warning</strong> on a non-loopback address</td><td><code>--auth-token-file</code> (or <code>AUTH_TOKEN</code>)</td></tr>
+<tr><td>CORS</td><td><strong>None</strong></td><td><code>--cors-allowed-origins</code></td></tr>
+<tr><td>Cross-site browser requests that could change state</td><td><strong>403</strong></td><td><code>--cors-allowed-origins</code></td></tr>
+<tr><td>DNS rebinding (<code>Host</code> allowlist)</td><td>Loopback names on a loopback <code>--listen</code>, otherwise any host (with a warning)</td><td><code>--allowed-hosts</code></td></tr>
+<tr><td>Request size / time</td><td>4 MiB / 360 s</td><td><code>--max-request-bytes</code>, <code>--request-timeout-secs</code></td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="deploying-safely"><a class="header" href="#deploying-safely">Deploying safely</a></h2>
+<ol>
+<li><strong>Start read-only.</strong> The Helm chart’s <code>rbac.readOnly: true</code> grants only get/list/watch and sets <code>--disable-create/update/delete</code>, so the tool list matches what the ServiceAccount can do. Widen it deliberately.</li>
+<li><strong>Scope it.</strong> Set <code>namespaces</code> (the namespace allowlist) and, with <code>rbac.clusterWide: false</code>, the chart creates a Role per namespace instead of a ClusterRole.</li>
+<li><strong>Authenticate.</strong> Put a random token in a Secret and set <code>http.auth.existingSecret</code>. The chart mounts it as a file (<code>AUTH_TOKEN_FILE</code>), so it never shows up in the pod spec or <code>ps</code>.</li>
+<li><strong>Name the hosts.</strong> Set <code>http.allowedHosts</code> to the names clients use (the Service DNS name, the Ingress host).</li>
+<li><strong>Use TLS</strong> in front of it (an Ingress, a service mesh, or <code>--tls-cert</code>/<code>--tls-key</code>).</li>
+<li><strong>Keep the escape hatches off</strong> (<code>enableApplyManifest</code>, <code>enableSecretDecode</code>, the <code>--allow-*</code> flags) unless a person who knows the cluster needs them.</li>
+<li><strong>Restrict the network.</strong> <code>networkPolicy.enabled: true</code> limits ingress to the MCP port from chosen sources, and egress to the API server, DNS and the OTLP collector.</li>
+</ol>
+<p>The pod already runs as non-root (65534) with a read-only root filesystem, no capabilities and the <code>RuntimeDefault</code> seccomp profile.</p>
+<h2 id="audit-trail"><a class="header" href="#audit-trail">Audit trail</a></h2>
+<p>Every tool call that writes, deletes or execs, and every refused call, emits an <code>audit</code> event on the <code>tracing</code> target <code>mcp_k8s::audit</code> with the tool, action, decision and denied rule (<code>global:create</code>, <code>policy:allow_privileged</code>, <code>namespace_allowlist</code>, …), outcome and target. Argument values are never recorded. See <a href="#audit-events">Telemetry</a>.</p>
+<h2 id="agents-and-refusals"><a class="header" href="#agents-and-refusals">Agents and refusals</a></h2>
+<p>A refused or failed tool call returns an MCP result with <code>isError: true</code> and a message that names the setting that would allow it. The server instructions tell agents to report a refusal to the user rather than work around it with another tool. <code>apply_manifest</code>, when enabled, carries the MCP <code>destructiveHint</code> annotation, so clients such as Claude Code ask the user before each call.</p>
+<h2 id="relationship-to-cluster-security"><a class="header" href="#relationship-to-cluster-security">Relationship to cluster security</a></h2>
+<p>These protections keep the AI-facing tools inside sensible lines; they don’t replace Kubernetes RBAC, Pod Security Admission or an admission policy engine. The ServiceAccount’s RBAC is the hard boundary: mcp-k8s can never do more than it allows.</p>
+<h2 id="reporting-a-vulnerability"><a class="header" href="#reporting-a-vulnerability">Reporting a vulnerability</a></h2>
+<p>Open a <a href="https://github.com/alexconrey/mcp-k8s/security/advisories/new">GitHub security advisory</a> rather than a public issue.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="releases-and-compatibility"><a class="header" href="#releases-and-compatibility">Releases and Compatibility</a></h1>
+<h2 id="release-policy"><a class="header" href="#release-policy">Release policy</a></h2>
+<ul>
+<li>
+<p><strong>Every change that downstream needs ships in a tagged GitHub Release.</strong> Consumers pin a release, never <code>main</code>.</p>
+</li>
+<li>
+<p><strong>Semantic versioning within 0.x:</strong> a minor bump (0.6 → 0.7) for breaking changes to the library API or to behaviour (defaults included); a patch bump otherwise.</p>
+</li>
+<li>
+<p><strong>Cadence:</strong> on demand, and at least monthly while <code>main</code> has unreleased changes.</p>
+</li>
+<li>
+<p>Each release publishes, from the same commit:</p>
+<ul>
+<li>the Docker image <code>ghcr.io/alexconrey/mcp-k8s:vX.Y.Z</code> (also <code>:vX.Y</code> and <code>:latest</code>; builds of <code>main</code> are <code>:main</code> and <code>:&lt;sha&gt;</code>),</li>
+<li>the Helm chart <code>oci://ghcr.io/alexconrey/charts/mcp-k8s:X.Y.Z</code> (its default image is <code>vX.Y.Z</code>),</li>
+<li>these docs under <code>/vX.Y.Z/</code>,</li>
+<li>a GitHub Release whose notes are the version’s <a href="https://github.com/alexconrey/mcp-k8s/blob/main/CHANGELOG.md">CHANGELOG</a> section.</li>
+</ul>
+<p>A release is only published if CI passed on the tagged commit and the tag matches <code>Cargo.toml</code>, <code>Chart.yaml</code> and the CHANGELOG.</p>
+</li>
+</ul>
+<h2 id="pinning"><a class="header" href="#pinning">Pinning</a></h2>
+<p>As a library (<code>default-features = false</code> leaves out the HTTP server stack):</p>
+<pre><code class="language-toml">mcp-k8s = { git = "https://github.com/alexconrey/mcp-k8s.git", tag = "v0.7.0", default-features = false }
+</code></pre>
+<p>Your crate must enable exactly one <code>k8s-openapi</code> version feature (for example <code>k8s-openapi = { version = "0.29", features = ["v1_33"] }</code>) and use the same <code>kube</code> major as mcp-k8s, because <code>K8sClient::new</code> takes a <code>kube::Client</code>.</p>
+<p>As a server: pin the image tag <code>vX.Y.Z</code> or the chart version <code>X.Y.Z</code>. Don’t run <code>:latest</code> or <code>:main</code> in production.</p>
+<h2 id="compatibility"><a class="header" href="#compatibility">Compatibility</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>mcp-k8s</th><th>kube</th><th>k8s-openapi (feature)</th><th>Minimum Kubernetes</th><th>Minimum Rust (library)</th><th>Notes</th></tr>
+</thead>
+<tbody>
+<tr><td>0.7.x</td><td>5</td><td>0.29 (<code>v1_33</code>)</td><td>1.33</td><td>1.95</td><td>Secret values opt-in; MCP tool errors are <code>isError</code> results; namespace allowlist enforced everywhere; HTTP browser protections</td></tr>
+<tr><td>0.6.x</td><td>5</td><td>0.29 (<code>v1_33</code>)</td><td>1.33</td><td>1.95</td><td>Workload guardrails restrictive by default; <code>apply_manifest</code> off by default</td></tr>
+<tr><td>0.5.x</td><td>5</td><td>0.29 (<code>v1_33</code>)</td><td>1.33</td><td>1.95</td><td>OpenTelemetry telemetry (0.5.2)</td></tr>
+<tr><td>0.2.x – 0.4.x</td><td>4</td><td>0.28 (<code>v1_32</code>)</td><td>1.32</td><td>—</td><td></td></tr>
+</tbody>
+</table>
+</div>
+<p>The k3s integration tests run against Kubernetes 1.35; set <code>MCP_K8S_K3S_TAG</code> to test another release, for example the 1.33 minimum.</p>
+<h3 id="deckwatch"><a class="header" href="#deckwatch">deckwatch</a></h3>
+<p>deckwatch vendors the library by tag. It’s on <strong>0.5.x</strong> and moves to 0.6/0.7 once it exposes the new policy settings: the <code>WorkloadPolicy</code>, <code>with_apply_manifest</code> and <code>with_secret_decode</code>, which <code>ActionPermissions::default()</code> now turns off.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="permissions"><a class="header" href="#permissions">Permissions</a></h1>
 <p>mcp-k8s includes a built-in permission system that controls which CRUD actions are available to MCP clients. This is separate from Kubernetes RBAC – it controls which tools are exposed by the MCP server, while Kubernetes RBAC controls what the server’s service account can actually do in the cluster.</p>
@@ -4141,7 +4228,7 @@ CACHE_TTL=60 mcp-k8s
 <tr><th>Action</th><th>Tool Prefixes</th><th>Examples</th></tr>
 </thead>
 <tbody>
-<tr><td><strong>Read</strong></td><td><code>list_</code>, <code>get_</code>, <code>*_logs</code>, <code>*_metrics</code>, <code>can_i</code>, <code>whoami</code>, <code>list_my_permissions</code>, <code>get_resource_json</code> (and its deprecated alias <code>get_resource_yaml</code>)</td><td><code>list_deployments</code>, <code>get_pod_logs</code>, <code>get_metrics</code></td></tr>
+<tr><td><strong>Read</strong></td><td><code>list_</code>, <code>get_</code>, <code>*_logs</code>, <code>*_metrics</code>, <code>can_i</code>, <code>whoami</code>, <code>list_my_permissions</code>, <code>get_resource_json</code></td><td><code>list_deployments</code>, <code>get_pod_logs</code>, <code>get_metrics</code></td></tr>
 <tr><td><strong>Create</strong></td><td><code>create_</code>, <code>apply_manifest</code></td><td><code>create_deployment</code>, <code>create_pod</code>, <code>apply_manifest</code></td></tr>
 <tr><td><strong>Update</strong></td><td><code>update_</code>, <code>exec_</code>, <code>scale_</code>, <code>restart_</code>, <code>rollback_</code>, <code>approve_</code>, <code>deny_</code>, <code>cordon_</code>, <code>uncordon_</code>, <code>drain_</code></td><td><code>update_deployment</code>, <code>exec_pod</code>, <code>scale_deployment</code>, <code>cordon_node</code></td></tr>
 <tr><td><strong>Delete</strong></td><td><code>delete_</code>, <code>evict_</code></td><td><code>delete_pod</code>, <code>evict_pod</code></td></tr>
@@ -4993,7 +5080,7 @@ the tool behind each one, are on the <a href="#rbac-setup">RBAC Setup</a> page.<
 <tbody>
 <tr><td><code>rbac.create</code></td><td><code>true</code></td><td>Create RBAC resources</td></tr>
 <tr><td><code>rbac.clusterWide</code></td><td><code>true</code></td><td><code>true</code>: a ClusterRole and ClusterRoleBinding. <code>false</code>: a Role and RoleBinding in each namespace of <code>namespaces</code> (the release namespace when empty), without cluster-scoped resources</td></tr>
-<tr><td><code>rbac.readOnly</code></td><td><code>false</code></td><td><strong>Recommended starting point.</strong> Grant only get/list/watch (plus the self-review creates <code>whoami</code>/<code>can_i</code> use) and set <code>DISABLE_CREATE</code>/<code>DISABLE_UPDATE</code>/<code>DISABLE_DELETE</code>, so <code>tools/list</code> matches. <code>port_forward_check</code> returns 403</td></tr>
+<tr><td><code>rbac.readOnly</code></td><td><code>false</code></td><td><strong>Recommended starting point.</strong> Grant only get/list/watch (plus the self-review creates <code>whoami</code>/<code>can_i</code> use) and set <code>DISABLE_CREATE</code>/<code>DISABLE_UPDATE</code>/<code>DISABLE_DELETE</code>, so <code>tools/list</code> matches.</td></tr>
 <tr><td><code>rbac.secrets</code></td><td><code>true</code></td><td>Grant access to Secrets. RBAC can’t grant “keys only”, so any read access lets the pod’s token read secret values even while the server redacts them. <code>false</code> leaves Secrets out and hides the secret write tools</td></tr>
 <tr><td><code>rbac.csrSigners</code></td><td><code>[]</code></td><td>Signer names <code>approve_csr</code>/<code>deny_csr</code> may act for (<code>approve</code> on <code>certificates.k8s.io/signers</code>). Kubernetes refuses approvals without it</td></tr>
 <tr><td><code>rbac.extraRules</code></td><td><code>[]</code></td><td>More rules, e.g. for custom resources the custom resource tools or <code>watch_resource</code> should reach</td></tr>
@@ -5673,8 +5760,9 @@ deliberately has no <code>escalate</code> or <code>bind</code> verbs.</li>
 <code>--disable-create --disable-update --disable-delete</code> (Helm <code>rbac.readOnly: true</code>
 does both). The self-review <code>create</code> rules keep <code>whoami</code>, <code>can_i</code> and
 <code>list_my_permissions</code> working; every authenticated user has those already.</p>
-<p><code>port_forward_check</code> is a read tool but needs <code>pods/portforward</code>, which this
-role leaves out (it opens a connection into any pod), so it returns 403.</p>
+<p><code>port_forward_check</code> needs <code>pods/portforward</code> (it opens a connection into
+the pod), which this role leaves out. Since v0.7.0 it counts as an update,
+so read-only mode removes it from the tool list rather than letting it fail.</p>
 <pre><code class="language-yaml">apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
