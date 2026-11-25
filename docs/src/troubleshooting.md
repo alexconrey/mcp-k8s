@@ -78,6 +78,12 @@ mcp-k8s --disable pod-delete,service-delete  # Only block pod and service delete
 - Verify the token matches exactly what was passed to `--auth-token`.
 - If you do not need authentication, remove the `--auth-token` flag.
 
+## 403 Forbidden ("host not allowed" or "cross-site request blocked")
+
+**host not allowed**: the request's `Host` isn't in `--allowed-hosts`. On a loopback `--listen` only `localhost`, `127.0.0.1` and `[::1]` are accepted by default. Add the name clients use to `--allowed-hosts` (`MCP_K8S_ALLOWED_HOSTS`).
+
+**cross-site request blocked**: a browser sent the request from another origin. Add that origin to `--cors-allowed-origins` if it's a legitimate browser-based MCP client.
+
 ## TLS errors
 
 **Symptom**: HTTPS connections fail with certificate errors, or the server fails to start with `"Failed to load TLS cert/key"`.

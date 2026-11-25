@@ -18,7 +18,7 @@ endpoint for in-cluster deployment.
 - **MCP resources and prompts**: `resources/read` for direct `k8s://` URI access, built-in diagnostic prompts
 - **OpenTelemetry**: one SERVER span per MCP request, the `mcp.server.operation.duration` histogram and logs over OTLP (http/protobuf), named after the OpenTelemetry MCP conventions, with tool arguments redacted to an allowlist ([Telemetry](#telemetry))
 - **Prometheus metrics**: `GET /metrics` endpoint with request counts and tool call latency histograms
-- **Bearer token auth and TLS**: `--auth-token` for HTTP authentication, `--tls-cert`/`--tls-key` for HTTPS
+- **Bearer token auth, TLS and browser protections**: `--auth-token`/`--auth-token-file` for HTTP authentication, `--tls-cert`/`--tls-key` for HTTPS, a `Host` allowlist against DNS rebinding, and no CORS or cross-site writes unless allowlisted
 - **Action permission controls**: disable create/update/delete globally or per-resource via CLI flags and env vars
 - **Namespace allowlisting**: restrict operations to specific namespaces
 - **Token-efficient responses**: focused summary/detail types instead of raw K8s API objects
@@ -139,6 +139,10 @@ Beyond standard CRUD, the server supports:
 | `--disable-delete` | `DISABLE_DELETE` | `false` | Disable all delete operations |
 | `--disable` | `MCP_K8S_DISABLE` | (none) | Comma-separated per-resource disables (e.g. `deployment-delete,secret-create`) |
 | `--auth-token` | `AUTH_TOKEN` | (none) | Bearer token for HTTP endpoint authentication |
+| `--auth-token-file` | `AUTH_TOKEN_FILE` | (none) | Read the bearer token from a file (keeps it out of `ps`) |
+| `--allowed-hosts` | `MCP_K8S_ALLOWED_HOSTS` | loopback names on loopback, else any | Host names the server answers to (DNS-rebinding protection) |
+| `--cors-allowed-origins` | `MCP_K8S_CORS_ALLOWED_ORIGINS` | (none) | Origins browser-based clients may call from; cross-site browser writes get 403 otherwise |
+| `--max-request-bytes` / `--request-timeout-secs` | `MCP_K8S_MAX_REQUEST_BYTES` / `MCP_K8S_REQUEST_TIMEOUT_SECS` | 4 MiB / 360 s | Request size and time limits |
 | `--tls-cert` | `TLS_CERT` | (none) | Path to TLS certificate PEM file (enables HTTPS) |
 | `--tls-key` | `TLS_KEY` | (none) | Path to TLS private key PEM file (enables HTTPS) |
 | `--enable-apply-manifest` | `ENABLE_APPLY_MANIFEST` | `false` | Enable `apply_manifest`: an unrestricted raw server-side apply that skips the workload guardrails, for users who know what they're applying (the namespace allowlist and disable switches still apply). `--disable-apply-manifest` is deprecated but still wins |
