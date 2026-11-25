@@ -98,6 +98,10 @@ otherwise the tool returns the API server's 404.
 | **Watch** | `watch_resource` (observe ADDED/MODIFIED/DELETED events over a time window) |
 | **Cluster Mgmt** | `list_clusters`, `switch_cluster`, `get_active_cluster` (multi-context switching) |
 
+## Security
+
+Defaults lean towards refusing: the workload guardrails reject privileged and host-level settings, `apply_manifest` and Secret values are off, privileged CSR approvals are refused, and with `--namespaces` every tool stays inside the allowlist. The HTTP server sends no CORS headers, blocks cross-site browser writes, checks `Host` against DNS rebinding, and warns when it runs without a token. Every write and every refusal is audited on the `mcp_k8s::audit` log target. See [Security](docs/src/security.md) for the defaults table and a deployment checklist, and [Releases and Compatibility](docs/src/releases.md) for the release policy, pinning and the kube/Kubernetes compatibility matrix.
+
 ## Guardrails
 
 The typed `create_*`/`update_*` tools and the custom resource tools run the same workload policy. (`apply_manifest` doesn't: it's off by default, and when an operator enables it, it's an unrestricted raw apply that MCP clients confirm with the user. See [Permissions](docs/src/permissions.md#apply_manifest).) The defaults are restrictive and every rejection names the flag that relaxes it. Typed creates also default to a restricted securityContext (runAsNonRoot, seccomp `RuntimeDefault`, no privilege escalation, drop ALL capabilities) and don't mount a service account token unless asked.
@@ -364,7 +368,7 @@ page have the full recipe; the binary's `src/otel.rs` is a working example.
 ## Testing
 
 ```bash
-cargo test                                      # 568 unit + 26 binary + 11 integration + 36 guardrail + 15 namespace-allowlist + 9 typed-tool tests
+cargo test                                      # 567 unit + 26 binary + 11 integration + 36 guardrail + 15 namespace-allowlist + 9 typed-tool tests
 cargo test --no-default-features                # the same, as library consumers build it
 cargo test --test k3s_integration -- --ignored  # 13 k3s tests (needs Docker)
 cargo test --test k3s_workloads -- --ignored --test-threads=1  # 3 k3s tests for the typed tools and guardrails

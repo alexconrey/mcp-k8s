@@ -13,6 +13,12 @@ release workflow refuses a tag that doesn't match `Cargo.toml`,
 ## [Unreleased]
 
 ### Breaking changes
+- **`port_forward_check` is an update action** (`pod-update`), like
+  `exec_pod`: it opens a port-forward tunnel, which RBAC treats as `create`
+  on `pods/portforward`. Read-only mode (and the Helm chart's
+  `rbac.readOnly`) now removes it instead of letting it fail with 403.
+- **The deprecated `get_resource_yaml` alias is removed.** Use
+  `get_resource_json` (same arguments; it always returned JSON).
 - **Tool errors are MCP tool results, not JSON-RPC errors.** A tool that ran
   and failed, or was refused (permissions, workload policy), now returns a
   successful JSON-RPC response with `isError: true` and the message in
@@ -95,6 +101,15 @@ release workflow refuses a tag that doesn't match `Cargo.toml`,
   was flagged on every build.
 
 ### Added
+- Helm values for the HTTP protections and secret decoding:
+  `http.auth.existingSecret`/`key` (mounted as a file, `AUTH_TOKEN_FILE`),
+  `http.allowedHosts`, `http.corsAllowedOrigins` and
+  `permissions.enableSecretDecode`.
+- Docs: a [Security](docs/src/security.md) page (defaults table, deployment
+  checklist) and [Releases and Compatibility](docs/src/releases.md) (release
+  policy, pinning, the mcp-k8s ↔ kube ↔ Kubernetes ↔ deckwatch matrix).
+- Namespace-allowlist refusals are recorded as telemetry denials
+  (`mcp_k8s.denied_rule=namespace_allowlist`) and audited.
 - Helm chart: `podSecurityContext` and `securityContext` values, defaulting to
   the Pod Security "restricted" profile (non-root 65534, read-only root
   filesystem, no privilege escalation, all capabilities dropped, seccomp
@@ -182,6 +197,8 @@ release workflow refuses a tag that doesn't match `Cargo.toml`,
   `allowedCIDRs` and `allowedNamespaces` were set, dropping one of them.
 
 ### Internal
+- CI `manifests` job: `helm lint --strict` with the recommended value
+  combinations and `kubectl kustomize` for every overlay.
 - The k3s tests pin their images by multi-arch index digest: the k3s image
   (`MCP_K8S_K3S_TAG` still overrides it) and the busybox and pause images k3s
   pulls for the workloads.

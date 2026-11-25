@@ -124,8 +124,11 @@ create/update/delete disable flags, per-resource overrides,
 `secret_decode_enabled`, `apply_manifest_enabled` (off by default;
 `with_apply_manifest(true)`), and the `WorkloadPolicy`
 (`with_workload_policy`, `workload_policy()`). Disabled tools are filtered
-from `tools/list` and rejected in `tools/call`. `exec_pod` counts as an
-update (`pod-update`).
+from `tools/list` and rejected in `tools/call`. `exec_pod` and
+`port_forward_check` count as updates (`pod-update`): RBAC treats both as
+`create` on a pod subresource. Refusal sites for the namespace allowlist use
+`K8sClient::namespace_permitted`, which records the denial
+(`namespace_allowlist`) in telemetry; `is_namespace_allowed` is for filtering.
 
 **Workload policy** (`policy/`): the guardrails. `check_object(policy, json,
 Source)` is the single rule engine; it works on the Kubernetes JSON form, so
@@ -508,7 +511,7 @@ CI workflow (build, test, clippy, fmt) runs against them before merge.
 
 ```bash
 cargo build --release       # Build
-cargo test                  # 568 unit + 26 binary (router, telemetry, HTTP) + 11 integration + 36 guardrail + 15 namespace-allowlist + 9 typed-tool tests
+cargo test                  # 567 unit + 26 binary (router, telemetry, HTTP) + 11 integration + 36 guardrail + 15 namespace-allowlist + 9 typed-tool tests
 cargo test --no-default-features  # Same tests without `server` (what deckwatch compiles)
 cargo test --test k3s_integration -- --ignored --test-threads=2  # 13 k3s tests (needs Docker), as CI runs them
 cargo test --test k3s_workloads -- --ignored --test-threads=1  # k3s typed-tool and guardrail tests, as CI runs them
@@ -543,6 +546,8 @@ make deny                   # cargo deny check (advisories, licenses, bans, sour
   that the next release must bump the minor version (see
   [Releasing](#releasing)). Never make `semver` a required status check.
 - **`docker-build`:** builds the release image without pushing it.
+- **`manifests`:** `helm lint --strict` with the recommended value
+  combinations, and `kubectl kustomize` for the base and both overlays.
 
 Runs on `main` publish the image instead (`docker` job). A new push to a PR
 cancels its outdated run; runs on `main` are never cancelled. Every action is
