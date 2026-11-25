@@ -1,0 +1,61 @@
+# Default-deny for the mcp-k8s pod, except:
+#   ingress: the MCP port (8080) from the sources listed under `from`
+#   egress:  the Kubernetes API server and cluster DNS
+# Edit the marked places for your cluster.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mcp-k8s
+  namespace: mcp-k8s
+  labels:
+    app.kubernetes.io/name: mcp-k8s
+    app.kubernetes.io/part-of: mcp-k8s
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mcp-k8s
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - ports:
+        - port: http
+          protocol: TCP
+      # EDIT: who may call the MCP endpoint. Remove `from` to allow any source.
+      from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: mcp-k8s
+  egress:
+    # Kubernetes API server. EDIT: add `to` with the API server's endpoint
+    # addresses (kubectl get endpointslices -n default
+    # -l kubernetes.io/service-name=kubernetes) to pin it; most CNIs match
+    # after the kubernetes Service's DNAT, so use endpoint IPs, not the
+    # ClusterIP. Without `to`, these ports are allowed to any address.
+    - ports:
+        - port: 443
+          protocol: TCP
+        - port: 6443
+          protocol: TCP
+    # Cluster DNS (CoreDNS/kube-dns in kube-system).
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+      to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+    # EDIT: if you export telemetry (OTEL_EXPORTER_OTLP_ENDPOINT), allow the
+    # collector, e.g.:
+    # - ports:
+    #     - port: 4318
+    #       protocol: TCP
+    #   to:
+    #     - namespaceSelector:
+    #         matchLabels:
+    #           kubernetes.io/metadata.name: observability

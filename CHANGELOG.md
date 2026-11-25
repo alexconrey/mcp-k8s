@@ -12,6 +12,51 @@ release workflow refuses a tag that doesn't match `Cargo.toml`,
 
 ## [Unreleased]
 
+### Added
+- Helm chart: `podSecurityContext` and `securityContext` values, defaulting to
+  the Pod Security "restricted" profile (non-root 65534, read-only root
+  filesystem, no privilege escalation, all capabilities dropped, seccomp
+  `RuntimeDefault`). The Kustomize Deployment gets the same.
+- Helm chart: `rbac.readOnly` (get/list/watch only, and the server's
+  create/update/delete switches turned on so `tools/list` matches), the
+  recommended starting point; `rbac.secrets` to leave Secrets out of the role;
+  `rbac.csrSigners` for the signer `approve` permission `approve_csr` and
+  `deny_csr` need; `rbac.extraRules` (for custom resources) and
+  `rbac.allowWildcards`.
+- Helm chart NetworkPolicy: egress restricted to the API server, DNS and the
+  OTLP endpoint (`networkPolicy.egress.*`), and `networkPolicy.extraIngressFrom`.
+- Kustomize `network-policy/` overlay.
+
+### Changed
+- The chart's RBAC rules, and the Kustomize ClusterRole, are scoped to what the
+  tools use: write verbs only on resources that have write tools, read-only
+  everywhere else (leases, endpointslices, events, endpoints, admission
+  configuration, flow control, priority/runtime classes, CSI internals,
+  metrics), the self-review APIs `create` only, and `nodes` `patch` and
+  `persistentvolumes` `delete` instead of full CRUD. Rules were added for what
+  tools used without a grant: `pods/exec`, `pods/portforward`,
+  `pods/eviction`, `customresourcedefinitions` and the read-only DRA,
+  IPAddress/ServiceCIDR, VolumeAttributesClass, LeaseCandidate,
+  ClusterTrustBundle, MutatingAdmissionPolicy, StorageVersion and
+  StorageVersionMigration APIs.
+- `rbac.clusterWide: false` now creates a Role and RoleBinding in each
+  namespace of `namespaces` (the release namespace when empty) and leaves out
+  cluster-scoped resources; it used to create one Role in the release
+  namespace only.
+- The Kustomize manifests moved to `helm/charts/mcp-k8s/base/`
+  (`kubectl apply -k helm/charts/mcp-k8s/` still works). The `read-only/`
+  overlay now also narrows the ClusterRole to get/list/watch.
+- When `networkPolicy.enabled`, egress is now restricted too (set
+  `networkPolicy.egress.enabled: false` for the old ingress-only policy), and
+  the ingress rule targets the container's `http` port instead of
+  `service.port`.
+
+### Fixed
+- `kubectl apply -k helm/charts/mcp-k8s/read-only/` failed with a kustomize
+  cycle error (the overlay sat inside its own base).
+- The chart's NetworkPolicy rendered two `from:` keys when both
+  `allowedCIDRs` and `allowedNamespaces` were set, dropping one of them.
+
 ## [0.6.0] - 2026-11-24
 
 Typed workload tools that cover the pod template, workload guardrails on every

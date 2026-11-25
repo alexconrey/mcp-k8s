@@ -1,0 +1,242 @@
+# Generated from the Helm chart's RBAC rules (helm/mcp-k8s/templates/_rbac.tpl,
+# default values); keep them in sync. See docs/src/deployment/rbac.md for the
+# tool behind each rule.
+#
+# Secrets: get/list return secret values to this ServiceAccount's token even
+# though the server redacts them unless secret decoding is enabled. Drop the
+# secrets rule if you don't need the secret tools.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: mcp-k8s
+  labels:
+    app.kubernetes.io/name: mcp-k8s
+    app.kubernetes.io/part-of: mcp-k8s
+rules:
+  # Core API, namespaced. Pods: list/get/create/delete_pod, evict_pod, drain_node
+  # (deletes pods). Services, ConfigMaps, PVCs, ServiceAccounts, ResourceQuotas,
+  # LimitRanges: their list/get/create/update/delete tools.
+  - apiGroups: [""]
+    resources:
+      - pods
+      - services
+      - configmaps
+      - persistentvolumeclaims
+      - serviceaccounts
+      - resourcequotas
+      - limitranges
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Secrets: list_secrets/get_secret (+ create/update/delete_secret). get/list
+  # return values to the token whatever the server's secret-decode setting.
+  - apiGroups: [""]
+    resources:
+      - secrets
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Events: get_events. Endpoints: list/get_endpoints.
+  - apiGroups: [""]
+    resources:
+      - events
+      - endpoints
+    verbs: ["get", "list", "watch"]
+  # Pod logs: get_pod_logs, get_build_logs.
+  - apiGroups: [""]
+    resources:
+      - pods/log
+    verbs: ["get"]
+  # exec_pod (pods/exec), port_forward_check (pods/portforward), evict_pod
+  # (pods/eviction). The websocket upgrade needs create.
+  - apiGroups: [""]
+    resources:
+      - pods/exec
+      - pods/portforward
+    verbs: ["get", "create"]
+  - apiGroups: [""]
+    resources:
+      - pods/eviction
+    verbs: ["create"]
+  # Namespaces: list/get/create/update/delete_namespace.
+  - apiGroups: [""]
+    resources:
+      - namespaces
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Nodes: list/get_node; cordon/uncordon/drain_node patch spec.unschedulable.
+  - apiGroups: [""]
+    resources:
+      - nodes
+    verbs: ["get", "list", "watch", "patch"]
+  # PersistentVolumes: list/get/delete_pv.
+  - apiGroups: [""]
+    resources:
+      - persistentvolumes
+    verbs: ["get", "list", "watch", "delete"]
+  # apps: Deployment (incl. scale/restart/rollback), StatefulSet, DaemonSet tools.
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - statefulsets
+      - daemonsets
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # ReplicaSets: list/get_replicaset, get_deployment_history, rollback_deployment.
+  - apiGroups: ["apps"]
+    resources:
+      - replicasets
+    verbs: ["get", "list", "watch"]
+  # batch: Job and CronJob tools (incl. create_job_from_cronjob).
+  - apiGroups: ["batch"]
+    resources:
+      - jobs
+      - cronjobs
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # networking.k8s.io: Ingress and NetworkPolicy tools.
+  - apiGroups: ["networking.k8s.io"]
+    resources:
+      - ingresses
+      - networkpolicies
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # IngressClass tools.
+  - apiGroups: ["networking.k8s.io"]
+    resources:
+      - ingressclasses
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # IPAddress and ServiceCIDR (read-only tools).
+  - apiGroups: ["networking.k8s.io"]
+    resources:
+      - ipaddresses
+      - servicecidrs
+    verbs: ["get", "list", "watch"]
+  # rbac.authorization.k8s.io: Role and RoleBinding tools. Kubernetes still
+  # refuses grants beyond the ServiceAccount's own (no escalate/bind here).
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources:
+      - roles
+      - rolebindings
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # ClusterRole and ClusterRoleBinding tools.
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources:
+      - clusterroles
+      - clusterrolebindings
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # autoscaling: HPA tools. policy: PDB tools.
+  - apiGroups: ["autoscaling"]
+    resources:
+      - horizontalpodautoscalers
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["policy"]
+    resources:
+      - poddisruptionbudgets
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # storage.k8s.io, namespaced: list_csistoragecapacities.
+  - apiGroups: ["storage.k8s.io"]
+    resources:
+      - csistoragecapacities
+    verbs: ["get", "list", "watch"]
+  # StorageClass tools.
+  - apiGroups: ["storage.k8s.io"]
+    resources:
+      - storageclasses
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # CSIDriver, CSINode, VolumeAttachment, VolumeAttributesClass (read-only tools).
+  - apiGroups: ["storage.k8s.io"]
+    resources:
+      - csidrivers
+      - csinodes
+      - volumeattachments
+      - volumeattributesclasses
+    verbs: ["get", "list", "watch"]
+  # coordination.k8s.io: list/get_lease, list/get_leasecandidate.
+  - apiGroups: ["coordination.k8s.io"]
+    resources:
+      - leases
+      - leasecandidates
+    verbs: ["get", "list", "watch"]
+  # discovery.k8s.io: list/get_endpointslice.
+  - apiGroups: ["discovery.k8s.io"]
+    resources:
+      - endpointslices
+    verbs: ["get", "list", "watch"]
+  # resource.k8s.io (DRA): ResourceClaim and ResourceClaimTemplate tools.
+  - apiGroups: ["resource.k8s.io"]
+    resources:
+      - resourceclaims
+      - resourceclaimtemplates
+    verbs: ["get", "list", "watch"]
+  # ResourceSlice and DeviceClass tools.
+  - apiGroups: ["resource.k8s.io"]
+    resources:
+      - resourceslices
+      - deviceclasses
+    verbs: ["get", "list", "watch"]
+  # certificates.k8s.io: list/get_csr, list/get_clustertrustbundle.
+  - apiGroups: ["certificates.k8s.io"]
+    resources:
+      - certificatesigningrequests
+      - clustertrustbundles
+    verbs: ["get", "list", "watch"]
+  # approve_csr and deny_csr patch the approval subresource.
+  - apiGroups: ["certificates.k8s.io"]
+    resources:
+      - certificatesigningrequests/approval
+    verbs: ["update", "patch"]
+  # admissionregistration.k8s.io: webhook configuration and admission policy
+  # tools (read-only).
+  - apiGroups: ["admissionregistration.k8s.io"]
+    resources:
+      - mutatingwebhookconfigurations
+      - validatingwebhookconfigurations
+      - validatingadmissionpolicies
+      - validatingadmissionpolicybindings
+      - mutatingadmissionpolicies
+      - mutatingadmissionpolicybindings
+    verbs: ["get", "list", "watch"]
+  # apiextensions.k8s.io: list/get_crd, and discovery for the custom resource
+  # tools. Custom resources themselves need rbac.extraRules.
+  - apiGroups: ["apiextensions.k8s.io"]
+    resources:
+      - customresourcedefinitions
+    verbs: ["get", "list", "watch"]
+  # PriorityClass, RuntimeClass, FlowSchema, PriorityLevelConfiguration,
+  # StorageVersion, StorageVersionMigration (read-only tools).
+  - apiGroups: ["scheduling.k8s.io"]
+    resources:
+      - priorityclasses
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["node.k8s.io"]
+    resources:
+      - runtimeclasses
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["flowcontrol.apiserver.k8s.io"]
+    resources:
+      - flowschemas
+      - prioritylevelconfigurations
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["internal.apiserver.k8s.io"]
+    resources:
+      - storageversions
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["storagemigration.k8s.io"]
+    resources:
+      - storageversionmigrations
+    verbs: ["get", "list", "watch"]
+  # whoami (SelfSubjectReview), can_i (SelfSubjectAccessReview),
+  # list_my_permissions (SelfSubjectRulesReview). Kubernetes grants these to
+  # every authenticated user already; listed for clarity.
+  - apiGroups: ["authentication.k8s.io"]
+    resources:
+      - selfsubjectreviews
+    verbs: ["create"]
+  - apiGroups: ["authorization.k8s.io"]
+    resources:
+      - selfsubjectaccessreviews
+      - selfsubjectrulesreviews
+    verbs: ["create"]
+  # metrics.k8s.io: get_node_metrics.
+  - apiGroups: ["metrics.k8s.io"]
+    resources:
+      - nodes
+    verbs: ["get", "list"]
+  # metrics.k8s.io: get_metrics (pod metrics).
+  - apiGroups: ["metrics.k8s.io"]
+    resources:
+      - pods
+    verbs: ["get", "list"]

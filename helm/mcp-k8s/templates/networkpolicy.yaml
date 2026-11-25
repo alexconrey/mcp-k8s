@@ -1,4 +1,6 @@
 {{- if .Values.networkPolicy.enabled -}}
+{{- $np := .Values.networkPolicy -}}
+{{- $egress := $np.egress | default dict -}}
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -11,23 +13,71 @@ spec:
       {{- include "mcp-k8s.selectorLabels" . | nindent 6 }}
   policyTypes:
     - Ingress
+    {{- if $egress.enabled }}
+    - Egress
+    {{- end }}
   ingress:
+    # The MCP port only (the container's http port, behind service.port).
     - ports:
-        - port: {{ .Values.service.port }}
+        - port: http
           protocol: TCP
-      {{- if .Values.networkPolicy.allowedCIDRs }}
+      {{- if or $np.allowedCIDRs $np.allowedNamespaces $np.extraIngressFrom }}
       from:
-        {{- range .Values.networkPolicy.allowedCIDRs }}
+        {{- range $np.allowedCIDRs }}
         - ipBlock:
             cidr: {{ . }}
         {{- end }}
-      {{- end }}
-      {{- if .Values.networkPolicy.allowedNamespaces }}
-      from:
-        {{- range .Values.networkPolicy.allowedNamespaces }}
+        {{- range $np.allowedNamespaces }}
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: {{ . }}
         {{- end }}
+        {{- with $np.extraIngressFrom }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       {{- end }}
+  {{- if $egress.enabled }}
+  egress:
+    # Kubernetes API server.
+    - ports:
+        {{- range $egress.apiServer.ports }}
+        - port: {{ . }}
+          protocol: TCP
+        {{- end }}
+      {{- with $egress.apiServer.cidrs }}
+      to:
+        {{- range . }}
+        - ipBlock:
+            cidr: {{ . }}
+        {{- end }}
+      {{- end }}
+    {{- if $egress.dns.enabled }}
+    # Cluster DNS.
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+      {{- with $egress.dns.to }}
+      to:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- end }}
+    {{- if .Values.otel.endpoint }}
+    {{- $url := urlParse .Values.otel.endpoint }}
+    {{- $hostParts := splitList ":" $url.host }}
+    {{- $port := ternary (last $hostParts) (ternary "443" "4318" (eq $url.scheme "https")) (gt (len $hostParts) 1) }}
+    # OTLP collector (otel.endpoint).
+    - ports:
+        - port: {{ $port | int }}
+          protocol: TCP
+      {{- with $egress.otlp.to }}
+      to:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- end }}
+    {{- with $egress.extra }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- end }}
 {{- end }}
