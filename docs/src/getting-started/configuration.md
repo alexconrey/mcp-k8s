@@ -147,7 +147,24 @@ mcp-k8s uses the standard [kube-rs](https://github.com/kube-rs/kube) client conf
 
 | Flag | Env Var | Default | Description |
 |------|---------|---------|-------------|
-| `--auth-token` | `AUTH_TOKEN` | *(none)* | When set, all HTTP requests (except `/healthz`, `/metrics`, `/swagger-ui`, and `/openapi.json`) must include an `Authorization: Bearer <token>` header. Unauthorized requests receive a 401 response. |
+| `--auth-token` | `AUTH_TOKEN` | *(none)* | When set, all HTTP requests (except `/healthz`, `/metrics`, `/swagger-ui`, and `/openapi.json`) must include an `Authorization: Bearer <token>` header. Unauthorized requests receive a 401 response. Prefer `AUTH_TOKEN` or `--auth-token-file`: command-line arguments are visible through `ps`. |
+| `--auth-token-file` | `AUTH_TOKEN_FILE` | *(none)* | Read the token from a file (trailing newline stripped), e.g. a mounted Kubernetes Secret. An empty file is a startup error. |
+
+Without a token, the server logs a warning at startup when `--listen` isn't a loopback address: anyone who can reach it can use every enabled tool.
+
+### Browser and DNS-rebinding protection
+
+| Flag | Env Var | Default | Description |
+|------|---------|---------|-------------|
+| `--allowed-hosts` | `MCP_K8S_ALLOWED_HOSTS` | loopback names on a loopback `--listen`, otherwise any | Comma-separated host names the server answers to (`mcp-k8s.mcp.svc,mcp.example.com`). Requests with another `Host` get 403, which stops DNS-rebinding pages from reaching the server through a browser, as the MCP Streamable HTTP spec requires. `/healthz` is exempt for kubelet probes. On a loopback `--listen` the default is `localhost`, `127.0.0.1` and `[::1]`; otherwise any host is accepted and a warning is logged. |
+| `--cors-allowed-origins` | `MCP_K8S_CORS_ALLOWED_ORIGINS` | *(none)* | Origins (`scheme://host[:port]`) browser-based MCP clients may call from. They get CORS headers and pass the cross-site check. By default there are no CORS headers, and cross-site browser requests that could change state (`Origin`/`Sec-Fetch-Site` from another site) get 403. MCP clients and curl send neither header and aren't affected. |
+
+### Request limits
+
+| Flag | Env Var | Default | Description |
+|------|---------|---------|-------------|
+| `--max-request-bytes` | `MCP_K8S_MAX_REQUEST_BYTES` | `4194304` (4 MiB) | Larger request bodies get 413. |
+| `--request-timeout-secs` | `MCP_K8S_REQUEST_TIMEOUT_SECS` | `360` | Requests that take longer get 408. It must exceed the longest tool call (`watch_resource` caps at 30 s, `exec_pod` at 300 s). |
 
 Example:
 
@@ -260,7 +277,8 @@ mcp-k8s \
   --namespaces default,production \
   --disable-delete \
   --disable deployment-create,secret-create \
-  --auth-token my-secret-token \
+  --auth-token-file /etc/mcp-k8s/token \
+  --allowed-hosts mcp.example.com \
   --tls-cert /etc/certs/tls.crt \
   --tls-key /etc/certs/tls.key \
   --disable-secret-decode \
@@ -269,4 +287,4 @@ mcp-k8s \
   --contexts staging,production
 ```
 
-This starts mcp-k8s as an HTTPS server on port 9090 with bearer token authentication, restricted to the `default` and `production` namespaces, with all delete operations disabled globally (`apply_manifest` stays off, its default), deployment/secret creation disabled individually, secret decoding disabled, structured JSON logging enabled, a 30-second response cache, and two cluster contexts loaded (`staging` active by default).
+This starts mcp-k8s as an HTTPS server on port 9090 with bearer token authentication (read from a file), answering only to `mcp.example.com`, restricted to the `default` and `production` namespaces, with all delete operations disabled globally (`apply_manifest` stays off, its default), deployment/secret creation disabled individually, secret decoding disabled, structured JSON logging enabled, a 30-second response cache, and two cluster contexts loaded (`staging` active by default).

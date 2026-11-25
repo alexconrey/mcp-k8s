@@ -1,3 +1,5 @@
+mod http_security;
+
 use std::io::BufRead;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -14,7 +16,6 @@ use futures::stream;
 use metrics::counter;
 use metrics_exporter_prometheus::PrometheusHandle;
 use subtle::ConstantTimeEq;
-use tower_http::cors::CorsLayer;
 use tracing::{Instrument, Span};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -97,10 +98,39 @@ struct Cli {
     disable_actions: Vec<String>,
 
     /// Bearer token for HTTP endpoint authentication.
-    /// When set, all requests (except /healthz and /swagger-ui) must include
-    /// an `Authorization: Bearer <token>` header.
-    #[arg(long, env = "AUTH_TOKEN")]
+    /// When set, all requests (except /healthz, /metrics and the API docs)
+    /// must include an `Authorization: Bearer <token>` header. Prefer
+    /// --auth-token-file or the AUTH_TOKEN variable: command-line arguments
+    /// are visible to other users through `ps`.
+    #[arg(long, env = "AUTH_TOKEN", conflicts_with = "auth_token_file")]
     auth_token: Option<String>,
+
+    /// Read the bearer token from this file (trailing newline stripped), e.g. a
+    /// mounted Kubernetes Secret.
+    #[arg(long, env = "AUTH_TOKEN_FILE")]
+    auth_token_file: Option<String>,
+
+    /// Comma-separated host names the HTTP server answers to (DNS-rebinding
+    /// protection), e.g. "mcp-k8s.mcp.svc,mcp.example.com". Requests with any
+    /// other Host get 403 (/healthz is exempt). Default: localhost, 127.0.0.1
+    /// and [::1] when --listen is a loopback address, otherwise any host.
+    #[arg(long, env = "MCP_K8S_ALLOWED_HOSTS", value_delimiter = ',')]
+    allowed_hosts: Vec<String>,
+
+    /// Comma-separated origins (scheme://host[:port]) that browser-based MCP
+    /// clients may call from: they get CORS headers and pass the cross-site
+    /// check. Default: none (no CORS; cross-site browser requests get 403).
+    #[arg(long, env = "MCP_K8S_CORS_ALLOWED_ORIGINS", value_delimiter = ',')]
+    cors_allowed_origins: Vec<String>,
+
+    /// Maximum HTTP request body size in bytes.
+    #[arg(long, env = "MCP_K8S_MAX_REQUEST_BYTES", default_value = "4194304")]
+    max_request_bytes: usize,
+
+    /// HTTP request timeout in seconds (408 after that). Must exceed the
+    /// longest tool call: watch_resource caps at 30 s, exec_pod at 300 s.
+    #[arg(long, env = "MCP_K8S_REQUEST_TIMEOUT_SECS", default_value = "360")]
+    request_timeout_secs: u64,
 
     /// Path to TLS certificate PEM file (enables HTTPS when paired with --tls-key).
     #[arg(long, env = "TLS_CERT")]
@@ -365,7 +395,41 @@ async fn main() {
     };
 
     if cli.http {
-        let auth_token = cli.auth_token.clone();
+        let auth_token =
+            match resolve_auth_token(cli.auth_token.as_deref(), cli.auth_token_file.as_deref()) {
+                Ok(token) => token,
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            };
+        let loopback = http_security::is_loopback_listen(&cli.listen);
+        if auth_token.is_none() && !loopback {
+            tracing::warn!(
+                listen = %cli.listen,
+                "the HTTP API is unauthenticated on a non-loopback address: anyone who can reach it \
+                 can use every enabled tool. Set --auth-token-file (or AUTH_TOKEN), or listen on \
+                 127.0.0.1"
+            );
+        }
+        let origin_policy = http_security::OriginPolicy::new(
+            &cli.allowed_hosts,
+            &cli.cors_allowed_origins,
+            loopback,
+        );
+        if origin_policy.allowed_hosts.is_none() {
+            tracing::warn!(
+                "no --allowed-hosts: requests for any Host are accepted, so a DNS-rebinding \
+                 page could reach the server from a browser that can. Set --allowed-hosts to the \
+                 names clients use"
+            );
+        }
+        let http_options = HttpOptions {
+            auth_token,
+            origin_policy,
+            max_request_bytes: cli.max_request_bytes,
+            request_timeout: Duration::from_secs(cli.request_timeout_secs),
+        };
         // Both servers drain in-flight requests on SIGTERM/SIGINT and return.
 
         match (&cli.tls_cert, &cli.tls_key) {
@@ -375,7 +439,7 @@ async fn main() {
                     &cli.listen,
                     cert_path,
                     key_path,
-                    auth_token,
+                    http_options,
                     prometheus_handle,
                     cache,
                 )
@@ -385,7 +449,7 @@ async fn main() {
                 run_http(
                     cluster_manager,
                     &cli.listen,
-                    auth_token,
+                    http_options,
                     prometheus_handle,
                     cache,
                 )
@@ -608,16 +672,45 @@ fn docs_router<S: Clone + Send + Sync + 'static>() -> axum::Router<S> {
         .into()
 }
 
+/// The bearer token from --auth-token / AUTH_TOKEN, or read from
+/// --auth-token-file (trailing newline stripped). An empty token is an error,
+/// so a misconfigured Secret can't silently disable authentication.
+fn resolve_auth_token(token: Option<&str>, file: Option<&str>) -> Result<Option<String>, String> {
+    let token = match (token, file) {
+        (Some(token), _) => token.to_string(),
+        (None, Some(path)) => std::fs::read_to_string(path)
+            .map_err(|e| format!("can't read --auth-token-file {path}: {e}"))?
+            .trim_end_matches(['\r', '\n'])
+            .to_string(),
+        (None, None) => return Ok(None),
+    };
+    if token.is_empty() {
+        return Err("the auth token is empty".to_string());
+    }
+    Ok(Some(token))
+}
+
+/// HTTP server settings from the CLI.
+struct HttpOptions {
+    auth_token: Option<String>,
+    origin_policy: http_security::OriginPolicy,
+    max_request_bytes: usize,
+    request_timeout: Duration,
+}
+
 fn build_router(
     manager: ClusterManager,
-    auth_token: Option<String>,
+    options: HttpOptions,
     prometheus_handle: PrometheusHandle,
     cache: ResponseCache,
 ) -> axum::Router {
     let state = Arc::new(manager);
-    let auth_state = AuthState { token: auth_token };
+    let auth_state = AuthState {
+        token: options.auth_token,
+    };
+    let cors = options.origin_policy.cors_layer();
 
-    axum::Router::new()
+    let router = axum::Router::new()
         .route("/mcp", axum::routing::post(handle_mcp_http))
         .route("/mcp/sse", axum::routing::post(handle_mcp_sse))
         .route("/healthz", axum::routing::get(healthz))
@@ -629,18 +722,35 @@ fn build_router(
         ))
         .layer(axum::Extension(prometheus_handle))
         .layer(axum::Extension(cache))
-        .layer(CorsLayer::permissive())
-        .with_state(state)
+        .layer(axum::extract::DefaultBodyLimit::max(
+            options.max_request_bytes,
+        ))
+        // Host and cross-site checks run before authentication, so a
+        // rebinding page can't even probe for a valid token.
+        .layer(axum::middleware::from_fn_with_state(
+            options.origin_policy,
+            http_security::guard,
+        ))
+        .layer(tower_http::timeout::TimeoutLayer::with_status_code(
+            StatusCode::REQUEST_TIMEOUT,
+            options.request_timeout,
+        ))
+        .with_state(state);
+    match cors {
+        // Outermost, so preflights are answered before the other checks.
+        Some(cors) => router.layer(cors),
+        None => router,
+    }
 }
 
 async fn run_http(
     manager: ClusterManager,
     listen: &str,
-    auth_token: Option<String>,
+    options: HttpOptions,
     prometheus_handle: PrometheusHandle,
     cache: ResponseCache,
 ) {
-    let app = build_router(manager, auth_token, prometheus_handle, cache);
+    let app = build_router(manager, options, prometheus_handle, cache);
 
     let listener = tokio::net::TcpListener::bind(listen)
         .await
@@ -662,11 +772,11 @@ async fn run_https(
     listen: &str,
     cert_path: &str,
     key_path: &str,
-    auth_token: Option<String>,
+    options: HttpOptions,
     prometheus_handle: PrometheusHandle,
     cache: ResponseCache,
 ) {
-    let app = build_router(manager, auth_token, prometheus_handle, cache);
+    let app = build_router(manager, options, prometheus_handle, cache);
 
     let config = axum_server::tls_rustls::RustlsConfig::from_pem_file(cert_path, key_path)
         .await
@@ -1725,5 +1835,109 @@ mod telemetry_tests {
         let rendered = format!("{points:?}");
         assert!(!rendered.contains("no-such-tool-1234") && !rendered.contains("bogus"));
         assert!(rendered.contains("unknown_tool") && rendered.contains("_OTHER"));
+    }
+
+    // --- The HTTP router's protections, end to end through build_router ---
+
+    #[test]
+    fn auth_token_comes_from_the_flag_or_a_file() {
+        assert_eq!(resolve_auth_token(None, None), Ok(None));
+        assert_eq!(resolve_auth_token(Some("t"), None), Ok(Some("t".into())));
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("token");
+        std::fs::write(&path, "from-secret\n").unwrap();
+        assert_eq!(
+            resolve_auth_token(None, path.to_str()),
+            Ok(Some("from-secret".into()))
+        );
+        std::fs::write(&path, "\n").unwrap();
+        assert!(resolve_auth_token(None, path.to_str()).is_err());
+        assert!(resolve_auth_token(Some(""), None).is_err());
+        assert!(resolve_auth_token(None, Some("/nonexistent/token")).is_err());
+    }
+
+    async fn router_with(options: HttpOptions) -> axum::Router {
+        let handle = metrics_exporter_prometheus::PrometheusBuilder::new()
+            .build_recorder()
+            .handle();
+        build_router(
+            manager(ActionPermissions::default()).await,
+            options,
+            handle,
+            ResponseCache::disabled(),
+        )
+    }
+
+    fn options(token: Option<&str>, loopback: bool) -> HttpOptions {
+        HttpOptions {
+            auth_token: token.map(str::to_string),
+            origin_policy: http_security::OriginPolicy::new(&[], &[], loopback),
+            max_request_bytes: 1024,
+            request_timeout: Duration::from_secs(30),
+        }
+    }
+
+    fn tools_list(host: &str) -> axum::http::request::Builder {
+        axum::http::Request::post("/mcp")
+            .header(header::HOST, host)
+            .header(header::CONTENT_TYPE, "application/json")
+    }
+
+    const TOOLS_LIST: &str = r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#;
+
+    async fn status(
+        router: axum::Router,
+        req: axum::http::Request<axum::body::Body>,
+    ) -> StatusCode {
+        use tower::ServiceExt;
+        router.oneshot(req).await.unwrap().status()
+    }
+
+    #[tokio::test]
+    async fn router_requires_the_token_and_serves_mcp_with_it() {
+        let router = router_with(options(Some("s3cret"), false)).await;
+        let req = tools_list("mcp.internal:8080")
+            .body(axum::body::Body::from(TOOLS_LIST))
+            .unwrap();
+        assert_eq!(status(router.clone(), req).await, StatusCode::UNAUTHORIZED);
+        let req = tools_list("mcp.internal:8080")
+            .header(header::AUTHORIZATION, "Bearer s3cret")
+            .body(axum::body::Body::from(TOOLS_LIST))
+            .unwrap();
+        assert_eq!(status(router, req).await, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn router_blocks_cross_site_posts_and_rebinding_hosts() {
+        let router = router_with(options(None, false)).await;
+        let req = tools_list("mcp.internal:8080")
+            .header(header::ORIGIN, "https://attacker.example")
+            .body(axum::body::Body::from(TOOLS_LIST))
+            .unwrap();
+        assert_eq!(status(router, req).await, StatusCode::FORBIDDEN);
+
+        // Loopback listener: only loopback host names.
+        let router = router_with(options(None, true)).await;
+        let req = tools_list("rebind.attacker.example:8080")
+            .body(axum::body::Body::from(TOOLS_LIST))
+            .unwrap();
+        assert_eq!(status(router.clone(), req).await, StatusCode::FORBIDDEN);
+        let req = tools_list("localhost:8080")
+            .body(axum::body::Body::from(TOOLS_LIST))
+            .unwrap();
+        assert_eq!(status(router, req).await, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn router_rejects_oversized_bodies() {
+        let router = router_with(options(None, false)).await;
+        let big = format!(
+            r#"{{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{{"pad":"{}"}}}}"#,
+            "x".repeat(4096)
+        );
+        let req = tools_list("mcp.internal:8080")
+            .body(axum::body::Body::from(big))
+            .unwrap();
+        assert_eq!(status(router, req).await, StatusCode::PAYLOAD_TOO_LARGE);
     }
 }

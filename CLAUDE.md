@@ -21,6 +21,7 @@ Rust project with a library crate (`mcp_k8s`) and a binary crate (`mcp-k8s`).
 src/
 ├── lib.rs              # Public API re-exports
 ├── main.rs             # Binary: stdio/HTTP/HTTPS modes, auth middleware, metrics, request spans
+├── http_security.rs    # Binary: Host allowlist (DNS rebinding), cross-site blocking, optional CORS
 ├── otel.rs             # Binary only (`mod otel` in main.rs): OTLP pipeline, W3C trace context
 ├── cache.rs            # Optional in-memory response cache with TTL
 ├── client.rs           # K8sClient — kube::Client wrapper with namespace allowlist + permissions
@@ -285,6 +286,11 @@ mcp-k8s --http --tls-cert /path/cert.pem --tls-key /path/key.pem
 | `--disable-delete` | `DISABLE_DELETE` | `false` | Disable all delete ops |
 | `--disable` | `MCP_K8S_DISABLE` | (none) | Per-resource disables (e.g. `deployment-delete`) |
 | `--auth-token` | `AUTH_TOKEN` | (none) | Bearer token for HTTP auth |
+| `--auth-token-file` | `AUTH_TOKEN_FILE` | (none) | Read the bearer token from a file |
+| `--allowed-hosts` | `MCP_K8S_ALLOWED_HOSTS` | loopback names on a loopback `--listen`, else any | `Host` allowlist (DNS rebinding); `/healthz` exempt |
+| `--cors-allowed-origins` | `MCP_K8S_CORS_ALLOWED_ORIGINS` | (none) | CORS + cross-site allowlist for browser clients |
+| `--max-request-bytes` | `MCP_K8S_MAX_REQUEST_BYTES` | `4194304` | Request body limit (413) |
+| `--request-timeout-secs` | `MCP_K8S_REQUEST_TIMEOUT_SECS` | `360` | Request timeout (408) |
 | `--tls-cert` | `TLS_CERT` | (none) | TLS certificate PEM path |
 | `--tls-key` | `TLS_KEY` | (none) | TLS private key PEM path |
 | `--enable-apply-manifest` | `ENABLE_APPLY_MANIFEST` | `false` | Enable `apply_manifest`: unrestricted raw server-side apply, no workload policy (namespace allowlist and disable switches still apply) |
@@ -319,11 +325,17 @@ mcp-k8s --http --tls-cert /path/cert.pem --tls-key /path/key.pem
 ## Security posture
 
 mcp-k8s is a standalone server with broad cluster powers, so treat server
-weaknesses as security issues. The current defaults are permissive:
+weaknesses as security issues. Current defaults:
 
-- `--listen` defaults to `0.0.0.0:8080`, and `--auth-token` is optional.
-  Without a token the HTTP API is unauthenticated.
-- The router uses `CorsLayer::permissive()` and doesn't validate `Origin`.
+- `--listen` defaults to `0.0.0.0:8080`, and the auth token is optional
+  (maintainer's call: warn, don't refuse). Without one the HTTP API is
+  unauthenticated, and the server logs a warning at startup on a
+  non-loopback address.
+- Browser protections live in `src/http_security.rs`: no CORS headers unless
+  `--cors-allowed-origins`, browser-initiated cross-site writes get 403, and a
+  `Host` allowlist (`--allowed-hosts`; loopback names by default on a
+  loopback listener) stops DNS rebinding. Keep the guard layer outside the
+  auth layer, and keep `/healthz` exempt from the Host check.
 - Secret decoding is on by default (`ActionPermissions::default()`, which
   deckwatch also uses). The workload guardrails are restrictive by default
   (`WorkloadPolicy::default()`).

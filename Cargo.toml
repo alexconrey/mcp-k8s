@@ -37,7 +37,7 @@ x509-cert = { version = "0.3", default-features = false }
 pem = "4"
 axum = { version = "0.8", optional = true }
 futures = "0.3"
-tower-http = { version = "0.7", features = ["cors"], optional = true }
+tower-http = { version = "0.7", features = ["cors", "timeout"], optional = true }
 clap = { version = "4", features = ["derive", "env"], optional = true }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"], optional = true }
